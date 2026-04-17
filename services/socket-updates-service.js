@@ -93,7 +93,7 @@ function userUpdateSocket(email, methodName, ...args) {
 }
 
 // Scopes that grant access to the control panel
-const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
+const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.SYSTEM.PANEL_ACCESS, SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
 
 function getGlobalPermissionLevelForUser(user) {
     return computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
