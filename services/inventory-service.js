@@ -1,8 +1,11 @@
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
-async function getInventory(userId) {
-    const inventoryItems = await dbGetAll("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
+async function getUserInventory(userId) {
+    const inventoryItems = await dbGetAll(
+        "SELECT i.item_id, i.quantity, ir.name, ir.description, ir.stack_size, ir.image_url FROM inventory i JOIN item_registry ir ON i.item_id = ir.id WHERE i.user_id = ?",
+        [userId]
+    );
     return inventoryItems;
 }
 
@@ -48,7 +51,7 @@ async function removeItemFromInventory(userId, itemId, quantity) {
 }
 
 module.exports = {
-    getInventory,
+    getUserInventory,
     createItem,
     addItemToInventory,
     removeItemFromInventory,

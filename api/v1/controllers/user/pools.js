@@ -1,6 +1,6 @@
 const { dbGet, dbGetAll } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const pools = require("@services/digipog-service");
@@ -142,7 +142,7 @@ module.exports = (router) => {
         "/user/:id/pools",
         isAuthenticated,
         isVerified,
-        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user's pools."),
+        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "You do not have permission to view this user's pools."),
         async (req, res) => {
             const userId = Number(req.params.id);
             requireQueryParam(userId, "id");

@@ -1,5 +1,5 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const userService = require("@services/user-service");
@@ -64,7 +64,7 @@ module.exports = (router) => {
     router.post(
         "/user/:id/api/regenerate",
         isAuthenticated,
-        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to regenerate this user's API key."),
+        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "You do not have permission to regenerate this user's API key."),
         async (req, res) => {
             const userId = Number(req.params.id);
             requireQueryParam(userId, "id");

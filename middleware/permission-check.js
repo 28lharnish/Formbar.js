@@ -174,11 +174,11 @@ function hasClassScope(scope) {
 /**
  * Middleware: allows access if the user is targeting themselves (req.params.id === req.user.id)
  * or if the user has the specified scope (e.g. manager/admin).
- * @param {string} scope - The scope required if the user is not targeting themselves.
+ * @param {string[]|string} scopes - Required scope(s) if the user is not targeting themselves.
  * @param {string} [message] - Optional custom error message.
  * @returns {Function} Express middleware function.
  */
-function isSelfOrHasScope(scope, message) {
+function isSelfOrHasScopes(scopes, message) {
     return function (req, res, next) {
         if (!req.user || !req.user.email) {
             throw new AuthError("User is not authenticated");
@@ -190,20 +190,28 @@ function isSelfOrHasScope(scope, message) {
         }
 
         const user = classStateStore.getUser(req.user.email) || req.user;
-        if (userHasScope(user, scope)) {
+        const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
+
+        // check if user has all required scopes
+        let userHasRequiredScopes = true;
+        for (const scope of requiredScopes) {
+            if (!userHasScope(user, scope)) userHasRequiredScopes = false;
+        }
+
+        if (userHasRequiredScopes) {
             return next();
         }
 
-        req.warnEvent("auth.self_or_scope.forbidden", `User ${req.user.email} is not target and lacks scope ${scope}`, {
+        req.warnEvent("auth.self_or_scope.forbidden", `User ${req.user.email} is not target and lacks required scopes`, {
             email: req.user.email,
             targetId,
-            requiredScope: scope,
+            requiredScopes,
         });
 
         throw new ForbiddenError(message || "You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "not_self_and_insufficient_scope",
-            scope,
+            scopes: requiredScopes,
         });
     };
 }
@@ -212,11 +220,11 @@ function isSelfOrHasScope(scope, message) {
  * Middleware: allows access if the user owns the resource or has the specified scope.
  * The ownerCheck function receives (req) and must return a boolean (or promise of boolean).
  * @param {Function} ownerCheck - Async function (req) => boolean indicating ownership.
- * @param {string} scope - The scope required if the user is not the owner.
+ * @param {string[]|string} scopes - Required scope(s) if the user is not the owner.
  * @param {string} [message] - Optional custom error message.
  * @returns {Function} Express middleware function.
  */
-function isOwnerOrHasScope(ownerCheck, scope, message) {
+function isOwnerOrHasScopes(ownerCheck, scopes, message) {
     return async function (req, res, next) {
         if (!req.user || !req.user.email) {
             throw new AuthError("User is not authenticated");
@@ -228,19 +236,27 @@ function isOwnerOrHasScope(ownerCheck, scope, message) {
         }
 
         const user = classStateStore.getUser(req.user.email) || req.user;
-        if (userHasScope(user, scope)) {
+        const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
+
+        // check if user has all required scopes
+        let userHasRequiredScopes = true;
+        for (const scope of requiredScopes) {
+            if (!userHasScope(user, scope)) userHasRequiredScopes = false;
+        }
+
+        if (userHasRequiredScopes) {
             return next();
         }
 
-        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks scope ${scope}`, {
+        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks required scopes`, {
             email: req.user.email,
-            requiredScope: scope,
+            requiredScopes,
         });
 
         throw new ForbiddenError(message || "You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "not_owner_and_insufficient_scope",
-            scope,
+            scopes: requiredScopes,
         });
     };
 }
@@ -289,8 +305,8 @@ function isClassMember() {
 module.exports = {
     hasScope,
     hasClassScope,
-    isSelfOrHasScope,
-    isOwnerOrHasScope,
+    isSelfOrHasScopes,
+    isOwnerOrHasScopes,
     isClassMember,
     normalizeClassId,
 };

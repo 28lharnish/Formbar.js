@@ -187,7 +187,7 @@ function getClassLinks(classId) {
 
 /**
  * Middleware-compatible ownership check for classrooms.
- * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
+ * Returns a promise resolving to boolean, suitable for isOwnerOrHasScopes middleware.
  * Also caches the classroom on req._room for use by the handler.
  */
 async function classroomOwnerCheck(req) {

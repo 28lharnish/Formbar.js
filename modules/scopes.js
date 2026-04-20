@@ -14,6 +14,10 @@ const SCOPES = {
         POOLS: {
             MANAGE: "global.pools.manage",
         },
+        INVENTORY: {
+            MANAGE_SELF: "global.inventory.manage_self",
+            MANAGE_OTHERS: "global.inventory.manage_others",
+        },
         SYSTEM: {
             ADMIN: "global.system.admin",
             MODERATE: "global.system.moderate",
@@ -86,6 +90,12 @@ const SCOPES = {
             MANAGE: "class.links.manage",
         },
     },
+
+    APP: {
+        INVENTORY: {
+            GIVE_ITEM: "app.inventory.give_item",
+        }
+    }
 };
 
 const SOCKET_EVENT_SCOPE_MAP = {

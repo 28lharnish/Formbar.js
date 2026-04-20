@@ -1,5 +1,5 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { getUserDataFromDb } = require("@services/user-service");
 const { getUserTransactionsPaginated } = require("@services/digipog-service");
@@ -117,7 +117,7 @@ module.exports = (router) => {
         "/user/:id/transactions",
         isAuthenticated,
         isVerified,
-        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view these transactions."),
+        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "You do not have permission to view these transactions."),
         async (req, res) => {
             const userId = Number(req.params.id);
             requireQueryParam(userId, "id");

@@ -1,5 +1,5 @@
 const { SCOPES } = require("@modules/permissions");
-const { hasScope, isOwnerOrHasScope } = require("@middleware/permission-check");
+const { hasScope, isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const digipogService = require("@services/digipog-service");
@@ -71,7 +71,7 @@ module.exports = (router) => {
         "/pools/:id/payout",
         isAuthenticated,
         hasScope(SCOPES.GLOBAL.POOLS.MANAGE),
-        isOwnerOrHasScope(digipogService.poolOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not own this pool."),
+        isOwnerOrHasScopes(digipogService.poolOwnerCheck, [SCOPES.GLOBAL.SYSTEM.ADMIN], "You do not own this pool."),
         async (req, res) => {
             const poolId = Number(req.params.id);
 

@@ -2,8 +2,14 @@ const ValidationError = require("@errors/validation-error");
 const AppError = require("@errors/app-error");
 
 function requireQueryParam(param, name) {
-    if (param === undefined || param === null || Number.isNaN(param)) {
+    if (param === undefined || param === null) {
         throw new ValidationError(`Required query parameter '${name}' is missing.`);
+    }
+}
+
+function requireParam(param, name) {
+    if (param === undefined || param === null) {
+        throw new ValidationError(`Required parameter '${name}' is missing.`);
     }
 }
 
@@ -21,6 +27,7 @@ function requireInternalParam(param, name) {
 
 module.exports = {
     requireQueryParam,
+    requireParam,
     requireBodyParam,
     requireInternalParam,
 };
