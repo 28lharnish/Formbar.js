@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS "roles" (
 
 CREATE TABLE IF NOT EXISTS "class_roles" (
     "roleId"  INTEGER NOT NULL,
-    "classId" INTEGER NOT NULL
+    "classId" INTEGER NOT NULL,
+    "orderIndex" INTEGER
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_class_roles_unique" ON "class_roles" ("classId", "roleId");

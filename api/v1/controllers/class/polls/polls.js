@@ -2,6 +2,8 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const { getPreviousPolls } = require("@services/poll-service");
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { hasClassScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 const ValidationError = require("@errors/validation-error");
 
 const DEFAULT_POLL_LIMIT = 20;
@@ -149,7 +151,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/polls", isAuthenticated, async (req, res) => {
+    router.get("/class/:id/polls", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.READ), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "classId");
 

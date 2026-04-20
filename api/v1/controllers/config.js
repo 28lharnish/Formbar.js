@@ -27,9 +27,14 @@ module.exports = (router) => {
      *                     emailEnabled:
      *                       type: boolean
      *                       description: Whether the email service is enabled
-     *                     googleOauthEnabled:
-     *                       type: boolean
-     *                       description: Whether Google OAuth login is enabled
+     *                     oidcProviders:
+     *                       type: array
+     *                       description: The available OIDC providers
+     *                       items:
+     *                         type: string
+     *                         example: google
+     *                         description: The OIDC provider identifier
+     *                       example: [google, microsoft]
      */
     router.get("/config", (req, res) => {
         req.infoEvent("config.view.attempt", "Attempting to read the server configuration");

@@ -28,6 +28,12 @@ const SCOPES = {
             BLOCKED: "class.system.blocked",
         },
 
+        ROLES: {
+            ASSIGN: "class.roles.assign",
+            READ: "class.roles.read",
+            MANAGE: "class.roles.manage",
+        },
+
         POLL: {
             READ: "class.poll.read",
             VOTE: "class.poll.vote",

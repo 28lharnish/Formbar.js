@@ -36,7 +36,7 @@ const sessionMiddleware = session({
 
 const errorHandlerMiddleware = require("@middleware/error-handler");
 const requestLoggerMiddleware = require("@middleware/request-logger");
-const { initializeAvailableProviders } = require("@modules/oidc");
+const { initializeAvailableProviders, getAvailableProviders } = require("@modules/oidc");
 
 // Initialize the available providers for logging into Formbar through OAuth
 initializeAvailableProviders().catch((error) => {
@@ -235,6 +235,7 @@ app.use(errorHandlerMiddleware);
 // Start the server
 
 http.listen(settings.port, async () => {
+    // Ensure that the Formbar Developer Pool exists
     try {
         await ensureFormbarDeveloperPool();
     } catch (err) {
@@ -244,10 +245,23 @@ http.listen(settings.port, async () => {
     // Object.assign(authentication.whitelistedIps, await getIpAccess("whitelist"));
     // Object.assign(authentication.blacklistedIps, await getIpAccess("blacklist"));
     console.log(`Running on port: ${settings.port}`);
-    if (!settings.emailEnabled) console.log("Email functionality is disabled.");
-    if (!settings.googleOauthEnabled) console.log("Google Oauth functionality is disabled.");
-    if (!settings.emailEnabled || !settings.googleOauthEnabled)
+
+    const availableOIDCProviders = getAvailableProviders();
+    if (!settings.emailEnabled) {
+        console.log("Email functionality is disabled.");
+    }
+
+    if (!availableOIDCProviders.includes("google")) {
+        console.log("Google OAuth is not available. Please configure Google OAuth in the environment variables to enable Google login.");
+    }
+
+    if (!availableOIDCProviders.includes("microsoft")) {
+        console.log("Microsoft OAuth is not available. Please configure Microsoft OAuth in the environment variables to enable Microsoft login.");
+    }
+
+    if (!settings.emailEnabled || availableOIDCProviders.length < 2) {
         console.log(
             'To enable the disabled function(s), follow the related instructions under "Hosting Formbar.js Locally" in the Formbar wiki page at https://github.com/csmith1188/Formbar.js/wiki'
         );
+    }
 });

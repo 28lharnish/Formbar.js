@@ -5,13 +5,19 @@ const {
     computeClassPermissionLevel,
     getScopesFromRoleLike,
     hasGlobalAdminScope,
-    MANAGER_PERMISSIONS,
-    TEACHER_PERMISSIONS,
+    filterScopesByDomain,
 } = require("@modules/permissions");
 const { getRoleName, getRoleNames } = require("@modules/role-reference");
+const AppError = require("@errors/app-error");
+const { flattenObject } = require("@modules/util");
 
-const DEFAULT_CLASS_MEMBER_SCOPES = [SCOPES.CLASS.POLL.READ, SCOPES.CLASS.LINKS.READ];
-
+/**
+ * Filters a resolved scope array down to unique string scope keys.
+ * Used after scope-resolver has already expanded roles, overrides, and direct scope arrays.
+ *
+ * @param {Array<unknown>} scopes
+ * @returns {string[]}
+ */
 function dedupeScopes(scopes) {
     return [...new Set(scopes.filter((scope) => typeof scope === "string"))];
 }
@@ -21,8 +27,14 @@ function getGlobalRoleEntries(user) {
         return [];
     }
 
-    if (Array.isArray(user.globalRoles) && user.globalRoles.length > 0) {
-        return user.globalRoles;
+    if (
+        user.roles &&
+        typeof user.roles === "object" &&
+        !Array.isArray(user.roles) &&
+        Array.isArray(user.roles.global) &&
+        user.roles.global.length > 0
+    ) {
+        return user.roles.global;
     }
 
     if (Array.isArray(user.roles) && user.roles.length > 0) {
@@ -41,16 +53,14 @@ function getClassRoleEntries(classUser) {
         return [];
     }
 
-    if (Array.isArray(classUser.classRoleRefs) && classUser.classRoleRefs.length > 0) {
-        return classUser.classRoleRefs;
-    }
-
-    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
-        return classUser.classRoles;
-    }
-
-    if (classUser.classRole) {
-        return [classUser.classRole];
+    if (
+        classUser.roles &&
+        typeof classUser.roles === "object" &&
+        !Array.isArray(classUser.roles) &&
+        Array.isArray(classUser.roles.class) &&
+        classUser.roles.class.length > 0
+    ) {
+        return classUser.roles.class;
     }
 
     return [];
@@ -88,6 +98,7 @@ function getClassScopesForRole(role, classroom) {
     const scopes = getScopesFromRoleLike(role, "class", {
         availableRoles: Array.isArray(classroom?.availableRoles) ? classroom.availableRoles : [],
     });
+
     if (scopes.length > 0) {
         return scopes;
     }
@@ -95,74 +106,62 @@ function getClassScopesForRole(role, classroom) {
     return scopes;
 }
 
-function resolveUserGlobalScopes(user) {
-    if (!user) return [];
-
-    if (Array.isArray(user.globalScopes)) {
-        const scopes = dedupeScopes(user.globalScopes);
-        return hasGlobalAdminScope(scopes) ? getAllScopes() : computeGlobalPermissionLevel(scopes) === 0 ? [] : scopes;
+function getUserScopes(user, classroom) {
+    if (!user) {
+        throw new AppError("No user defined");
     }
 
-    const scopes = [];
-    for (const role of getGlobalRoleEntries(user)) {
-        scopes.push(...getGlobalScopesForRole(role));
-    }
+    const scopes = {
+        global: [],
+        class: [],
+    };
 
-    const resolvedScopes = dedupeScopes(scopes);
-    if (hasGlobalAdminScope(resolvedScopes)) {
-        return getAllScopes();
-    }
+    // If the user has explicit scopes.global / scopes.class arrays, use those directly (after deduping and checking for admin/block scopes).
+    // Otherwise, resolve scopes from roles as normal.
+    const explicitGlobal =
+        user.scopes && typeof user.scopes === "object" && !Array.isArray(user.scopes) && Array.isArray(user.scopes.global)
+            ? user.scopes.global
+            : null;
+    const rawGlobalScopes = Array.isArray(explicitGlobal)
+        ? filterScopesByDomain(explicitGlobal, "global")
+        : getGlobalRoleEntries(user)
+              .map((role) => getGlobalScopesForRole(role))
+              .flat();
 
-    const unblockedScopes = resolvedScopes.filter((scope) => scope !== SCOPES.GLOBAL.SYSTEM.BLOCKED);
-    if (computeGlobalPermissionLevel(resolvedScopes) === 0 && computeGlobalPermissionLevel(unblockedScopes) < MANAGER_PERMISSIONS) {
-        return [];
-    }
+    const globalScopes = dedupeScopes(rawGlobalScopes);
+    const isGlobalAdmin = hasGlobalAdminScope(globalScopes);
+    const isGlobalBanned = globalScopes.includes(SCOPES.GLOBAL.SYSTEM.BLOCKED);
+    scopes.global = isGlobalAdmin ? getAllGlobalScopes() : isGlobalBanned ? [] : globalScopes;
 
-    return computeGlobalPermissionLevel(unblockedScopes) >= MANAGER_PERMISSIONS ? getAllScopes() : resolvedScopes;
-}
+    const explicitClass =
+        user.scopes && typeof user.scopes === "object" && !Array.isArray(user.scopes) && Array.isArray(user.scopes.class) ? user.scopes.class : null;
+    const rawClassScopes = Array.isArray(explicitClass)
+        ? filterScopesByDomain(explicitClass, "class")
+        : getClassRoleEntries(user)
+              .map((role) => getClassScopesForRole(role, classroom))
+              .flat();
 
-function resolveUserClassScopes(classUser, classroom) {
-    if (!classUser) return [];
+    const classScopes = dedupeScopes(rawClassScopes);
+    const isClassAdmin = classScopes.includes(SCOPES.CLASS.SYSTEM.ADMIN);
+    const isClassBanned = classScopes.includes(SCOPES.CLASS.SYSTEM.BLOCKED);
+    const ownerBypass = isClassOwner(user, classroom);
+    scopes.class = ownerBypass || isClassAdmin ? getAllClassScopes() : isClassBanned ? [] : classScopes;
 
-    const globalScopes = resolveUserGlobalScopes(classUser);
-    const ownerBypass = isClassOwner(classUser, classroom);
-    const scopes = [...DEFAULT_CLASS_MEMBER_SCOPES];
-
-    if (Array.isArray(classUser.classScopes) && classUser.classScopes.length > 0) {
-        scopes.push(...classUser.classScopes);
-    } else {
-        for (const role of getClassRoleEntries(classUser)) {
-            scopes.push(...getClassScopesForRole(role, classroom));
-        }
-    }
-
-    const resolvedScopes = dedupeScopes(scopes);
-    const permissionLevel = computeClassPermissionLevel(resolvedScopes, {
-        isOwner: ownerBypass,
-        globalScopes,
-    });
-    const unblockedScopes = resolvedScopes.filter((scope) => scope !== SCOPES.CLASS.SYSTEM.BLOCKED);
-    const unblockedPermissionLevel = computeClassPermissionLevel(unblockedScopes, {
-        isOwner: ownerBypass,
-        globalScopes,
-    });
-
-    if (permissionLevel === 0 && unblockedPermissionLevel < TEACHER_PERMISSIONS && !ownerBypass) {
-        return [];
-    }
-
-    if (permissionLevel === 5 || unblockedPermissionLevel === 5) {
-        return getAllClassScopes();
-    }
-
-    return unblockedPermissionLevel >= TEACHER_PERMISSIONS ? unblockedScopes : resolvedScopes;
+    return scopes;
 }
 
 function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
-    const classScopes = classroom ? resolveUserClassScopes(user, classroom) : [];
-    const scopes = resolveUserGlobalScopes(user).concat(classScopes);
-    if (hasGlobalAdminScope(scopes)) return true;
+
+    const userScopes = getUserScopes(user, classroom);
+    if (hasGlobalAdminScope(userScopes.global)) {
+        return true;
+    }
+    if (userScopes.class.includes(SCOPES.CLASS.SYSTEM.ADMIN) && typeof scope === "string" && scope.startsWith("class.")) {
+        return true;
+    }
+
+    const scopes = userScopes.global.concat(userScopes.class);
     return scopes.includes(scope);
 }
 
@@ -212,95 +211,26 @@ function getUserRoleName(user) {
         return LEVEL_TO_ROLE[user.permissions] || ROLE_NAMES.GUEST;
     }
 
-    const permissionLevel = computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
+    const permissionLevel = computeGlobalPermissionLevel(getUserScopes(user).global);
     return LEVEL_TO_ROLE[permissionLevel] || ROLE_NAMES.GUEST;
 }
 
-function getClassRoleName(classUser, classroom) {
-    if (!classUser) {
-        return ROLE_NAMES.GUEST;
-    }
-
-    const roles = getClassRoleEntries(classUser);
-    if (roles.length > 0) {
-        return (
-            selectHighestRoleName(roles, "class", {
-                classroom,
-                globalScopes: resolveUserGlobalScopes(classUser),
-            }) ||
-            getRoleName(roles[0]) ||
-            ROLE_NAMES.GUEST
-        );
-    }
-
-    if (classUser.classRole && typeof classUser.classRole === "string") {
-        return classUser.classRole;
-    }
-
-    if (typeof classUser.classPermissions === "number" && Number.isInteger(classUser.classPermissions)) {
-        return LEVEL_TO_ROLE[classUser.classPermissions] || ROLE_NAMES.GUEST;
-    }
-
-    return ROLE_NAMES.GUEST;
-}
-
-function getClassRoleNames(classUser) {
-    if (!classUser) {
-        return [];
-    }
-
-    const roles = getClassRoleEntries(classUser);
-    if (roles.length > 0) {
-        return getRoleNames(roles);
-    }
-
-    if (typeof classUser.classPermissions === "number" && Number.isInteger(classUser.classPermissions)) {
-        const roleName = LEVEL_TO_ROLE[classUser.classPermissions];
-        return roleName && roleName !== ROLE_NAMES.GUEST ? [roleName] : [];
-    }
-
-    return [];
-}
-
-function getAllScopes() {
-    const scopes = [];
-    function collect(obj) {
-        for (const value of Object.values(obj)) {
-            if (typeof value === "string") {
-                if (value !== SCOPES.GLOBAL.SYSTEM.BLOCKED) {
-                    scopes.push(value);
-                }
-            } else if (typeof value === "object" && value !== null) {
-                collect(value);
-            }
-        }
-    }
-    collect(SCOPES.GLOBAL);
+function getAllGlobalScopes() {
+    let scopes = flattenObject(SCOPES.GLOBAL);
+    scopes = scopes.filter((scope) => scope !== SCOPES.GLOBAL.SYSTEM.BLOCKED);
     return scopes;
 }
 
 function getAllClassScopes() {
-    const scopes = [];
-    function collect(obj) {
-        for (const value of Object.values(obj)) {
-            if (typeof value === "string") {
-                scopes.push(value);
-            } else if (typeof value === "object" && value !== null) {
-                collect(value);
-            }
-        }
-    }
-    collect(SCOPES.CLASS);
+    let scopes = flattenObject(SCOPES.CLASS);
+    scopes = scopes.filter((scopes) => scopes !== SCOPES.CLASS.SYSTEM.BLOCKED);
     return scopes;
 }
 
 module.exports = {
-    resolveUserGlobalScopes,
-    resolveUserClassScopes,
+    getUserScopes,
     userHasScope,
     getUserRoleName,
-    getClassRoleName,
-    getClassRoleNames,
     isClassOwner,
     getAllClassScopes,
 };

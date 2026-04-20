@@ -57,13 +57,16 @@ describe("socket rate-limiter middleware", () => {
         getUserDataFromDb.mockResolvedValue({
             id: 42,
             email: "teacher@test.com",
-            globalRoles: [
-                {
-                    id: 1,
-                    name: "Teacher",
-                    scopes: JSON.stringify(["global.class.create"]),
-                },
-            ],
+            roles: {
+                global: [
+                    {
+                        id: 1,
+                        name: "Teacher",
+                        scopes: JSON.stringify(["global.class.create"]),
+                    },
+                ],
+                class: [],
+            },
         });
 
         rateLimiterMiddleware.run(socket, {});

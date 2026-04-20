@@ -31,7 +31,7 @@ jest.mock("@modules/config", () => {
         privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     return {
-        settings: { emailEnabled: false, googleOauthEnabled: false },
+        settings: { emailEnabled: false, oidcProviders: [] },
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",
@@ -352,23 +352,6 @@ describe("PATCH /api/v1/class/:id/roles/:roleId", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.data.color).toBe("#abcdef");
-    });
-
-    it("returns 400 when renaming to a built-in role name", async () => {
-        const { classId, teacherTokens } = await setupClassWithTeacherAndStudent();
-
-        const createRes = await request(app)
-            .post(`/api/v1/class/${classId}/roles`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ name: "MyRole", scopes: ["class.poll.create"] });
-        const roleId = createRes.body.data.id;
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/roles/${roleId}`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ name: "Teacher" });
-
-        expect(res.status).toBe(400);
     });
 });
 

@@ -2,7 +2,7 @@ const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
 const { SCOPES, computeClassPermissionLevel } = require("@modules/permissions");
-const { resolveUserClassScopes } = require("@modules/scope-resolver");
+const { getUserScopes } = require("@modules/scope-resolver");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -83,11 +83,11 @@ module.exports = (router) => {
             for (const classUser of classUsers) {
                 const studentEntry = Object.values(classroom.students).find((s) => s.id === classUser.id);
                 if (studentEntry) {
-                    classUser.classRoles = studentEntry.classRoleRefs || [];
-                    classUser.classRole = studentEntry.classRole || null;
-                    classUser.classPermissions = computeClassPermissionLevel(resolveUserClassScopes(studentEntry, classroom), {
+                    classUser.roles = { global: classUser.roles?.global || [], class: studentEntry.roles?.class || [] };
+                    const resolvedScopes = getUserScopes(studentEntry, classroom);
+                    classUser.classPermissions = computeClassPermissionLevel(resolvedScopes.class, {
                         isOwner: Boolean(studentEntry.isClassOwner),
-                        globalScopes: studentEntry.globalRoles || [],
+                        globalScopes: resolvedScopes.global,
                     });
                 }
             }
@@ -97,9 +97,8 @@ module.exports = (router) => {
                     classUsers.push({
                         id: studentInfo.id,
                         displayName: studentInfo.displayName || "Guest",
-                        classRoles: [],
-                        classRole: null,
-                        classPermissions: computeClassPermissionLevel(resolveUserClassScopes(studentInfo, classroom)),
+                        roles: { global: [], class: [] },
+                        classPermissions: computeClassPermissionLevel(getUserScopes(studentInfo, classroom).class),
                     });
                 }
             }

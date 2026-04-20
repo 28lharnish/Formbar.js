@@ -44,6 +44,7 @@ jest.mock("@modules/database", () => {
 const {
     validateClassroomName,
     createClass,
+    initializeClassroom,
     getClassCode,
     getUserJoinedClasses,
     getClassLinks,
@@ -220,6 +221,22 @@ describe("createClass()", () => {
         expect(rows[0].owner).toBe(owner.id);
     });
 
+    it("seeds class-scoped default roles for the new classroom", async () => {
+        const owner = await seedUser();
+        const result = await createClass("Seeded Class", owner.id, owner.email);
+
+        const classRoles = await mockDatabase.dbGetAll(
+            `SELECT r.name
+             FROM class_roles cr
+             JOIN roles r ON r.id = cr.roleId
+             WHERE cr.classId = ?
+             ORDER BY cr.orderIndex IS NULL, cr.orderIndex, r.id`,
+            [result.classId]
+        );
+
+        expect(classRoles.map((role) => role.name)).toEqual(["Manager", "Teacher", "Mod", "Student", "Guest", "Banned"]);
+    });
+
     it("returns classId, key, and className", async () => {
         const owner = await seedUser();
         const result = await createClass("My Class", owner.id, owner.email);
@@ -246,6 +263,21 @@ describe("createClass()", () => {
     it("throws ValidationError for an empty classroom name", async () => {
         const owner = await seedUser();
         await expect(createClass("", owner.id, owner.email)).rejects.toThrow();
+    });
+});
+
+describe("initializeClassroom()", () => {
+    it("does not recreate default roles for a classroom with none", async () => {
+        const owner = await seedUser();
+        const { id: classId } = await seedClassroom({ ownerId: owner.id, name: "Legacyless Class" });
+
+        await initializeClassroom(classId);
+
+        const classroom = classStateStore.getClassroom(classId);
+        const classRoles = await mockDatabase.dbGetAll("SELECT roleId FROM class_roles WHERE classId = ?", [classId]);
+
+        expect(classroom.availableRoles).toEqual([]);
+        expect(classRoles).toEqual([]);
     });
 });
 

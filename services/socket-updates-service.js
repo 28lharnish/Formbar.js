@@ -10,7 +10,7 @@ const {
     MANAGER_PERMISSIONS,
     BANNED_PERMISSIONS,
 } = require("@modules/permissions");
-const { userHasScope, resolveUserGlobalScopes, resolveUserClassScopes, isClassOwner } = require("@modules/scope-resolver");
+const { userHasScope, isClassOwner, getUserScopes } = require("@modules/scope-resolver");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
@@ -96,13 +96,14 @@ function userUpdateSocket(email, methodName, ...args) {
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.SYSTEM.PANEL_ACCESS, SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
 
 function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
+    return computeGlobalPermissionLevel(getUserScopes(user).global);
 }
 
 function getClassPermissionLevelForUser(classUser, classroom) {
-    return computeClassPermissionLevel(resolveUserClassScopes(classUser, classroom), {
+    const userScopes = getUserScopes(classUser, classroom);
+    return computeClassPermissionLevel(userScopes.class, {
         isOwner: isClassOwner(classUser, classroom),
-        globalScopes: resolveUserGlobalScopes(classUser),
+        globalScopes: userScopes.global,
     });
 }
 
@@ -395,8 +396,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
                           id: student.id,
                           displayName: student.displayName,
                           activeClass: student.activeClass,
-                          classRole: student.classRole || null,
-                          classRoles: student.classRoleRefs || [],
+                          roles: { global: [], class: student.roles?.class || [] },
                           tags: student.tags,
                           pollRes: student.pollRes,
                           help: student.help,
@@ -414,8 +414,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         const student = classData.students[options.studentEmail];
         result.myTags = student.tags || [];
         result.myId = student.id;
-        result.myRole = student.classRole || null;
-        result.myRoles = student.classRoleRefs || [];
+        result.myRoles = student.roles?.class || [];
     }
 
     return result;

@@ -32,7 +32,7 @@ jest.mock("@modules/config", () => {
         privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     return {
-        settings: { emailEnabled: false, googleOauthEnabled: false },
+        settings: { emailEnabled: false, oidcProviders: [] },
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",
@@ -59,7 +59,7 @@ afterAll(async () => {
 });
 
 describe("GET /api/v1/config", () => {
-    it("returns 200 with emailEnabled and googleOauthEnabled flags", async () => {
+    it("returns 200 with emailEnabled and oidcProviders flags", async () => {
         const res = await request(app).get("/api/v1/config");
 
         expect(res.status).toBe(200);

@@ -31,7 +31,7 @@ jest.mock("@modules/config", () => {
         privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     return {
-        settings: { emailEnabled: false, googleOauthEnabled: false },
+        settings: { emailEnabled: false, oidcProviders: [] },
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",

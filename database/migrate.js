@@ -92,6 +92,7 @@ async function executeSQLMigration(migration) {
                     }
 
                     console.log(
+                        "\x1b[31m%s\x1b[0m",
                         "Unable to complete migration as this migration has already been run, or an error has occurred. Continuing to next migration."
                     );
                     resolve();
@@ -134,7 +135,7 @@ async function executeJSMigration(migration) {
         await migrationModule.run(database);
     } catch (err) {
         if (err.message === "ALREADY_DONE") {
-            console.log("Unable to complete migration as this migration has already been run. Continuing to next migration.");
+            console.log("\x1b[31m%s\x1b[0m", "Unable to complete migration as this migration has already been run. Continuing to next migration.");
             return;
         }
 

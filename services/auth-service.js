@@ -5,9 +5,9 @@ const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMI
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
-const { resolveUserGlobalScopes, resolveUserClassScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { getUserScopes } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
-const { findRoleByPermissionLevel } = require("@services/role-service");
+const { findRoleByPermissionLevel, getUserRoles } = require("@services/role-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -16,39 +16,42 @@ const ConflictError = require("@errors/conflict-error");
 
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
 
-async function withComputedGlobalRole(userData) {
+async function normalizeUserData(userData) {
     if (!userData || !userData.id) {
         return userData;
     }
 
-    const roleRows = await dbGetAll(
-        `SELECT r.id, r.name, r.scopes
-         FROM user_roles ur
-         JOIN roles r ON ur.roleId = r.id
-         WHERE ur.userId = ? AND ur.classId IS NULL`,
-        [userData.id]
-    );
-    const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
-    const role = getUserRoleName({ globalRoles });
-    const globalScopes = resolveUserGlobalScopes({ globalRoles });
+    const rolesFromDb = await getUserRoles(userData.id);
+    const roles = {
+        global: rolesFromDb.global,
+        class: rolesFromDb.class,
+    };
+
+    const scopes = getUserScopes({ ...userData, roles });
+
+    // If the user is in a class, then get their current class permissions
+    let classPermissions = null;
+    if (userData.activeClass) {
+        classPermissions = (await getActiveClassContext({ ...userData, email: userData.email, roles })).classPermissions;
+    }
 
     return {
         ...userData,
-        globalRoles,
-        role,
-        permissions: computeGlobalPermissionLevel(globalScopes),
-        classPermissions: null,
+        permissions: computeGlobalPermissionLevel(scopes.global),
+        classPermissions,
+        roles,
+        scopes,
     };
 }
 
 async function getActiveClassContext(user) {
-    let classRoles = [];
-    let classScopes = [];
+    const roles = { global: user.roles?.global || [], class: [] };
+    let scopes = { global: getUserScopes(user).global, class: [] };
     let classPermissions = null;
 
     const liveUser = classStateStore.getUser(user.email);
     if (!liveUser || !liveUser.activeClass) {
-        return { classRoles, classScopes, classPermissions };
+        return { roles, scopes, classPermissions };
     }
 
     const classroom = classStateStore.getClassroom(liveUser.activeClass);
@@ -60,22 +63,23 @@ async function getActiveClassContext(user) {
               isClassOwner: classStudent.isClassOwner === true || user.id === classroomOwnerId,
           }
         : user.id === classroomOwnerId
-          ? { id: user.id, email: user.email, globalRoles: user.globalRoles || [], isClassOwner: true }
+          ? { id: user.id, email: user.email, roles: { global: user.roles?.global || [], class: [] }, isClassOwner: true }
           : null;
 
     if (classStudent) {
-        classRoles = classStudent.classRoleRefs || [];
+        roles.class = classStudent.roles?.class || [];
     }
 
     if (effectiveClassUser) {
-        classScopes = resolveUserClassScopes(effectiveClassUser, classroom);
-        classPermissions = computeClassPermissionLevel(classScopes, {
+        const resolved = getUserScopes(effectiveClassUser, classroom);
+        scopes = { global: resolved.global, class: resolved.class };
+        classPermissions = computeClassPermissionLevel(scopes.class, {
             isOwner: Boolean(effectiveClassUser.isClassOwner),
-            globalScopes: resolveUserGlobalScopes(effectiveClassUser),
+            globalScopes: resolved.global,
         });
     }
 
-    return { classRoles, classScopes, classPermissions };
+    return { roles, scopes, classPermissions };
 }
 
 function normalizeEmail(email) {
@@ -204,7 +208,7 @@ async function register(email, password, displayName) {
     }
 
     const hashedPassword = await hash(password, 10);
-    const userData = await withComputedGlobalRole(
+    const userData = await normalizeUserData(
         await createUser({
             email,
             password: hashedPassword,
@@ -239,7 +243,7 @@ async function login(email, password) {
     // Normalize email to lowercase to prevent login issues
     email = normalizeEmail(email);
 
-    const userData = await withComputedGlobalRole(await dbGet("SELECT * FROM users WHERE email = ?", [email]));
+    const userData = await normalizeUserData(await dbGet("SELECT * FROM users WHERE email = ?", [email]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -278,7 +282,7 @@ async function refreshLogin(refreshToken) {
     }
 
     // Load user data to include email and displayName in the new token
-    const userData = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]));
+    const userData = await normalizeUserData(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -316,12 +320,45 @@ function generateAuthTokens(userData) {
             email: userData.email,
             displayName: userData.displayName,
             permissions: userData.permissions,
+            scopes: getUserScopes(userData),
         },
         privateKey,
         { algorithm: "RS256", expiresIn: "15m" }
     );
 
     return { accessToken, refreshToken };
+}
+
+/**
+ * Issues a short-lived access token for a global guest (no DB user, no refresh token).
+ * @param {{ id: string|number, email: string, displayName: string, digipogs?: number, permissions: number }} userData
+ * @returns {{ accessToken: string }}
+ */
+function loginAsGuest(userData) {
+    if (!privateKey || !publicKey) {
+        throw new AppError("Either the public key or private key is not available for JWT signing.", {
+            statusCode: 500,
+            event: "auth.guest.failed",
+            reason: "missing_keys",
+        });
+    }
+
+    const scopes = { global: [], class: [] };
+    const accessToken = jwt.sign(
+        {
+            id: userData.id,
+            email: userData.email,
+            displayName: userData.displayName,
+            isGuest: true,
+            digipogs: userData.digipogs ?? 0,
+            permissions: userData.permissions,
+            scopes,
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "15m" }
+    );
+
+    return { accessToken };
 }
 
 /**
@@ -364,7 +401,7 @@ function invalidCredentials() {
  * @param {string} displayName - The user's display name from Google
  * @returns {Promise<{tokens: {accessToken: string, refreshToken: string}, user: Object}|{error: string}>} Returns an object with tokens and user data on success, or an error object on failure
  */
-async function oidcLogin(provider, email, displayName, options = {}) {
+async function oidcOAuthLogin(provider, email, displayName, options = {}) {
     if (!privateKey || !publicKey) {
         throw new AppError("Either the public key or private key is not available for JWT signing.", {
             statusCode: 500,
@@ -404,7 +441,7 @@ async function oidcLogin(provider, email, displayName, options = {}) {
         }
     }
 
-    userData = await withComputedGlobalRole(userData);
+    userData = await normalizeUserData(userData);
     return { provider, tokens: await issueAuthTokens(userData), user: userData };
 }
 
@@ -482,7 +519,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]));
+    const user = await normalizeUserData(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]));
     if (!user) {
         throw new AppError("User associated with the authorization code was not found.", { statusCode: 404 });
     }
@@ -506,7 +543,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         "oauth",
     ]);
 
-    const { classRoles, classScopes, classPermissions } = await getActiveClassContext(user);
+    const { roles: activeRoles, scopes: activeScopes, classPermissions } = await getActiveClassContext(user);
 
     return {
         access_token: accessToken,
@@ -516,9 +553,8 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         permissions: user.permissions,
         classPermissions,
         role: user.role,
-        scopes: resolveUserGlobalScopes(user),
-        classRoles,
-        classScopes,
+        roles: activeRoles,
+        scopes: activeScopes,
     };
 }
 
@@ -545,7 +581,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [refreshTokenData.id]));
+    const user = await normalizeUserData(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [refreshTokenData.id]));
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }
@@ -580,7 +616,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         permissions: user.permissions,
         classPermissions,
         role: user.role,
-        scopes: resolveUserGlobalScopes(user),
+        scopes: getUserScopes(user),
     };
 }
 
@@ -613,13 +649,14 @@ async function cleanupExpiredAuthorizationCodes() {
 module.exports = {
     register,
     login,
+    loginAsGuest,
     refreshLogin,
     verifyToken,
-    googleOAuth: (email, displayName, options) => oidcLogin("google", email, displayName, options),
-    oidcOAuth: oidcLogin,
+    oidcOAuthLogin,
     generateAuthorizationCode,
     exchangeAuthorizationCodeForToken,
     exchangeRefreshTokenForAccessToken,
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
+    sanitizeDisplayName,
 };

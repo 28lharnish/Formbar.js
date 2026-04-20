@@ -1,6 +1,5 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { resolveUserGlobalScopes } = require("@modules/scope-resolver");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
@@ -124,7 +123,14 @@ async function getComputedGlobalUser(userId) {
 
     return {
         ...user,
-        globalRoles: roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes })),
+        roles: {
+            global: roleRows.map((row) => ({
+                id: row.id,
+                name: row.name,
+                scopes: filterScopesByDomain(row.scopes, "global"),
+            })),
+            class: [],
+        },
     };
 }
 
@@ -456,49 +462,233 @@ function buildTransactionParty(id, type, users, pools, classes) {
 
 // Award / Transfer
 
+const AWARD_RECIPIENT_TYPES = new Set(["user", "pool", "class"]);
+
+function normalizeAwardRecipient(awardData) {
+    let to = awardData?.to;
+    let deprecatedFormatUsed = false;
+
+    if (typeof to === "string" || typeof to === "number") {
+        to = { id: to, type: "user" };
+        deprecatedFormatUsed = true;
+    } else if (!to && (awardData?.userId || awardData?.studentId)) {
+        to = { id: awardData.userId || awardData.studentId, type: "user" };
+        deprecatedFormatUsed = true;
+    }
+
+    if (!to || typeof to !== "object") {
+        return { error: "Missing recipient identifier." };
+    }
+
+    const normalizedRecipient = { ...to };
+    if (!normalizedRecipient.id && (normalizedRecipient.userId || normalizedRecipient.studentId)) {
+        normalizedRecipient.id = normalizedRecipient.userId || normalizedRecipient.studentId;
+        if (!normalizedRecipient.type) {
+            normalizedRecipient.type = "user";
+        }
+        deprecatedFormatUsed = true;
+    }
+
+    if (!normalizedRecipient.type) {
+        normalizedRecipient.type = "user";
+        deprecatedFormatUsed = true;
+    }
+
+    return { to: normalizedRecipient, deprecatedFormatUsed };
+}
+
+function validateAwardRequest({ from, to, amount }) {
+    if (!from || Number.isNaN(amount)) {
+        return "Missing required fields.";
+    }
+
+    if (!AWARD_RECIPIENT_TYPES.has(to.type)) {
+        return "Invalid recipient type.";
+    }
+
+    if (amount <= 0) {
+        return "Amount must be greater than zero.";
+    }
+
+    if (to.type !== "class" && !to.id) {
+        return "Missing recipient identifier.";
+    }
+
+    return null;
+}
+
+function getGlobalPermissionLevelForUser(user) {
+    const globalScopes = (user?.roles?.global || []).flatMap((role) => parseStoredScopes(role.scopes));
+    return computeGlobalPermissionLevel(globalScopes);
+}
+
+async function getClassPermissionLevelForUser(userId, classId, ownerId) {
+    if (ownerId === userId) {
+        return TEACHER_PERMISSIONS;
+    }
+
+    const roleRows = await dbGetAll(
+        `SELECT r.scopes FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.userId = ? AND ur.classId = ?`,
+        [userId, classId]
+    );
+
+    return computeClassPermissionLevel(roleRows.flatMap((row) => parseStoredScopes(row.scopes)));
+}
+
+async function getTeacherClassIdsForUser(userId) {
+    const senderRoleRows = await dbGetAll(
+        `SELECT ur.classId, r.scopes
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.userId = ? AND ur.classId IS NOT NULL`,
+        [userId]
+    );
+
+    const senderClassScopes = new Map();
+    for (const row of senderRoleRows) {
+        const scopes = parseStoredScopes(row.scopes);
+        const existingScopes = senderClassScopes.get(row.classId) || [];
+        senderClassScopes.set(row.classId, existingScopes.concat(scopes));
+    }
+
+    return [...senderClassScopes.entries()]
+        .filter(([, scopes]) => computeClassPermissionLevel(scopes) >= TEACHER_PERMISSIONS)
+        .map(([classId]) => classId);
+}
+
+async function userIsInAnyClass(userId, classIds) {
+    if (classIds.length === 0) {
+        return false;
+    }
+
+    const placeholders = classIds.map(() => "?").join(",");
+    const row = await dbGet(`SELECT 1 FROM classusers WHERE studentId = ? AND classId IN (${placeholders}) LIMIT 1`, [userId, ...classIds]);
+    return Boolean(row);
+}
+
+async function userIsInClassOwnedByUser(userId, ownerId) {
+    const row = await dbGet(
+        `SELECT 1 FROM classusers cu1
+         INNER JOIN classroom c ON c.id = cu1.classId
+         WHERE cu1.studentId = ?
+         AND c.owner = ?
+         LIMIT 1`,
+        [userId, ownerId]
+    );
+
+    return Boolean(row);
+}
+
+async function canAwardUserByClassAuthority(senderId, recipientId) {
+    const teacherClassIds = await getTeacherClassIdsForUser(senderId);
+    if (await userIsInAnyClass(recipientId, teacherClassIds)) {
+        return true;
+    }
+
+    return userIsInClassOwnedByUser(recipientId, senderId);
+}
+
+async function awardDigipogsToClass({ from, to, amount, senderPermissionLevel, fail }) {
+    if (to.code) {
+        to.id = await getClassIDFromCode(to.code);
+        if (!to.id) {
+            return fail("Invalid class code.");
+        }
+    } else if (!to.id) {
+        return fail("Missing class identifier.");
+    }
+
+    const classInfo = await dbGet("SELECT c.id, c.owner FROM classroom c WHERE c.id = ?", [to.id]);
+    if (!classInfo) {
+        return fail("Recipient class not found.");
+    }
+
+    const classPermissionLevel = await getClassPermissionLevelForUser(from, to.id, classInfo.owner);
+    if (classPermissionLevel < TEACHER_PERMISSIONS && senderPermissionLevel < TEACHER_PERMISSIONS) {
+        return fail("Sender does not have permission to award to this class.");
+    }
+
+    await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id IN (SELECT studentId FROM classusers WHERE classId = ?) OR id = ?", [
+        amount,
+        to.id,
+        classInfo.owner,
+    ]);
+
+    return null;
+}
+
+async function awardDigipogsToPool({ to, amount, senderPermissionLevel, fail }) {
+    if (!to.id) {
+        return fail("Missing pool identifier.");
+    }
+
+    if (senderPermissionLevel < TEACHER_PERMISSIONS) {
+        return fail("Sender does not have permission to award to pools.");
+    }
+
+    const poolInfo = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
+    if (!poolInfo) {
+        return fail("Recipient pool not found.");
+    }
+
+    await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [amount, to.id]);
+
+    return null;
+}
+
+async function awardDigipogsToUser({ from, to, amount, senderPermissionLevel, fail }) {
+    const toUser = await dbGet("SELECT id FROM users WHERE id = ?", [to.id]);
+    if (!toUser) {
+        return fail("Recipient account not found.");
+    }
+
+    if (senderPermissionLevel < TEACHER_PERMISSIONS) {
+        const hasPermission = await canAwardUserByClassAuthority(from, to.id);
+        if (!hasPermission) {
+            return fail("Sender does not have permission to award to this user.");
+        }
+    }
+
+    await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [amount, to.id]);
+
+    return null;
+}
+
+async function applyAwardDigipogs({ from, to, amount, senderPermissionLevel, fail }) {
+    if (to.type === "class") {
+        return awardDigipogsToClass({ from, to, amount, senderPermissionLevel, fail });
+    }
+
+    if (to.type === "pool") {
+        return awardDigipogsToPool({ to, amount, senderPermissionLevel, fail });
+    }
+
+    return awardDigipogsToUser({ from, to, amount, senderPermissionLevel, fail });
+}
+
+function buildAwardSuccessMessage(deprecatedFormatUsed) {
+    return deprecatedFormatUsed
+        ? "Digipogs awarded successfully. Warning: Deprecated award format used. See documentation for updated usage."
+        : "Digipogs awarded successfully.";
+}
+
 async function awardDigipogs(awardData, user) {
     try {
         const from = user?.userId ?? user?.id;
         const amount = Math.ceil(Number(awardData?.amount));
         const reason = awardData?.reason || "Awarded";
 
-        let to = awardData?.to;
-        let deprecatedFormatUsed = false;
-        if (typeof to === "string" || typeof to === "number") {
-            // Old API: `to` was a plain user ID, normalize to object format
-            to = { id: to, type: "user" };
-            deprecatedFormatUsed = true;
-        } else if (!to && (awardData?.userId || awardData?.studentId)) {
-            // Legacy HTTP payloads sent `userId`/`studentId` directly
-            to = { id: awardData.userId || awardData.studentId, type: "user" };
-            deprecatedFormatUsed = true;
+        const normalizedRecipient = normalizeAwardRecipient(awardData);
+        if (normalizedRecipient.error) {
+            return { success: false, message: normalizedRecipient.error };
         }
 
-        if (!to || typeof to !== "object") {
-            return { success: false, message: "Missing recipient identifier." };
-        }
-
-        to = { ...to };
-
-        if (!to.id && (to.userId || to.studentId)) {
-            // Legacy object shape: `{ to: { userId } }`
-            to.id = to.userId || to.studentId;
-            if (!to.type) to.type = "user";
-            deprecatedFormatUsed = true;
-        }
-        if (!to.type) {
-            to.type = "user";
-            deprecatedFormatUsed = true;
-        }
-
-        if (!from || Number.isNaN(amount)) {
-            return { success: false, message: "Missing required fields." };
-        } else if (to.type !== "user" && to.type !== "pool" && to.type !== "class") {
-            return { success: false, message: "Invalid recipient type." };
-        } else if (amount <= 0) {
-            return { success: false, message: "Amount must be greater than zero." };
-        } else if (to.type !== "class" && !to.id) {
-            return { success: false, message: "Missing recipient identifier." };
+        const { to, deprecatedFormatUsed } = normalizedRecipient;
+        const validationError = validateAwardRequest({ from, to, amount });
+        if (validationError) {
+            return { success: false, message: validationError };
         }
 
         const accountId = `award-${from}`;
@@ -516,105 +706,11 @@ async function awardDigipogs(awardData, user) {
         if (!fromUser || !fromUser.email) {
             return fail("Sender account not found.");
         }
-        const senderPermissionLevel = computeGlobalPermissionLevel(resolveUserGlobalScopes(fromUser));
+        const senderPermissionLevel = getGlobalPermissionLevelForUser(fromUser);
 
-        if (to.type === "class") {
-            if (to.code) {
-                to.id = await getClassIDFromCode(to.code);
-                if (!to.id) {
-                    return fail("Invalid class code.");
-                }
-            } else if (!to.id) {
-                return fail("Missing class identifier.");
-            }
-
-            const classInfo = await dbGet("SELECT c.id, c.owner FROM classroom c WHERE c.id = ?", [to.id]);
-            if (!classInfo) {
-                return fail("Recipient class not found.");
-            }
-
-            let classPermissionLevel = 1;
-            if (classInfo.owner === from) {
-                classPermissionLevel = TEACHER_PERMISSIONS;
-            } else {
-                const roleRows = await dbGetAll(
-                    `SELECT r.scopes FROM user_roles ur
-                     JOIN roles r ON ur.roleId = r.id
-                     WHERE ur.userId = ? AND ur.classId = ?`,
-                    [from, to.id]
-                );
-                classPermissionLevel = computeClassPermissionLevel(roleRows.flatMap((row) => parseStoredScopes(row.scopes)));
-            }
-
-            if (classPermissionLevel < TEACHER_PERMISSIONS && senderPermissionLevel < TEACHER_PERMISSIONS) {
-                return fail("Sender does not have permission to award to this class.");
-            }
-
-            await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id IN (SELECT studentId FROM classusers WHERE classId = ?) OR id = ?", [
-                amount,
-                to.id,
-                classInfo.owner,
-            ]);
-        } else if (to.type === "pool") {
-            if (!to.id) {
-                return fail("Missing pool identifier.");
-            }
-            if (senderPermissionLevel < TEACHER_PERMISSIONS) {
-                return fail("Sender does not have permission to award to pools.");
-            }
-            const poolInfo = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
-            if (!poolInfo) {
-                return fail("Recipient pool not found.");
-            }
-            await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [amount, to.id]);
-        } else if (to.type === "user") {
-            const toUser = await dbGet("SELECT id FROM users WHERE id = ?", [to.id]);
-            if (!toUser) {
-                return fail("Recipient account not found.");
-            }
-
-            if (senderPermissionLevel < TEACHER_PERMISSIONS) {
-                const senderRoleRows = await dbGetAll(
-                    `SELECT ur.classId, r.scopes
-                     FROM user_roles ur
-                     JOIN roles r ON ur.roleId = r.id
-                     WHERE ur.userId = ? AND ur.classId IS NOT NULL`,
-                    [from]
-                );
-                const senderClassLevels = new Map();
-                for (const row of senderRoleRows) {
-                    const scopes = parseStoredScopes(row.scopes);
-                    const existingScopes = senderClassLevels.get(row.classId) || [];
-                    senderClassLevels.set(row.classId, existingScopes.concat(scopes));
-                }
-                const teacherClassIds = [...senderClassLevels.entries()]
-                    .filter(([, scopes]) => computeClassPermissionLevel(scopes) >= TEACHER_PERMISSIONS)
-                    .map(([classId]) => classId);
-
-                let hasPermission = false;
-                if (teacherClassIds.length > 0) {
-                    const placeholders = teacherClassIds.map(() => "?").join(",");
-                    hasPermission = await dbGet(`SELECT 1 FROM classusers WHERE studentId = ? AND classId IN (${placeholders}) LIMIT 1`, [
-                        to.id,
-                        ...teacherClassIds,
-                    ]);
-                }
-                if (!hasPermission) {
-                    hasPermission = await dbGet(
-                        `SELECT 1 FROM classusers cu1
-                         INNER JOIN classroom c ON c.id = cu1.classId
-                         WHERE cu1.studentId = ?
-                         AND c.owner = ?
-                         LIMIT 1`,
-                        [to.id, from]
-                    );
-                }
-                if (!hasPermission) {
-                    return fail("Sender does not have permission to award to this user.");
-                }
-            }
-
-            await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [amount, to.id]);
+        const awardFailure = await applyAwardDigipogs({ from, to, amount, senderPermissionLevel, fail });
+        if (awardFailure) {
+            return awardFailure;
         }
 
         try {
@@ -632,12 +728,9 @@ async function awardDigipogs(awardData, user) {
         }
 
         recordAttempt(accountId, true);
-        const successMessage = deprecatedFormatUsed
-            ? "Digipogs awarded successfully. Warning: Deprecated award format used. See documentation for updated usage."
-            : "Digipogs awarded successfully.";
         return {
             success: true,
-            message: successMessage,
+            message: buildAwardSuccessMessage(deprecatedFormatUsed),
         };
     } catch (err) {
         return { success: false, message: "Database error." };

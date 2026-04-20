@@ -1,7 +1,8 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
-const { resolveUserGlobalScopes, resolveUserClassScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { getUserScopes } = require("@modules/scope-resolver");
+const { getUserRoles } = require("@services/role-service");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel } = require("@modules/permissions");
 
 module.exports = (router) => {
@@ -35,37 +36,38 @@ module.exports = (router) => {
     router.get("/user/me", isAuthenticated, async (req, res) => {
         req.infoEvent("user.me.view", "Fetching user information");
 
-        const { digipogs } = await dbGet("SELECT digipogs FROM users WHERE id = ?", [req.user.id]);
+        const digipogs = req.user.digipogs ?? (await dbGet("SELECT digipogs FROM users WHERE id = ?", [req.user.id]))?.digipogs ?? 0;
 
-        const globalRole = getUserRoleName(req.user);
-        const globalScopes = resolveUserGlobalScopes(req.user);
-
-        let classRoles = [];
-        let classScopes = [];
+        const rolesFromDb = await getUserRoles(req.user.id);
+        let roles = { ...rolesFromDb };
+        let scopes = getUserScopes(req.user);
         let classPermissions = null;
+
         const liveUser = classStateStore.getUser(req.user.email);
         if (liveUser && liveUser.activeClass) {
-            const classroom = classStateStore.getClassroom(liveUser.activeClass);
-            const classStudent = classroom?.students?.[req.user.email];
-            const classroomOwnerId = classroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
+            const activeClassroom = classStateStore.getClassroom(liveUser.activeClass);
+            const classStudent = activeClassroom?.students?.[req.user.email];
+            const classroomOwnerId =
+                activeClassroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
             const effectiveClassUser = classStudent
                 ? {
                       ...classStudent,
                       isClassOwner: classStudent.isClassOwner === true || req.user.id === classroomOwnerId,
                   }
                 : req.user.id === classroomOwnerId
-                  ? { id: req.user.id, email: req.user.email, globalRoles: req.user.globalRoles || [], isClassOwner: true }
+                  ? { id: req.user.id, email: req.user.email, roles: { global: req.user.roles?.global || [], class: [] }, isClassOwner: true }
                   : null;
 
             if (classStudent) {
-                classRoles = classStudent.classRoleRefs || [];
+                roles = { global: rolesFromDb.global, class: classStudent.roles?.class || [] };
             }
 
-            if (effectiveClassUser) {
-                classScopes = resolveUserClassScopes(effectiveClassUser, classroom);
-                classPermissions = computeClassPermissionLevel(classScopes, {
+            if (effectiveClassUser && activeClassroom) {
+                const resolved = getUserScopes(effectiveClassUser, activeClassroom);
+                scopes = { global: resolved.global, class: resolved.class };
+                classPermissions = computeClassPermissionLevel(scopes.class, {
                     isOwner: Boolean(effectiveClassUser.isClassOwner),
-                    globalScopes: resolveUserGlobalScopes(effectiveClassUser),
+                    globalScopes: resolved.global,
                 });
             }
         }
@@ -75,17 +77,16 @@ module.exports = (router) => {
             data: {
                 id: req.user.id,
                 email: req.user.email,
+                isGuest: Boolean(req.user.isGuest),
                 activeClass: req.user.activeClass,
                 digipogs: digipogs,
                 pogMeter: req.user.pogMeter,
                 displayName: req.user.displayName,
-                permissions: computeGlobalPermissionLevel(globalScopes),
-                classId: req.user.classId,
+                permissions: computeGlobalPermissionLevel(scopes.global),
                 classPermissions,
-                role: globalRole,
-                globalScopes,
-                classRoles,
-                classScopes,
+                classId: req.user.classId,
+                roles,
+                scopes,
             },
         });
     });

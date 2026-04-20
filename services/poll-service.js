@@ -3,7 +3,7 @@ const { classStateStore } = require("@services/classroom-service");
 const { generateColors } = require("@modules/util");
 const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
 const { database, dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { resolveUserClassScopes } = require("@modules/scope-resolver");
+const { getUserScopes } = require("@modules/scope-resolver");
 const { computeClassPermissionLevel, MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { userSocketUpdates } = require("../sockets/init");
 const NotFoundError = require("@errors/not-found-error");
@@ -388,7 +388,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     }
 
     for (const student of Object.values(classroom.students)) {
-        if (computeClassPermissionLevel(resolveUserClassScopes(student, classroom)) !== MANAGER_PERMISSIONS) {
+        if (computeClassPermissionLevel(getUserScopes(student, classroom).class) !== MANAGER_PERMISSIONS) {
             const buttonRes = student.pollRes.buttonRes;
             let buttonResponse = null;
             if (Array.isArray(buttonRes) && buttonRes.length > 0) {

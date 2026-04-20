@@ -2,7 +2,7 @@ const { getUser } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
 const { settings } = require("@modules/config");
 const { computeGlobalPermissionLevel, STUDENT_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
-const { resolveUserGlobalScopes } = require("@modules/scope-resolver");
+const { getUserScopes } = require("@modules/scope-resolver");
 
 // In-memory rate limit storage
 // Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
@@ -33,7 +33,7 @@ async function rateLimiter(req, res, next) {
     const currentTime = Date.now();
     const timeFrame = settings.rateLimitWindowMs ?? 60000;
     let limit = 10; // Default limit for unauthenticated users
-    const permissionLevel = computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
+    const permissionLevel = computeGlobalPermissionLevel(getUserScopes(user).global);
     if (permissionLevel >= TEACHER_PERMISSIONS) {
         limit = 225;
     } else if (permissionLevel >= STUDENT_PERMISSIONS) {

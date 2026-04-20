@@ -1,11 +1,11 @@
 const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
-const { resolveUserGlobalScopes } = require("@modules/scope-resolver");
 const { computeGlobalPermissionLevel, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { dbGet } = require("@modules/database");
+const { getUserScopes } = require("@modules/scope-resolver");
 
 async function getSocketUserData(socket, email) {
     const cachedUser = classStateStore.getUser(email);
@@ -45,7 +45,7 @@ module.exports = {
                 const currentTime = Date.now();
                 const timeFrame = 1000; // 1 Second
                 const limit =
-                    computeGlobalPermissionLevel(resolveUserGlobalScopes(userData || socket.request.session)) >= TEACHER_PERMISSIONS ? 100 : 30;
+                    computeGlobalPermissionLevel(getUserScopes(userData || socket.request.session).global) >= TEACHER_PERMISSIONS ? 100 : 30;
                 const userRequests = socketStateStore.getUserRateLimits(email, true);
                 userRequests[event] = userRequests[event] || [];
                 while (userRequests[event].length && currentTime - userRequests[event][0] > timeFrame) {

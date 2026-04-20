@@ -1,4 +1,21 @@
-const { convertHSLToHex, generateColors, generateKey, camelCaseToNormal } = require("@modules/util");
+const { flattenObject, convertHSLToHex, generateColors, generateKey, camelCaseToNormal } = require("@modules/util");
+
+describe("flattenObject()", () => {
+    it("collects nested string values recursively", () => {
+        expect(
+            flattenObject({
+                top: "one",
+                nested: {
+                    inner: "two",
+                    deeper: {
+                        leaf: "three",
+                    },
+                },
+                ignored: 42,
+            })
+        ).toEqual(["one", "two", "three"]);
+    });
+});
 
 describe("convertHSLToHex()", () => {
     it("converts red (0, 100, 50) to #ff0000", () => {

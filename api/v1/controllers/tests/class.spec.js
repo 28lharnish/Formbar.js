@@ -153,10 +153,17 @@ async function enrollUserInClass(user, classId, classPermissions = MOD_PERMISSIO
 
     const student = classStateStore.getUser(user.email);
     if (student) {
+        const { getStudentRoleAssignments } = require("@services/role-service");
+        const { buildRoleReferences } = require("@modules/role-reference");
+        const assignedClassRoles = await getStudentRoleAssignments(classId, user.id);
+
         student.activeClass = classId;
+        // Keep classPermissions for legacy compatibility assertions in this suite.
         student.classPermissions = classPermissions;
-        student.classRole = classPermissions > 1 ? require("@modules/roles").LEVEL_TO_ROLE[classPermissions] : null;
-        student.classRoles = student.classRole ? [student.classRole] : [];
+        student.roles = {
+            global: student.roles?.global || [],
+            class: buildRoleReferences(assignedClassRoles),
+        };
         classStateStore.setClassroomStudent(classId, user.email, student);
     }
 }

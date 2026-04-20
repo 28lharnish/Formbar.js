@@ -1,4 +1,24 @@
 /**
+ * Flatten an object's string values into a single array.
+ * Traverses nested objects recursively and collects strings.
+ *
+ * @param {Object} obj - The object to flatten.
+ * @returns {string[]} An array containing all string values found in the object.
+ */
+function flattenObject(obj) {
+    const flattenedArray = [];
+    for (const value of Object.values(obj)) {
+        if (typeof value === "string") {
+            flattenedArray.push(value);
+        } else if (typeof value === "object" && value !== null) {
+            flattenedArray.push(...flattenObject(value));
+        }
+    }
+
+    return flattenedArray;
+}
+
+/**
  * Converts HSL color values to Hex color values
  * @param hue
  * @param saturation
@@ -94,6 +114,7 @@ function camelCaseToNormal(str) {
 }
 
 module.exports = {
+    flattenObject,
     convertHSLToHex,
     generateColors,
     generateKey,

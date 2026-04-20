@@ -89,6 +89,22 @@ module.exports = {
             }
         }
 
+        // Backfill legacy classrooms once so pre-role classes gain class-scoped
+        // copies of the built-in defaults. Runtime reads should not create these.
+        await dbRun(
+            `INSERT OR IGNORE INTO class_roles (roleId, classId)
+             SELECT r.id, c.id
+             FROM classroom c
+             JOIN roles r ON r.isDefault = 1
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM class_roles cr
+                 WHERE cr.classId = c.id
+             )`,
+            [],
+            database
+        );
+
         // Add/backfill the legacy users.role column only while permissions still exist.
         // Once migration 25 has removed permissions, re-adding role would just recreate
         // a transient column on every migrate run.

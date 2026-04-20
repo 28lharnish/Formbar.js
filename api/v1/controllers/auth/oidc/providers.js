@@ -28,12 +28,14 @@ function getRedirectTarget(req, tokens, userData) {
     }
 
     delete req.session.oauthOrigin;
+
     const redirect = new URL(clientOrigin);
     redirect.searchParams.set("accessToken", tokens.accessToken);
     redirect.searchParams.set("refreshToken", tokens.refreshToken);
     if (tokens.legacyToken) {
         redirect.searchParams.set("legacyToken", tokens.legacyToken);
     }
+
     redirect.searchParams.set("userId", String(userData.id));
     redirect.searchParams.set("email", userData.email);
     redirect.searchParams.set("displayName", userData.displayName);
@@ -66,71 +68,6 @@ function getDisplayNameFromClaims(claims, email) {
     const familyName = typeof claims?.family_name === "string" ? claims.family_name.trim() : "";
     const combinedName = `${givenName} ${familyName}`.trim();
     return combinedName || email;
-}
-
-async function handleCallback(req, res) {
-    const provider = req.params.provider;
-    const providerClient = assertProviderSupported(provider);
-    const authSession = req.session?.oidcAuth;
-
-    if (!authSession || authSession.provider !== provider) {
-        throw new ValidationError("Authentication session is invalid or has expired.", {
-            event: "auth.oidc.callback.invalid_session",
-            reason: "missing_session",
-        });
-    }
-
-    const client = await oidc.getOpenIdClient();
-    const currentUrl = new URL(`${req.protocol}://${req.get("host")}${req.originalUrl}`);
-    const tokens = await client.authorizationCodeGrant(providerClient, currentUrl, {
-        pkceCodeVerifier: authSession.codeVerifier,
-        expectedState: authSession.state,
-        expectedNonce: authSession.nonce,
-    });
-
-    delete req.session.oidcAuth;
-
-    let claims = tokens.claims() || {};
-    if ((!claims.email || claims.email_verified === undefined) && tokens.access_token) {
-        const userInfo = await client.fetchUserInfo(providerClient, tokens.access_token, claims.sub || client.skipSubjectCheck);
-        claims = { ...userInfo, ...claims };
-    }
-
-    const email = getEmailFromClaims(provider, claims);
-    if (!email) {
-        throw new ValidationError("Could not retrieve email from OAuth account.", {
-            event: "auth.oidc.callback.no_email",
-            reason: "email_not_found",
-        });
-    }
-
-    const displayName = getDisplayNameFromClaims(claims, email);
-    const result = await authService.oidcOAuth(provider, email, displayName, {
-        emailVerified: claims.email_verified !== false,
-    });
-
-    const { user: userData } = result;
-    if (!classStateStore.getUser(userData.email)) {
-        classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
-    }
-
-    const redirectTarget = getRedirectTarget(req, result.tokens, userData);
-    if (redirectTarget) {
-        req.infoEvent("auth.oidc.callback.redirect", "Redirecting to SPA after OIDC OAuth", { provider });
-        return res.redirect(redirectTarget);
-    }
-
-    res.status(200).json({
-        success: true,
-        data: {
-            ...result.tokens,
-            user: {
-                id: userData.id,
-                email: userData.email,
-                displayName: userData.displayName,
-            },
-        },
-    });
 }
 
 module.exports = (router) => {
@@ -336,6 +273,68 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.get("/auth/oidc/callback", handleCallback);
-    router.get("/auth/oidc/:provider/callback", handleCallback);
+    router.get("/auth/oidc/:provider/callback", async (req, res) => {
+        const provider = req.params.provider;
+        const providerClient = assertProviderSupported(provider);
+        const authSession = req.session?.oidcAuth;
+
+        if (!authSession || authSession.provider !== provider) {
+            throw new ValidationError("Authentication session is invalid or has expired.", {
+                event: "auth.oidc.callback.invalid_session",
+                reason: "missing_session",
+            });
+        }
+
+        const client = await oidc.getOpenIdClient();
+        const currentUrl = new URL(`${req.protocol}://${req.get("host")}${req.originalUrl}`);
+        const tokens = await client.authorizationCodeGrant(providerClient, currentUrl, {
+            pkceCodeVerifier: authSession.codeVerifier,
+            expectedState: authSession.state,
+            expectedNonce: authSession.nonce,
+        });
+
+        delete req.session.oidcAuth;
+
+        let claims = tokens.claims() || {};
+        if ((!claims.email || claims.email_verified === undefined) && tokens.access_token) {
+            const userInfo = await client.fetchUserInfo(providerClient, tokens.access_token, claims.sub || client.skipSubjectCheck);
+            claims = { ...userInfo, ...claims };
+        }
+
+        const email = getEmailFromClaims(provider, claims);
+        if (!email) {
+            throw new ValidationError("Could not retrieve email from OAuth account.", {
+                event: "auth.oidc.callback.no_email",
+                reason: "email_not_found",
+            });
+        }
+
+        const displayName = getDisplayNameFromClaims(claims, email);
+        const result = await authService.oidcOAuthLogin(provider, email, displayName, {
+            emailVerified: claims.email_verified !== false,
+        });
+
+        const { user: userData } = result;
+        if (!classStateStore.getUser(userData.email)) {
+            classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
+        }
+
+        const redirectTarget = getRedirectTarget(req, result.tokens, userData);
+        if (redirectTarget) {
+            req.infoEvent("auth.oidc.callback.redirect", "Redirecting to SPA after OIDC OAuth", { provider });
+            return res.redirect(redirectTarget);
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                ...result.tokens,
+                user: {
+                    id: userData.id,
+                    email: userData.email,
+                    displayName: userData.displayName,
+                },
+            },
+        });
+    });
 };

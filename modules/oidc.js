@@ -43,9 +43,16 @@ async function initializeAvailableProviders() {
     const providers = getAvailableProviders();
     for (const provider of providers) {
         try {
-            const issuer = process.env[`${provider.toUpperCase()}_OIDC_ISSUER`];
+            let issuer = process.env[`${provider.toUpperCase()}_OIDC_ISSUER`];
             const clientId = process.env[`${provider.toUpperCase()}_OIDC_CLIENT_ID`];
             const clientSecret = process.env[`${provider.toUpperCase()}_OIDC_CLIENT_SECRET`];
+            const tenantId = process.env[`${provider.toUpperCase()}_OIDC_TENANT_ID`];
+
+            // If a tenant ID is provided, replace the common issuer with the tenant ID
+            // This is necessary for Microsoft Azure OAuth2
+            if (tenantId) {
+                issuer = issuer.replaceAll("common", tenantId);
+            }
 
             const config = await client.discovery(new URL(issuer), clientId, clientSecret);
             clients.set(provider, config);

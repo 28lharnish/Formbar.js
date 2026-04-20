@@ -3,7 +3,8 @@ const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserDataFromDb } = require("@services/user-service");
-const { resolveUserGlobalScopes, resolveUserClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { getUserRoles } = require("@services/role-service");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
@@ -16,7 +17,7 @@ module.exports = (router) => {
      *       - Users
      *     description: |
      *       Returns the user's resolved role name, global scopes, and (if the user is
-     *       in an active class) their class role and class scopes. Only accessible by
+     *       in an active class) their class roles and class scopes. Only accessible by
      *       the user themselves or a manager.
      *     parameters:
      *       - in: path
@@ -42,21 +43,24 @@ module.exports = (router) => {
      *                     role:
      *                       type: string
      *                       example: "Student"
-     *                     globalScopes:
-     *                       type: array
-     *                       items:
-     *                         type: string
-     *                       example: []
-     *                     classRoles:
-     *                       type: array
-     *                       items:
-     *                         type: string
-     *                       example: ["Student", "Mod"]
-     *                     classScopes:
-     *                       type: array
-     *                       items:
-     *                         type: string
-     *                       example: ["class.poll.read", "class.poll.vote"]
+     *                     roles:
+     *                       type: object
+     *                       properties:
+     *                         global:
+     *                           type: array
+     *                         class:
+     *                           type: array
+     *                     scopes:
+     *                       type: object
+     *                       properties:
+     *                         global:
+     *                           type: array
+     *                           items:
+     *                             type: string
+     *                         class:
+     *                           type: array
+     *                           items:
+     *                             type: string
      *       401:
      *         description: Unauthorized
      *       403:
@@ -76,14 +80,15 @@ module.exports = (router) => {
                 throw new NotFoundError("User not found.");
             }
 
-            const globalRole = getUserRoleName(userData);
-            const globalScopes = resolveUserGlobalScopes(userData);
+            const role = getUserRoleName(userData);
+            const rolesFromDb = await getUserRoles(userData.id);
+            let roles = { ...rolesFromDb };
+            const scopes = getUserScopes(userData);
 
             const result = {
-                role: globalRole,
-                globalScopes,
-                classRoles: [],
-                classScopes: [],
+                role,
+                roles,
+                scopes,
             };
 
             const liveUser = classStateStore.getUser(userData.email);
@@ -91,8 +96,10 @@ module.exports = (router) => {
                 const classroom = classStateStore.getClassroom(liveUser.activeClass);
                 const classStudent = classroom?.students?.[userData.email];
                 if (classStudent) {
-                    result.classRoles = classStudent.classRoleRefs || [];
-                    result.classScopes = resolveUserClassScopes(classStudent, classroom);
+                    roles = { global: rolesFromDb.global, class: classStudent.roles?.class || [] };
+                    const resolved = getUserScopes(classStudent, classroom);
+                    result.roles = roles;
+                    result.scopes = { global: scopes.global, class: resolved.class };
                 }
             }
 

@@ -66,6 +66,7 @@ module.exports = (router) => {
     router.get("/class/:id/roles", isAuthenticated, async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
+        req.infoEvent("class.roles.list.start", { classId, actorId: req.user.id });
 
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) throw new NotFoundError("Class not found.");
@@ -76,6 +77,7 @@ module.exports = (router) => {
         }
 
         const roles = await getClassRoles(classId);
+        req.infoEvent("class.roles.list.success", { classId, actorId: req.user.id, roleCount: roles.length });
         res.status(200).json({ success: true, data: roles });
     });
 
@@ -168,6 +170,7 @@ module.exports = (router) => {
         const { name, scopes, color } = req.body;
         requireBodyParam(name, "name");
         requireBodyParam(scopes, "scopes");
+        req.infoEvent("class.roles.create.start", { classId, actorId: req.user.id, roleName: name });
 
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) throw new NotFoundError("Class not found.");
@@ -175,6 +178,7 @@ module.exports = (router) => {
 
         const role = await createClassRole({ classId, name, scopes, actingClassUser, classroom, color });
         await broadcastClassUpdate(classId);
+        req.infoEvent("class.roles.create.success", { classId, actorId: req.user.id, roleId: role.id, roleName: role.name });
         res.status(201).json({ success: true, data: role });
     });
 
@@ -271,14 +275,22 @@ module.exports = (router) => {
         const { id: classId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(roleId, "roleId");
+        req.infoEvent("class.roles.update.start", { classId, roleId, actorId: req.user.id });
 
         const updates = req.body;
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) throw new NotFoundError("Class not found.");
         const actingClassUser = getActingUser(classroom, req.user);
 
-        const role = await updateClassRole(roleId, classId, updates, actingClassUser, classroom);
+        const role = await updateClassRole({
+            roleId,
+            classId,
+            updates,
+            actingClassUser,
+            classroom,
+        });
         await broadcastClassUpdate(classId);
+        req.infoEvent("class.roles.update.success", { classId, roleId: role.id, actorId: req.user.id });
         res.status(200).json({ success: true, data: role });
     });
 
@@ -342,9 +354,11 @@ module.exports = (router) => {
         const { id: classId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(roleId, "roleId");
+        req.infoEvent("class.roles.delete.start", { classId, roleId, actorId: req.user.id });
 
         await deleteClassRole(roleId, classId);
         await broadcastClassUpdate(classId);
+        req.infoEvent("class.roles.delete.success", { classId, roleId, actorId: req.user.id });
         res.status(200).json({ success: true, data: { message: "Role deleted." } });
     });
 };

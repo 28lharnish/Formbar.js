@@ -11,27 +11,31 @@ const { Classroom, classStateStore, getClassIDFromCode } = require("@services/cl
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const {
-    SCOPES,
     computeClassPermissionLevel,
-    computeGlobalPermissionLevel,
     BANNED_PERMISSIONS,
     GUEST_PERMISSIONS,
     MOD_PERMISSIONS,
     TEACHER_PERMISSIONS,
     MANAGER_PERMISSIONS,
 } = require("@modules/permissions");
-const { getUserRoleName, getClassRoleName, resolveUserGlobalScopes, resolveUserClassScopes, isClassOwner } = require("@modules/scope-resolver");
-const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
+const { isClassOwner, getUserScopes } = require("@modules/scope-resolver");
+const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
-const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, findRoleByPermissionLevel } = require("@services/role-service");
+const {
+    loadCustomRoles,
+    getClassRoles,
+    getStudentRoleAssignments,
+    addDefaultClassRoles,
+    findRoleByPermissionLevel,
+} = require("@services/role-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
+const { buildRoleReferences } = require("@modules/role-reference");
 const { io } = require("@modules/web-server");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
-const { buildRoleReferences } = require("@modules/role-reference");
 
 function getUserJoinedClasses(userId) {
     return dbGetAll(
@@ -49,18 +53,15 @@ async function getClassCode(classId) {
     return result ? result.key : null;
 }
 
-function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
-}
-
 function getClassPermissionLevelForUser(classUser, classroom) {
     if (!classUser) {
         return GUEST_PERMISSIONS;
     }
 
-    return computeClassPermissionLevel(resolveUserClassScopes(classUser, classroom), {
+    const userScopes = getUserScopes(classUser, classroom);
+    return computeClassPermissionLevel(userScopes.class, {
         isOwner: isClassOwner(classUser, classroom),
-        globalScopes: resolveUserGlobalScopes(classUser),
+        globalScopes: userScopes.global,
     });
 }
 
@@ -154,6 +155,8 @@ async function createClass(className, ownerId, ownerEmail) {
     if (!classId) {
         throw new AppError("Class was not created successfully", { event: "class.create.failed", reason: "db_insert_failed", className, ownerId });
     }
+
+    await addDefaultClassRoles(classId);
 
     const classroom = {
         id: classId,
@@ -317,11 +320,8 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 
         // Load multi-role assignments from user_roles
         const roleAssignments = await getStudentRoleAssignments(classId, currentUser.id);
-        const roles = roleAssignments.map((role) => role.name);
         const roleRefs = buildRoleReferences(roleAssignments);
-        currentUser.classRoles = roles;
-        currentUser.classRoleRefs = roleRefs;
-        currentUser.classRole = computePrimaryRole(roleAssignments, classroom?.availableRoles || []);
+        currentUser.roles = { global: currentUser.roles?.global || [], class: roleRefs };
         currentUser.isClassOwner = classroomDb.owner === user.id;
 
         // If the user is banned, don't let them join
@@ -365,9 +365,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const classData = classStateStore.getClassroom(classId);
         let currentUser = classStateStore.getUser(email);
         const isOwner = currentUser.id === classData.owner;
-        currentUser.classRoles = [];
-        currentUser.classRoleRefs = [];
-        currentUser.classRole = null;
+        currentUser.roles = { global: currentUser.roles?.global || [], class: [] };
         currentUser.isClassOwner = isOwner;
         currentUser.activeClass = classId;
         currentUser.tags = [];
@@ -417,9 +415,10 @@ async function joinClass(userData, classId) {
     const studentId = await getIdFromEmail(email);
     const classUsers = await dbGet("SELECT * FROM classusers WHERE studentId=? AND classId=?", [studentId, classId]);
     const classroomOwner = await dbGet("SELECT owner FROM classroom WHERE id=?", [classId]);
+    const isGuest = !!classStateStore.getUser(email)?.isGuest;
 
-    // User must either be in classusers table or be the owner of the classroom
-    if (!classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
+    // User must either be in classusers table or be the owner of the classroom (global guests bypass enrollment)
+    if (!isGuest && !classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
         throw new ForbiddenError("You are not in that class");
     }
 
@@ -528,9 +527,10 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 
             if (options.ban) {
                 const blockedRole = findAvailableRoleByPermissionLevel(classroom, BANNED_PERMISSIONS);
-                user.classRoles = blockedRole ? [blockedRole.name] : [];
-                user.classRoleRefs = blockedRole ? buildRoleReferences([blockedRole]) : [];
-                user.classRole = blockedRole ? blockedRole.name : null;
+                user.roles = {
+                    global: user.roles?.global || [],
+                    class: blockedRole ? buildRoleReferences([blockedRole]) : [],
+                };
             }
             setClassOfApiSockets(existingUser.API, null);
         }
@@ -877,8 +877,10 @@ async function getClassUsers(user, key) {
             classUsers[userRow.email].help = cdUser.help;
             classUsers[userRow.email].break = cdUser.break;
             classUsers[userRow.email].pogMeter = cdUser.pogMeter;
-            classUsers[userRow.email].classRole = cdUser.classRole || null;
-            classUsers[userRow.email].classRoles = cdUser.classRoleRefs || [];
+            classUsers[userRow.email].roles = {
+                global: classUsers[userRow.email].roles?.global || [],
+                class: cdUser.roles?.class || [],
+            };
         }
 
         if (requesterPermissionLevel < TEACHER_PERMISSIONS) {

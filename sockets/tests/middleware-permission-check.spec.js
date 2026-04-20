@@ -52,13 +52,16 @@ describe("socket permission-check middleware", () => {
         getUserDataFromDb.mockResolvedValue({
             id: 42,
             email: "teacher@test.com",
-            globalRoles: [
-                {
-                    id: 1,
-                    name: "Teacher",
-                    scopes: JSON.stringify(["global.class.delete"]),
-                },
-            ],
+            roles: {
+                global: [
+                    {
+                        id: 1,
+                        name: "Teacher",
+                        scopes: JSON.stringify(["global.class.delete"]),
+                    },
+                ],
+                class: [],
+            },
         });
 
         permissionCheckMiddleware.run(socket, {});

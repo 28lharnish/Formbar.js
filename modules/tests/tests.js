@@ -12,6 +12,7 @@
 const { classStateStore, Classroom } = require("@services/classroom-service");
 const { Student } = require("@services/student-service");
 const { LEVEL_TO_ROLE } = require("@modules/roles");
+const { buildRoleReference } = require("@modules/role-reference");
 
 /** Common test fixture values reused across all socket tests. */
 const testData = {
@@ -101,8 +102,8 @@ function createTestClass(code, name) {
 function createTestUser(email, code, permissions) {
     const student = new Student(email, testData.userId);
     const roleName = LEVEL_TO_ROLE[permissions] || "Guest";
-    student.classRole = roleName;
-    student.classRoles = [roleName];
+    const classRole = buildRoleReference({ id: Number(permissions), name: roleName });
+    student.roles = { global: [], class: classRole ? [classRole] : [] };
     student.role = roleName;
     student.activeClass = testData.classId;
     classStateStore.setUser(email, student);
