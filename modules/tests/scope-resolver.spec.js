@@ -1,5 +1,11 @@
-const { userHasScope, getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
-const { SCOPES } = require("@modules/permissions");
+const {
+    userHasScope,
+    getUserScopes,
+    getUserRoleName,
+    getGlobalPermissionLevelForUser,
+    getClassPermissionLevelForUser,
+} = require("@modules/scope-resolver");
+const { SCOPES, GUEST_PERMISSIONS, TEACHER_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissions");
 
 describe("getUserRoleName", () => {
     it("returns role field when present", () => {
@@ -58,6 +64,40 @@ describe("getUserScopes", () => {
 
         expect(scopes.global).toEqual(["global.pools.manage", "global.digipogs.transfer"]);
         expect(scopes.class).toEqual(["class.poll.vote"]);
+    });
+});
+
+describe("permission level helpers", () => {
+    it("computes the global permission level from resolved user scopes", () => {
+        expect(
+            getGlobalPermissionLevelForUser({
+                roles: {
+                    global: [{ name: "Teacher" }],
+                    class: [],
+                },
+            })
+        ).toBe(TEACHER_PERMISSIONS);
+    });
+
+    it("returns guest permissions when no class user is provided", () => {
+        expect(getClassPermissionLevelForUser(null, null)).toBe(GUEST_PERMISSIONS);
+    });
+
+    it("treats the class owner as manager level", () => {
+        expect(
+            getClassPermissionLevelForUser(
+                {
+                    id: 10,
+                    roles: {
+                        global: [],
+                        class: [],
+                    },
+                },
+                {
+                    owner: 10,
+                }
+            )
+        ).toBe(MANAGER_PERMISSIONS);
     });
 });
 

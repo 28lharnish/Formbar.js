@@ -310,7 +310,7 @@ module.exports = (router) => {
         }
 
         const displayName = getDisplayNameFromClaims(claims, email);
-        const result = await authService.oidcOAuth(provider, email, displayName, {
+        const result = await authService.oidcOAuthLogin(provider, email, displayName, {
             emailVerified: claims.email_verified !== false,
         });
 

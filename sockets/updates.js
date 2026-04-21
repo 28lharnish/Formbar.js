@@ -1,14 +1,17 @@
+const { SCOPES } = require("@modules/permissions");
+const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middleware");
+
 module.exports = {
     run(socket, socketUpdates) {
         socket.on("classUpdate", () => {
             socketUpdates.classUpdate(socket.request.session.classId, { global: false });
         });
 
-        socket.on("customPollUpdate", () => {
-            socketUpdates.customPollUpdate(socket.request.session.email);
+        onSocketEvent(socket, "customPollUpdate", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (socketContext) => {
+            socketUpdates.customPollUpdate(socketContext.session.email);
         });
 
-        socket.on("classBannedUsersUpdate", () => {
+        onSocketEvent(socket, "classBannedUsersUpdate", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async () => {
             socketUpdates.classBannedUsersUpdate();
         });
     },

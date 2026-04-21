@@ -1,8 +1,10 @@
-const { ROLE_NAMES, LEVEL_TO_ROLE } = require("@modules/roles");
+const { ROLE_NAMES, LEVEL_TO_ROLE, ROLE_TO_LEVEL } = require("@modules/roles");
 const {
     SCOPES,
+    CLASS_STUDENT_SCOPES,
+    CLASS_MOD_SCOPES,
+    CLASS_TEACHER_SCOPES,
     computeGlobalPermissionLevel,
-    computeClassPermissionLevel,
     getScopesFromRoleLike,
     hasGlobalAdminScope,
     filterScopesByDomain,
@@ -150,6 +152,90 @@ function getUserScopes(user, classroom) {
     return scopes;
 }
 
+function getAssignedClassScopes(user, classroom) {
+    if (!user) {
+        return [];
+    }
+
+    const explicitClass =
+        user.scopes && typeof user.scopes === "object" && !Array.isArray(user.scopes) && Array.isArray(user.scopes.class) ? user.scopes.class : null;
+    const rawClassScopes = Array.isArray(explicitClass)
+        ? filterScopesByDomain(explicitClass, "class")
+        : getClassRoleEntries(user)
+              .map((role) => getClassScopesForRole(role, classroom))
+              .flat();
+
+    return dedupeScopes(rawClassScopes);
+}
+
+function userHasAnyScope(user, scopes, classroom = null) {
+    if (!user || !Array.isArray(scopes) || scopes.length === 0) {
+        return false;
+    }
+
+    return scopes.some((scope) => userHasScope(user, scope, classroom));
+}
+
+function getClassAccessProfile(classUser, classroom) {
+    const assignedClassScopes = getAssignedClassScopes(classUser, classroom);
+    const isOwner = isClassOwner(classUser, classroom);
+    const isManager = isOwner || assignedClassScopes.includes(SCOPES.CLASS.SYSTEM.ADMIN);
+    const isBlocked = assignedClassScopes.includes(SCOPES.CLASS.SYSTEM.BLOCKED) && !isManager;
+    const isTeacher = !isManager && !isBlocked && assignedClassScopes.some((scope) => CLASS_TEACHER_SCOPES.includes(scope));
+    const isMod = !isManager && !isBlocked && !isTeacher && assignedClassScopes.some((scope) => CLASS_MOD_SCOPES.includes(scope));
+    const isStudent = !isManager && !isBlocked && !isTeacher && !isMod && assignedClassScopes.some((scope) => CLASS_STUDENT_SCOPES.includes(scope));
+
+    let category = "guest";
+    if (isBlocked) {
+        category = "banned";
+    } else if (isManager) {
+        category = "manager";
+    } else if (isTeacher) {
+        category = "teacher";
+    } else if (isMod) {
+        category = "mod";
+    } else if (isStudent) {
+        category = "student";
+    }
+
+    return {
+        assignedClassScopes,
+        isOwner,
+        isManager,
+        isBlocked,
+        isTeacher,
+        isMod,
+        isStudent,
+        category,
+    };
+}
+
+function getGlobalPermissionLevelForUser(user) {
+    if (!user) {
+        return computeGlobalPermissionLevel([]);
+    }
+
+    return computeGlobalPermissionLevel(getUserScopes(user).global);
+}
+
+function getClassPermissionLevelForUser(classUser, classroom) {
+    const profile = getClassAccessProfile(classUser, classroom);
+    switch (profile.category) {
+        case "banned":
+            return ROLE_TO_LEVEL[ROLE_NAMES.BANNED];
+        case "manager":
+            return ROLE_TO_LEVEL[ROLE_NAMES.MANAGER];
+        case "teacher":
+            return ROLE_TO_LEVEL[ROLE_NAMES.TEACHER];
+        case "mod":
+            return ROLE_TO_LEVEL[ROLE_NAMES.MOD];
+        case "student":
+            return ROLE_TO_LEVEL[ROLE_NAMES.STUDENT];
+        default:
+            return ROLE_TO_LEVEL[ROLE_NAMES.GUEST];
+    }
+}
+
 function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
 
@@ -179,10 +265,13 @@ function selectHighestRoleName(roles, domain, options = {}) {
         const level =
             domain === "global"
                 ? computeGlobalPermissionLevel(scopes)
-                : computeClassPermissionLevel(scopes, {
-                      isOwner: false,
-                      globalScopes: options.globalScopes,
-                  });
+                : getClassPermissionLevelForUser(
+                      {
+                          roles: { global: [], class: [{ scopes }] },
+                          isClassOwner: false,
+                      },
+                      options.classroom
+                  );
 
         if (level > highestLevel) {
             highestName = roleName;
@@ -229,7 +318,12 @@ function getAllClassScopes() {
 
 module.exports = {
     getUserScopes,
+    getAssignedClassScopes,
+    getClassAccessProfile,
+    getGlobalPermissionLevelForUser,
+    getClassPermissionLevelForUser,
     userHasScope,
+    userHasAnyScope,
     getUserRoleName,
     isClassOwner,
     getAllClassScopes,

@@ -9,7 +9,7 @@ const mockOidcModule = {
 };
 
 const mockAuthService = {
-    oidcOAuth: jest.fn(),
+    oidcOAuthLogin: jest.fn(),
 };
 
 const mockClassStateStore = {
@@ -101,7 +101,7 @@ describe("OIDC callback redirects", () => {
         });
         mockOpenIdClient.fetchUserInfo.mockResolvedValue({});
 
-        mockAuthService.oidcOAuth.mockResolvedValue({
+        mockAuthService.oidcOAuthLogin.mockResolvedValue({
             tokens: {
                 accessToken: "formbar-access-token",
                 refreshToken: "formbar-refresh-token",

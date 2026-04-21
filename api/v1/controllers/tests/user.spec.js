@@ -3,6 +3,8 @@ const { createTestDb } = require("@test-helpers/db");
 const { classStateStore } = require("@services/classroom-service");
 const { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore } = require("./helpers/test-app");
 const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
+const { loginAsGuest } = require("@services/auth-service");
+const { createStudentFromUserData } = require("@services/student-service");
 
 let mockDatabase;
 
@@ -170,6 +172,7 @@ describe("GET /api/v1/user/me", () => {
             id: user.id,
             email: user.email,
             displayName: user.displayName,
+            isGuest: false,
         });
     });
 
@@ -200,11 +203,58 @@ describe("GET /api/v1/user/me", () => {
         expect(res.body.data.classPermissions).toBe(4);
     });
 
+    it("returns teacher-panel access scopes for an active class owner with no explicit class roles", async () => {
+        const { tokens, user } = await seedStudent();
+        const classId = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["Owner Class", user.id, "owner-key"]);
+
+        const student = classStateStore.getUser(user.email);
+        student.activeClass = classId;
+
+        classStateStore.setClassroom(classId, {
+            id: classId,
+            owner: user.id,
+            students: {},
+        });
+
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.classPermissions).toBe(5);
+        expect(res.body.data.scopes.class).toEqual(expect.arrayContaining(["class.system.admin", "class.system.panel_access"]));
+    });
+
     it("returns 401 without auth", async () => {
         const res = await request(app).get("/api/v1/user/me");
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
+    });
+
+    it("returns guest data with digipogs from in-memory state", async () => {
+        const guestUser = {
+            id: 1000000001,
+            email: "guest_1@guest.local",
+            displayName: "Guest One",
+            digipogs: 0,
+            API: null,
+            permissions: 1,
+            isGuest: true,
+        };
+        classStateStore.setUser(guestUser.email, createStudentFromUserData(guestUser, { isGuest: true }));
+
+        const { accessToken } = loginAsGuest(guestUser);
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toMatchObject({
+            id: guestUser.id,
+            email: guestUser.email,
+            displayName: guestUser.displayName,
+            digipogs: 0,
+            isGuest: true,
+        });
     });
 });
 

@@ -1,14 +1,15 @@
 const { classStateStore } = require("@services/classroom-service");
 const { createPoll } = require("@services/poll-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { SCOPES } = require("@modules/permissions");
+const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middleware");
 
 module.exports = {
     run(socket, socketUpdates) {
         // Starts a poll with the data provided
-        socket.on("startPoll", async (...args) => {
+        onSocketEvent(socket, "startPoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (socketContext, ...args) => {
             try {
-                const email = socket.request.session.email;
-                const classId = classStateStore.getUser(email).activeClass;
+                const classId = await socketContext.resolveClassId();
 
                 // Support both passing a single object or multiple arguments for backward compatibility
                 let pollData;
@@ -57,7 +58,7 @@ module.exports = {
                         allowTextResponses: !!pollData.allowTextResponses,
                         allowMultipleResponses: !!pollData.allowMultipleResponses,
                     },
-                    socket.request.session
+                    socketContext.session
                 );
                 socket.emit("startPoll");
             } catch (err) {

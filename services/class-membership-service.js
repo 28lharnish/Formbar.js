@@ -14,6 +14,8 @@ const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { advancedEmitToClass, emitToUser, invalidateClassPollCache } = require("@services/socket-updates-service");
 const { getIdFromEmail } = require("@services/student-service");
+const { SCOPES, BANNED_PERMISSIONS } = require("@modules/permissions");
+const { buildRoleReferences } = require("@modules/role-reference");
 const { userSocketUpdates } = require("../sockets/init");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const NotFoundError = require("@errors/not-found-error");
@@ -37,14 +39,32 @@ async function deleteClassroom(classroomId) {
 
     await dbRun("BEGIN TRANSACTION");
     try {
+        const pollRows = await dbGetAll("SELECT id FROM poll_history WHERE class=?", [classroomId]);
+        const pollIds = pollRows.map((row) => row.id);
+        const studentRows = await dbGetAll("SELECT studentId FROM classusers WHERE classId=?", [classroomId]);
+        const studentIds = studentRows.map((row) => row.studentId);
+
         await dbRun("DELETE FROM classroom WHERE id=?", [classroomId]);
-        await Promise.all([
-            dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM class_polls WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM links WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM user_roles WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM class_roles WHERE classId=?", [classroomId]),
-        ]);
+        await dbRun("DELETE FROM class_polls WHERE classId=?", [classroomId]);
+        await dbRun("DELETE FROM links WHERE classId=?", [classroomId]);
+        await dbRun("DELETE FROM user_roles WHERE classId=?", [classroomId]);
+        await dbRun("DELETE FROM class_roles WHERE classId=?", [classroomId]);
+
+        if (pollIds.length) {
+            const pollPlaceholders = pollIds.map(() => "?").join(", ");
+            await dbRun(`DELETE FROM poll_answers WHERE pollId IN (${pollPlaceholders})`, pollIds);
+            await dbRun(`DELETE FROM shared_polls WHERE pollId IN (${pollPlaceholders})`, pollIds);
+        }
+
+        await dbRun("DELETE FROM poll_history WHERE class=?", [classroomId]);
+
+        if (studentIds.length) {
+            const studentPlaceholders = studentIds.map(() => "?").join(", ");
+            await dbRun(`DELETE FROM custom_polls WHERE owner IN (${studentPlaceholders})`, studentIds);
+        }
+
+        await dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]);
+
         await dbRun(
             `DELETE FROM roles
              WHERE isDefault = 0
@@ -69,6 +89,51 @@ function getClassroomById(classroomId) {
     requireInternalParam(classroomId, "classroomId");
 
     return dbGet("SELECT * FROM classroom WHERE id=?", [classroomId]);
+}
+
+async function setClassroomBanStatus(classroomId, email, isBanned) {
+    requireInternalParam(classroomId, "classroomId");
+    requireInternalParam(email, "email");
+
+    const userId = await getIdFromEmail(email);
+    if (!userId) {
+        return false;
+    }
+
+    let bannedRole = null;
+    if (isBanned) {
+        const { findRoleByPermissionLevel } = require("@services/role-service");
+        bannedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, classroomId);
+        if (bannedRole) {
+            await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classroomId]);
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, bannedRole.id, classroomId]);
+        }
+    } else {
+        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classroomId]);
+    }
+
+    const activeStudent = classStateStore.getClassroomStudent(classroomId, email);
+    if (activeStudent) {
+        const classroom = classStateStore.getClassroom(classroomId);
+        const normalizedBannedRole =
+            isBanned && bannedRole
+                ? classroom?.availableRoles?.find(
+                      (role) =>
+                          Number(role.id) === Number(bannedRole.id) ||
+                          (Array.isArray(role.scopes) && role.scopes.includes(SCOPES.CLASS.SYSTEM.BLOCKED))
+                  ) || bannedRole
+                : null;
+
+        classStateStore.updateClassroomStudent(classroomId, email, {
+            roles: {
+                global: activeStudent?.roles?.global || [],
+                class: normalizedBannedRole ? buildRoleReferences([normalizedBannedRole]) : [],
+            },
+        });
+    }
+
+    await getClassService().classKickStudent(userId, classroomId, { exitRoom: true, ban: isBanned });
+    return true;
 }
 
 /**
@@ -202,6 +267,7 @@ async function classroomOwnerCheck(req) {
 module.exports = {
     deleteClassroom,
     getClassroomById,
+    setClassroomBanStatus,
     classroomOwnerCheck,
     enrollByCode,
     enrollInClass,

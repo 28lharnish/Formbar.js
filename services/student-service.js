@@ -22,6 +22,7 @@ class Student {
         this.help = false;
         this.break = false;
         this.API = API;
+        this.digipogs = 0;
         this.pogMeter = 0;
         this.displayName = displayName;
         this.isGuest = isGuest;
@@ -114,6 +115,10 @@ function createStudentFromUserData(userData, options = {}) {
 
     if (userData.pogMeter != null) {
         student.pogMeter = userData.pogMeter;
+    }
+
+    if (userData.digipogs != null) {
+        student.digipogs = userData.digipogs;
     }
 
     if (userData.help !== undefined) {
@@ -240,7 +245,7 @@ function getIdFromEmail(email) {
 async function getEmailFromId(userId) {
     let email = null;
     for (const user of Object.values(classStateStore.getAllUsers())) {
-        if (user.id === userId) {
+        if (user && String(user.id) === String(userId)) {
             email = user.email;
             break;
         }

@@ -330,6 +330,38 @@ function generateAuthTokens(userData) {
 }
 
 /**
+ * Issues a short-lived access token for a global guest (no DB user, no refresh token).
+ * @param {{ id: string|number, email: string, displayName: string, digipogs?: number, permissions: number }} userData
+ * @returns {{ accessToken: string }}
+ */
+function loginAsGuest(userData) {
+    if (!privateKey || !publicKey) {
+        throw new AppError("Either the public key or private key is not available for JWT signing.", {
+            statusCode: 500,
+            event: "auth.guest.failed",
+            reason: "missing_keys",
+        });
+    }
+
+    const scopes = { global: [], class: [] };
+    const accessToken = jwt.sign(
+        {
+            id: userData.id,
+            email: userData.email,
+            displayName: userData.displayName,
+            isGuest: true,
+            digipogs: userData.digipogs ?? 0,
+            permissions: userData.permissions,
+            scopes,
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "15m" }
+    );
+
+    return { accessToken };
+}
+
+/**
  * Generates a refresh token for a user
  * @param {Object} userData - The user data object
  * @param {number} userData.id - The user's unique identifier
@@ -369,7 +401,7 @@ function invalidCredentials() {
  * @param {string} displayName - The user's display name from Google
  * @returns {Promise<{tokens: {accessToken: string, refreshToken: string}, user: Object}|{error: string}>} Returns an object with tokens and user data on success, or an error object on failure
  */
-async function oidcLogin(provider, email, displayName, options = {}) {
+async function oidcOAuthLogin(provider, email, displayName, options = {}) {
     if (!privateKey || !publicKey) {
         throw new AppError("Either the public key or private key is not available for JWT signing.", {
             statusCode: 500,
@@ -617,13 +649,14 @@ async function cleanupExpiredAuthorizationCodes() {
 module.exports = {
     register,
     login,
+    loginAsGuest,
     refreshLogin,
     verifyToken,
-    googleOAuth: (email, displayName, options) => oidcLogin("google", email, displayName, options),
-    oidcOAuth: oidcLogin,
+    oidcOAuthLogin,
     generateAuthorizationCode,
     exchangeAuthorizationCodeForToken,
     exchangeRefreshTokenForAccessToken,
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
+    sanitizeDisplayName,
 };

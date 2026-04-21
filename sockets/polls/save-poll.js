@@ -2,12 +2,14 @@ const { classStateStore } = require("@services/classroom-service");
 const { database } = require("@modules/database");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { socketStateStore } = require("@stores/socket-state-store");
+const { SCOPES } = require("@modules/permissions");
+const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middleware");
 
 module.exports = {
     run(socket, socketUpdates) {
-        socket.on("classPoll", (poll) => {
+        onSocketEvent(socket, "classPoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (socketContext, poll) => {
             try {
-                let userId = socket.request.session.userId;
+                let userId = socketContext.session.userId;
                 database.get('SELECT seq AS nextPollId from sqlite_sequence WHERE name = "custom_polls"', (err, nextPollId) => {
                     try {
                         if (err) throw err;
@@ -32,18 +34,14 @@ module.exports = {
                                 try {
                                     if (err) throw err;
 
-                                    classStateStore.updateClassroomStudent(
-                                        socket.request.session.classId,
-                                        socket.request.session.email,
-                                        (student) => {
-                                            if (!Array.isArray(student.ownedPolls)) {
-                                                student.ownedPolls = [];
-                                            }
-                                            student.ownedPolls.push(nextPollId);
+                                    classStateStore.updateClassroomStudent(socketContext.session.classId, socketContext.session.email, (student) => {
+                                        if (!Array.isArray(student.ownedPolls)) {
+                                            student.ownedPolls = [];
                                         }
-                                    );
+                                        student.ownedPolls.push(nextPollId);
+                                    });
                                     socket.emit("message", "Poll saved successfully!");
-                                    socketUpdates.customPollUpdate(socket.request.session.email);
+                                    socketUpdates.customPollUpdate(socketContext.session.email);
                                     socket.emit("classPollSave", nextPollId);
                                 } catch (err) {
                                     handleSocketError(err, socket, "classPoll:dbRun");
@@ -59,9 +57,9 @@ module.exports = {
             }
         });
 
-        socket.on("savePoll", (poll, pollId) => {
+        onSocketEvent(socket, "savePoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (socketContext, poll, pollId) => {
             try {
-                const userId = socket.request.session.userId;
+                const userId = socketContext.session.userId;
                 if (pollId) {
                     database.get("SELECT * FROM custom_polls WHERE id=?", [pollId], (err, poll) => {
                         try {
@@ -91,7 +89,7 @@ module.exports = {
                                         if (err) throw err;
 
                                         socket.emit("message", "Poll saved successfully!");
-                                        socketUpdates.customPollUpdate(socket.request.session.email);
+                                        socketUpdates.customPollUpdate(socketContext.session.email);
                                     } catch (err) {
                                         handleSocketError(err, socket, "savePoll:update:dbRun");
                                     }
@@ -127,8 +125,8 @@ module.exports = {
                                         if (err) throw err;
 
                                         classStateStore.updateClassroomStudent(
-                                            socket.request.session.classId,
-                                            socket.request.session.email,
+                                            socketContext.session.classId,
+                                            socketContext.session.email,
                                             (student) => {
                                                 if (!Array.isArray(student.ownedPolls)) {
                                                     student.ownedPolls = [];
@@ -137,7 +135,7 @@ module.exports = {
                                             }
                                         );
                                         socket.emit("message", "Poll saved successfully!");
-                                        socketUpdates.customPollUpdate(socket.request.session.email);
+                                        socketUpdates.customPollUpdate(socketContext.session.email);
                                     } catch (err) {
                                         handleSocketError(err, socket, "savePoll:insert:dbRun");
                                     }
@@ -153,7 +151,7 @@ module.exports = {
             }
         });
 
-        socket.on("setPublicPoll", (pollId, value) => {
+        onSocketEvent(socket, "setPublicPoll", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (socketContext, pollId, value) => {
             try {
                 database.run("UPDATE custom_polls set public=? WHERE id=?", [value, pollId], (err) => {
                     try {

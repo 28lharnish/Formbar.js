@@ -32,8 +32,6 @@ function createServer() {
                 { name: "Class - Polls", description: "Polling system within classes", "x-order": 5 },
                 { name: "Class - Breaks", description: "Break request system", "x-order": 6 },
                 { name: "Class - Help", description: "Help ticket system", "x-order": 7 },
-                { name: "Room", description: "Room joining and configuration", "x-order": 8 },
-                { name: "Room - Links", description: "Link management for rooms", "x-order": 9 },
                 { name: "Digipogs", description: "Virtual currency management", "x-order": 10 },
                 { name: "IP Management", description: "IP whitelist/blacklist management", "x-order": 11 },
                 { name: "Manager", description: "Manager/admin functions", "x-order": 12 },

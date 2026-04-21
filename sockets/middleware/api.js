@@ -11,6 +11,9 @@ const { addUserSocketUpdate, removeUserSocketUpdate } = require("../init");
 
 const { handleSocketError } = require("@modules/socket-error-handler");
 
+const MEMBER_RECONNECT_GRACE_MS = 300000;
+const GUEST_RECONNECT_GRACE_MS = 30000;
+
 /**
  * Tracks per-user reconnect grace-period timer handles.
  * Keyed by email; cleared whenever the user reconnects so stale timers
@@ -90,15 +93,19 @@ function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
         } else {
             const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
             if (emptyAfterRemoval) {
-                // Give the client a short grace period (5 minutes) to reconnect
-                // before treating the disconnect as a deliberate class leave.
-                // Store the handle so a later reconnect can cancel it.
+                const liveUser = classStateStore.getUser(email);
+                const activeClassId = liveUser?.activeClass ?? classId;
+                const reconnectGraceMs = liveUser?.isGuest ? GUEST_RECONNECT_GRACE_MS : MEMBER_RECONNECT_GRACE_MS;
+
+                // Give the client a reconnect grace period before treating the
+                // disconnect as a deliberate class leave. This prevents refreshes
+                // from immediately dropping in-class guest sessions.
                 const timer = setTimeout(async () => {
                     reconnectTimers.delete(email);
                     if (!socketStateStore.hasUserSockets(email)) {
-                        classKickStudent(userId, classId, { exitRoom: false, ban: false });
+                        classKickStudent(userId, activeClassId, { exitRoom: false, ban: false });
                     }
-                }, 300000);
+                }, reconnectGraceMs);
                 reconnectTimers.set(email, timer);
             }
         }
@@ -217,6 +224,16 @@ module.exports = {
 
                         if (!email || !userId) {
                             throw "Invalid access token: missing required fields";
+                        }
+
+                        if (decodedToken.isGuest) {
+                            const user = classStateStore.getUser(email);
+                            if (!user || !user.isGuest) {
+                                throw "Guest session not found";
+                            }
+                            finalizeAuthentication(socket, user, socketUpdates, false);
+                            resolve();
+                            return;
                         }
 
                         database.get("SELECT id FROM users WHERE id = ?", [userId], async (err, row) => {

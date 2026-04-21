@@ -144,6 +144,23 @@ async function isAuthenticated(req, res, next) {
         throw new AuthError("Invalid access token provided. Missing 'email'.");
     }
 
+    if (decodedToken.isGuest) {
+        const user = classStateStore.getUser(email);
+        if (!user || !user.isGuest) {
+            req.warnEvent("auth.guest_not_found", "Guest session not found or expired", { email });
+            throw new AuthError("User is not authenticated");
+        }
+
+        req.user = {
+            email,
+            ...user,
+            userId: user.id,
+        };
+
+        next();
+        return;
+    }
+
     let user = classStateStore.getUser(email);
     if (!user) {
         const computedUser = await loadComputedUserByEmail(email);

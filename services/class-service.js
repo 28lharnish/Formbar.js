@@ -10,25 +10,12 @@ const {
 const { Classroom, classStateStore, getClassIDFromCode } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const {
-    computeClassPermissionLevel,
-    BANNED_PERMISSIONS,
-    GUEST_PERMISSIONS,
-    MOD_PERMISSIONS,
-    TEACHER_PERMISSIONS,
-    MANAGER_PERMISSIONS,
-} = require("@modules/permissions");
-const { isClassOwner, getUserScopes } = require("@modules/scope-resolver");
+const { SCOPES, CLASS_MOD_SCOPES, CLASS_TEACHER_SCOPES } = require("@modules/permissions");
+const { getAssignedClassScopes, getClassAccessProfile, userHasAnyScope, userHasScope } = require("@modules/scope-resolver");
 const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
-const {
-    loadCustomRoles,
-    getClassRoles,
-    getStudentRoleAssignments,
-    addDefaultClassRoles,
-    findRoleByPermissionLevel,
-} = require("@services/role-service");
+const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, addDefaultClassRoles } = require("@services/role-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReferences } = require("@modules/role-reference");
 const { io } = require("@modules/web-server");
@@ -44,37 +31,17 @@ function getUserJoinedClasses(userId) {
     );
 }
 
-function getClassLinks(classId) {
-    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
-}
-
 async function getClassCode(classId) {
     const result = await dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
     return result ? result.key : null;
 }
 
-function getClassPermissionLevelForUser(classUser, classroom) {
-    if (!classUser) {
-        return GUEST_PERMISSIONS;
-    }
-
-    const userScopes = getUserScopes(classUser, classroom);
-    return computeClassPermissionLevel(userScopes.class, {
-        isOwner: isClassOwner(classUser, classroom),
-        globalScopes: userScopes.global,
-    });
-}
-
-function hasClassPermissionLevel(classUser, classroom, minimumLevel) {
-    return getClassPermissionLevelForUser(classUser, classroom) >= minimumLevel;
-}
-
-function findAvailableRoleByPermissionLevel(classroom, permissionLevel) {
+function findAvailableRoleByScope(classroom, scope) {
     if (!classroom || !Array.isArray(classroom.availableRoles)) {
         return null;
     }
 
-    return classroom.availableRoles.find((role) => computeClassPermissionLevel(role.scopes) === permissionLevel) || null;
+    return classroom.availableRoles.find((role) => Array.isArray(role.scopes) && role.scopes.includes(scope)) || null;
 }
 
 /**
@@ -325,7 +292,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         currentUser.isClassOwner = classroomDb.owner === user.id;
 
         // If the user is banned, don't let them join
-        if (getClassPermissionLevelForUser(currentUser, classroom) === BANNED_PERMISSIONS && !currentUser.isClassOwner) {
+        if (getAssignedClassScopes(currentUser, classroom).includes(SCOPES.CLASS.SYSTEM.BLOCKED) && !currentUser.isClassOwner) {
             throw new ForbiddenError("You are banned from that class");
         }
         currentUser.activeClass = classId;
@@ -415,9 +382,10 @@ async function joinClass(userData, classId) {
     const studentId = await getIdFromEmail(email);
     const classUsers = await dbGet("SELECT * FROM classusers WHERE studentId=? AND classId=?", [studentId, classId]);
     const classroomOwner = await dbGet("SELECT owner FROM classroom WHERE id=?", [classId]);
+    const isGuest = !!classStateStore.getUser(email)?.isGuest;
 
-    // User must either be in classusers table or be the owner of the classroom
-    if (!classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
+    // User must either be in classusers table or be the owner of the classroom (global guests bypass enrollment)
+    if (!isGuest && !classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
         throw new ForbiddenError("You are not in that class");
     }
 
@@ -525,7 +493,7 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
             user.help = false;
 
             if (options.ban) {
-                const blockedRole = findAvailableRoleByPermissionLevel(classroom, BANNED_PERMISSIONS);
+                const blockedRole = findAvailableRoleByScope(classroom, SCOPES.CLASS.SYSTEM.BLOCKED);
                 user.roles = {
                     global: user.roles?.global || [],
                     class: blockedRole ? buildRoleReferences([blockedRole]) : [],
@@ -586,7 +554,7 @@ async function classKickStudents(classId) {
 
         const kickOperations = [];
         for (const student of Object.values(classroom.students)) {
-            if (hasClassPermissionLevel(student, classroom, TEACHER_PERMISSIONS)) {
+            if (userHasScope(student, SCOPES.CLASS.SYSTEM.ADMIN, classroom) || userHasAnyScope(student, CLASS_TEACHER_SCOPES, classroom)) {
                 continue;
             }
 
@@ -772,8 +740,8 @@ async function setTags(tags, userSession) {
     classStateStore.updateClassroom(classId, { tags });
 
     for (const student of Object.values(classroom.students)) {
-        const permissionLevel = getClassPermissionLevelForUser(student, classroom);
-        if (permissionLevel === BANNED_PERMISSIONS || permissionLevel === MANAGER_PERMISSIONS) continue;
+        const accessProfile = getClassAccessProfile(student, classroom);
+        if (accessProfile.isBlocked || accessProfile.isManager) continue;
         if (!student.tags) student.tags = [];
 
         let studentTags = [];
@@ -856,7 +824,12 @@ async function getClassUsers(user, key) {
     let classId = await getClassIDFromCode(key);
 
     const cdClassroom = classId ? classStateStore.getClassroom(classId) : null;
-    const requesterPermissionLevel = cdClassroom ? getClassPermissionLevelForUser(user, cdClassroom) : GUEST_PERMISSIONS;
+    const requesterCanViewTeacherState =
+        cdClassroom && user
+            ? userHasScope(user, SCOPES.CLASS.SYSTEM.ADMIN, cdClassroom) || userHasAnyScope(user, CLASS_TEACHER_SCOPES, cdClassroom)
+            : false;
+    const requesterCanViewModState =
+        requesterCanViewTeacherState || (cdClassroom && user ? userHasAnyScope(user, CLASS_MOD_SCOPES, cdClassroom) : false);
     if (cdClassroom) {
         cDClassUsers = cdClassroom.students || {};
     }
@@ -882,7 +855,7 @@ async function getClassUsers(user, key) {
             };
         }
 
-        if (requesterPermissionLevel < TEACHER_PERMISSIONS) {
+        if (!requesterCanViewTeacherState) {
             if (classUsers[userRow.email].help) {
                 classUsers[userRow.email].help = true;
             }
@@ -891,7 +864,7 @@ async function getClassUsers(user, key) {
             }
         }
 
-        if (requesterPermissionLevel < MOD_PERMISSIONS) {
+        if (!requesterCanViewModState) {
             delete classUsers[userRow.email].help;
             delete classUsers[userRow.email].break;
             delete classUsers[userRow.email].pogMeter;
@@ -1035,7 +1008,7 @@ function clearVotesFromExcludedStudents(classId) {
 
     for (const student of Object.values(classData.students)) {
         let shouldExclude = false;
-        const permissionLevel = getClassPermissionLevelForUser(student, classData);
+        const accessProfile = getClassAccessProfile(student, classData);
 
         if (classData.poll && classData.poll.excludedRespondents && classData.poll.excludedRespondents.includes(student.id)) {
             shouldExclude = true;
@@ -1046,13 +1019,13 @@ function clearVotesFromExcludedStudents(classId) {
         }
 
         if (classData.settings && classData.settings.isExcluded) {
-            if (classData.settings.isExcluded.guests && permissionLevel === GUEST_PERMISSIONS) {
+            if (classData.settings.isExcluded.guests && accessProfile.category === "guest") {
                 shouldExclude = true;
             }
-            if (classData.settings.isExcluded.mods && permissionLevel === MOD_PERMISSIONS) {
+            if (classData.settings.isExcluded.mods && accessProfile.category === "mod") {
                 shouldExclude = true;
             }
-            if (classData.settings.isExcluded.teachers && permissionLevel === TEACHER_PERMISSIONS) {
+            if (classData.settings.isExcluded.teachers && accessProfile.category === "teacher") {
                 shouldExclude = true;
             }
         }
@@ -1061,7 +1034,7 @@ function clearVotesFromExcludedStudents(classId) {
             shouldExclude = true;
         }
 
-        if ((student.tags && student.tags.includes("Offline")) || permissionLevel >= TEACHER_PERMISSIONS) {
+        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
             shouldExclude = true;
         }
 
@@ -1121,7 +1094,6 @@ async function updateClassSetting(classId, classSettings) {
 module.exports = {
     getUserJoinedClasses,
     getClassCode,
-    getClassLinks,
     validateClassroomName,
     initializeClassroom,
     addUserToClassroomSession,

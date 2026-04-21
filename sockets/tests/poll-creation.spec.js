@@ -1,9 +1,12 @@
 const { run: pollCreationRun } = require("../polls/poll-creation");
 const { classStateStore } = require("@services/classroom-service");
-const { generateColors } = require("@modules/util");
+const { createPoll } = require("@services/poll-service");
+const { handleSocketError } = require("@modules/socket-error-handler");
 const { createTestUser, createTestClass, testData, createSocket, createSocketUpdates } = require("@modules/tests/tests");
-const { userSocketUpdates } = require("../init");
-jest.mock("@modules/util");
+jest.mock("@services/poll-service");
+jest.mock("@modules/socket-error-handler", () => ({
+    handleSocketError: jest.fn(),
+}));
 
 describe("startPoll", () => {
     let socket;
@@ -11,10 +14,8 @@ describe("startPoll", () => {
     let startPollHandler;
 
     beforeEach(() => {
-        jest.mock("@services/socket-updates-service");
         socket = createSocket();
         socketUpdates = createSocketUpdates();
-        userSocketUpdates[socket.request.session.email] = socketUpdates;
 
         const classData = createTestClass(testData.code, "Test Class");
         createTestUser(testData.email, testData.code, 5);
@@ -23,12 +24,11 @@ describe("startPoll", () => {
         classData.students[testData.email].activeClass = classData.id;
 
         pollCreationRun(socket, socketUpdates);
-        generateColors.mockReturnValue(["#ff0000", "#00ff00", "#0000ff"]);
         startPollHandler = socket.on.mock.calls.find((call) => call[0] === "startPoll")[1];
     });
 
     it("should start a poll successfully", async () => {
-        await startPollHandler({
+        const pollData = {
             prompt: "Test Poll",
             answers: [{}, {}, {}],
             blind: false,
@@ -38,40 +38,45 @@ describe("startPoll", () => {
             indeterminate: ["indeterminate1"],
             allowTextResponses: true,
             allowMultipleResponses: true,
-        });
+        };
 
-        // Check if the poll was started successfully
+        await startPollHandler(pollData);
+
+        expect(createPoll).toHaveBeenCalledWith(
+            testData.classId,
+            {
+                ...pollData,
+                allowVoteChanges: false,
+            },
+            socket.request.session
+        );
         expect(socket.emit).toHaveBeenCalledWith("startPoll");
     });
 
-    it("should not start a poll if class is not active", async () => {
-        classStateStore.updateClassroom(testData.code, { isActive: false });
+    it("should pass the normalized poll payload to createPoll", async () => {
+        await startPollHandler(false, true, "Prompt", [{ answer: "A" }], true, 2, ["tag1"], [7], ["ghost"], null, true, false);
 
-        // Attempt to start the poll then check if it failed
-        await startPollHandler({
-            prompt: "Test Poll",
-            answers: [{}, {}, {}],
-            blind: false,
-            weight: 1,
-            tags: ["tag1"],
-            excludedRespondents: ["box1"],
-            indeterminate: ["indeterminate1"],
-            allowTextResponses: true,
-            allowMultipleResponses: true,
-        });
-
-        // In current implementation, startPoll is still emitted even if class is inactive
-        // expect(socket.emit).toHaveBeenCalledWith("startPoll");
-        // Poll should remain inactive
-        // expect(classInformation.classrooms[testData.code].poll.status).toBe(false);
+        expect(createPoll).toHaveBeenCalledWith(
+            testData.classId,
+            {
+                prompt: "Prompt",
+                answers: [{ answer: "A" }],
+                blind: true,
+                allowVoteChanges: false,
+                weight: 2,
+                tags: ["tag1"],
+                excludedRespondents: [7],
+                indeterminate: ["ghost"],
+                allowTextResponses: true,
+                allowMultipleResponses: true,
+            },
+            socket.request.session
+        );
     });
 
-    it("should handle error during poll start", async () => {
-        generateColors.mockImplementation(() => {
-            throw new Error("Test Error");
-        });
+    it("should route poll creation errors through handleSocketError", async () => {
+        createPoll.mockRejectedValueOnce(new Error("Test Error"));
 
-        // Attempt to start the poll then check if the error was logged
         await startPollHandler({
             prompt: "Test Poll",
             answers: [{}, {}, {}],
@@ -83,11 +88,13 @@ describe("startPoll", () => {
             allowTextResponses: true,
             allowMultipleResponses: true,
         });
-        // Error is caught silently in the handler
+
+        expect(handleSocketError).toHaveBeenCalledWith(expect.any(Error), socket, "startPoll");
         expect(socket.emit).not.toHaveBeenCalledWith("startPoll");
     });
 
-    afterAll(() => {
-        jest.unmock("@services/socket-updates-service");
+    afterEach(() => {
+        classStateStore._state = { users: {}, classrooms: {} };
+        jest.clearAllMocks();
     });
 });

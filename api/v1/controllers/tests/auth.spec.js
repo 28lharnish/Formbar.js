@@ -1,6 +1,8 @@
 const request = require("supertest");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, clearClassStateStore } = require("./helpers/test-app");
+const { classStateStore } = require("@services/classroom-service");
+const { GUEST_PERMISSIONS } = require("@modules/permissions");
 
 let mockDatabase;
 
@@ -41,8 +43,9 @@ jest.mock("@modules/config", () => {
 const loginController = require("../auth/login");
 const registerController = require("../auth/register");
 const refreshController = require("../auth/refresh");
+const guestController = require("../auth/guest");
 
-const app = createTestApp(loginController, registerController, refreshController);
+const app = createTestApp(loginController, registerController, refreshController, guestController);
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -228,6 +231,39 @@ describe("POST /api/v1/auth/refresh", () => {
         const res = await request(app).post("/api/v1/auth/refresh").send({ token: refreshToken });
 
         expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("POST /api/v1/auth/guest", () => {
+    it("returns 200 with an access token and sanitized guest user data", async () => {
+        const res = await request(app).post("/api/v1/auth/guest").send({
+            displayName: "Guest<> Name!!!",
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toHaveProperty("accessToken");
+        expect(res.body.data.user).toMatchObject({
+            displayName: "Guest Name",
+            isGuest: true,
+            digipogs: 0,
+            permissions: GUEST_PERMISSIONS,
+        });
+        expect(res.body.data.user.email).toMatch(/^guest_.+@guest\.local$/);
+
+        const storedGuest = classStateStore.getUser(res.body.data.user.email);
+        expect(storedGuest).toMatchObject({
+            email: res.body.data.user.email,
+            displayName: "Guest Name",
+            isGuest: true,
+        });
+    });
+
+    it("returns 400 when displayName is missing", async () => {
+        const res = await request(app).post("/api/v1/auth/guest").send({});
+
+        expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
     });
 });

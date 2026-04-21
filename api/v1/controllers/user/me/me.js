@@ -36,7 +36,7 @@ module.exports = (router) => {
     router.get("/user/me", isAuthenticated, async (req, res) => {
         req.infoEvent("user.me.view", "Fetching user information");
 
-        const { digipogs } = await dbGet("SELECT digipogs FROM users WHERE id = ?", [req.user.id]);
+        const digipogs = req.user.digipogs ?? (await dbGet("SELECT digipogs FROM users WHERE id = ?", [req.user.id]))?.digipogs ?? 0;
 
         const rolesFromDb = await getUserRoles(req.user.id);
         let roles = { ...rolesFromDb };
@@ -77,6 +77,7 @@ module.exports = (router) => {
             data: {
                 id: req.user.id,
                 email: req.user.email,
+                isGuest: Boolean(req.user.isGuest),
                 activeClass: req.user.activeClass,
                 digipogs: digipogs,
                 pogMeter: req.user.pogMeter,

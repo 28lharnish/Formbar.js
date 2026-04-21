@@ -114,6 +114,7 @@ describe("Student class", () => {
         expect(s.roles.class).toEqual([]);
         expect(s.help).toBe(false);
         expect(s.break).toBe(false);
+        expect(s.digipogs).toBe(0);
         expect(s.pogMeter).toBe(0);
         expect(s.pollRes).toEqual({ buttonRes: "", textRes: "", time: null });
     });
@@ -292,6 +293,15 @@ describe("createStudentFromUserData()", () => {
         });
         expect(s.pogMeter).toBe(42);
     });
+
+    it("sets digipogs from userData", () => {
+        const s = createStudentFromUserData({
+            email: "u@test.com",
+            id: 1,
+            digipogs: 7,
+        });
+        expect(s.digipogs).toBe(7);
+    });
 });
 
 describe("getStudentsInClass()", () => {
@@ -406,6 +416,12 @@ describe("getEmailFromId()", () => {
         const email = await getEmailFromId(77);
         expect(email).toBe("mem@test.com");
         expect(classStateStore.getAllUsers).toHaveBeenCalled();
+    });
+
+    it("matches in-memory users when a numeric id is provided as a string", async () => {
+        mockUsers["mem@test.com"] = { id: 77, email: "mem@test.com" };
+        const email = await getEmailFromId("77");
+        expect(email).toBe("mem@test.com");
     });
 
     it("falls back to DB query when user not in memory", async () => {

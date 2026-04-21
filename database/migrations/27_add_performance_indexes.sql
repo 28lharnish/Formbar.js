@@ -28,6 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_from_account_date ON transactions (f
 CREATE INDEX IF NOT EXISTS idx_transactions_to_account_date ON transactions (to_type, to_id, date DESC);
 
 -- Notification reads by user and unread state
+DROP INDEX IF EXISTS idx_notifications_user_id;
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications (user_id, is_read);
 
 -- Trade inbox/outbox and status lookups

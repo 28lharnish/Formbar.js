@@ -87,7 +87,7 @@ module.exports = (router) => {
             throw new NotFoundError("Class not found.");
         }
 
-        const roles = await getStudentRoleAssignments(classId, Number(userId));
+        const roles = await getStudentRoleAssignments(classId, userId);
         req.infoEvent("class.roles.student.list.success", { classId, userId, actorId: req.user.id, roleCount: roles.length });
         res.status(200).json({ success: true, data: { roles } });
     });
@@ -171,7 +171,7 @@ module.exports = (router) => {
         const classroom = classStateStore.getClassroom(classId);
         const actingClassUser = getActingUser(classroom, req.user);
 
-        await addStudentRole(classId, Number(userId), Number(roleId), actingClassUser, classroom);
+        await addStudentRole(classId, userId, Number(roleId), actingClassUser, classroom);
         await broadcastClassUpdate(classId);
         req.infoEvent("class.roles.student.add.success", { classId, userId, roleId, actorId: req.user.id });
         res.status(200).json({ success: true, data: { message: "Role added." } });
@@ -257,7 +257,7 @@ module.exports = (router) => {
             requireQueryParam(roleId, "roleId");
             const classId = normalizeClassId(classIdRaw);
             req.infoEvent("class.roles.student.remove.start", { classId, userId, roleId, actorId: req.user.id });
-            await removeStudentRole(classId, Number(userId), Number(roleId));
+            await removeStudentRole(classId, userId, Number(roleId));
             await broadcastClassUpdate(classId);
             req.infoEvent("class.roles.student.remove.success", { classId, userId, roleId, actorId: req.user.id });
             res.status(200).json({ success: true, data: { message: "Role removed." } });

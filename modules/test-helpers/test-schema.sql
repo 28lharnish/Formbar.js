@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS "classroom" (
     "tags"     TEXT,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
+CREATE INDEX IF NOT EXISTS idx_classroom_owner ON classroom (owner);
+CREATE INDEX IF NOT EXISTS idx_classroom_key ON classroom (key);
 
 -- Class users(final state: no permissions or role columns)
 CREATE TABLE IF NOT EXISTS "classusers" (
@@ -44,6 +46,8 @@ CREATE TABLE IF NOT EXISTS "classusers" (
     "studentId"   INTEGER NOT NULL,
     "digiPogs"    INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_classusers_class_student ON classusers (classId, studentId);
+CREATE INDEX IF NOT EXISTS idx_classusers_student_class ON classusers (studentId, classId);
 
 -- Named roles (final state: includes color column)
 CREATE TABLE IF NOT EXISTS "roles" (
@@ -72,6 +76,8 @@ CREATE TABLE IF NOT EXISTS "user_roles" (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_roles_unique" ON "user_roles" ("userId", "roleId", COALESCE("classId", -1));
+CREATE INDEX IF NOT EXISTS idx_user_roles_user_class ON user_roles (userId, classId);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role_class ON user_roles (roleId, classId);
 
 -- Seed built-in roles (with colors)
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Banned', 1, '["global.system.blocked","class.system.blocked"]', '#808080');
@@ -96,6 +102,7 @@ CREATE TABLE IF NOT EXISTS "custom_polls" (
     "public"                 INTEGER NOT NULL DEFAULT 0 CHECK ("public" IN (0, 1)),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
+CREATE INDEX IF NOT EXISTS idx_custom_polls_owner ON custom_polls (owner);
 
 -- Default poll types
 INSERT INTO "custom_polls" ("id","owner","name","prompt","answers","textRes","blind","allowVoteChanges","allowMultipleResponses","weight","public")
@@ -166,6 +173,7 @@ CREATE TABLE IF NOT EXISTS "links" (
     "classId" INTEGER NOT NULL,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
+CREATE INDEX IF NOT EXISTS idx_links_class_id ON links (classId);
 
 -- Digipog pools (migration 03)
 CREATE TABLE IF NOT EXISTS "digipog_pools" (
@@ -183,6 +191,8 @@ CREATE TABLE IF NOT EXISTS "digipog_pool_users" (
     "owner"   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY ("pool_id", "user_id")
 );
+CREATE INDEX IF NOT EXISTS idx_digipog_pool_users_user_pool ON digipog_pool_users (user_id, pool_id);
+CREATE INDEX IF NOT EXISTS idx_digipog_pool_users_pool_owner ON digipog_pool_users (pool_id, owner);
 
 -- Transactions (final state after migration 14_restructure_transactions)
 CREATE TABLE IF NOT EXISTS "transactions" (
@@ -194,6 +204,8 @@ CREATE TABLE IF NOT EXISTS "transactions" (
     "reason"    TEXT    NOT NULL DEFAULT 'None',
     "date"      TEXT    NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_transactions_from_account_date ON transactions (from_type, from_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_to_account_date ON transactions (to_type, to_id, date DESC);
 
 -- Notifications (migration 21)
 CREATE TABLE IF NOT EXISTS "notifications" (
@@ -205,7 +217,7 @@ CREATE TABLE IF NOT EXISTS "notifications" (
     "created_at" TEXT    NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
-CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications (user_id, is_read);
 
 -- Inventory (migration 18)
 CREATE TABLE IF NOT EXISTS "inventory" (
@@ -239,3 +251,6 @@ CREATE TABLE IF NOT EXISTS "trades" (
     "updated_at"      TEXT    NOT NULL,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
+CREATE INDEX IF NOT EXISTS idx_trades_from_user ON trades (from_user);
+CREATE INDEX IF NOT EXISTS idx_trades_to_user ON trades (to_user);
+CREATE INDEX IF NOT EXISTS idx_trades_status ON trades (status);

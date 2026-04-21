@@ -1,27 +1,10 @@
 const { dbGet, dbGetAll } = require("@modules/database");
 const { getUserOwnedClasses } = require("@services/user-service");
 const { getUserJoinedClasses } = require("@services/class-service");
-const { isSelfOrHasScopes } = require("@middleware/permission-check");
-const { SCOPES, computeClassPermissionLevel, MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { SCOPES, computeClassPermissionLevel, MANAGER_PERMISSIONS, parseScopesField } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
-
-function parseStoredScopes(value) {
-    if (Array.isArray(value)) {
-        return value.filter((scope) => typeof scope === "string");
-    }
-
-    if (typeof value !== "string" || !value.trim()) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
-    } catch {
-        return [];
-    }
-}
 
 module.exports = (router) => {
     /**
@@ -114,7 +97,7 @@ module.exports = (router) => {
                 }
                 classRolesByClassId.get(row.classId).push(row);
 
-                if (computeClassPermissionLevel(parseStoredScopes(row.scopes)) === 0) {
+                if (parseScopesField(row.scopes).includes(SCOPES.CLASS.SYSTEM.BLOCKED)) {
                     bannedClassIds.add(row.classId);
                 }
             }
@@ -141,7 +124,7 @@ module.exports = (router) => {
             for (const joinedClass of joinedClasses) {
                 if (!classesMap.has(joinedClass.id)) {
                     const classRoles = classRolesByClassId.get(joinedClass.id) || [];
-                    const classScopes = classRoles.flatMap((role) => parseStoredScopes(role.scopes));
+                    const classScopes = classRoles.flatMap((role) => parseScopesField(role.scopes));
                     const permissionLevel = computeClassPermissionLevel(classScopes);
                     classesMap.set(joinedClass.id, {
                         id: joinedClass.id,
