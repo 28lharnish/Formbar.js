@@ -30,8 +30,8 @@ class Student {
 }
 
 /**
- * Normalizes user tags into an array of strings.
- * Accepts either comma-delimited strings or arrays.
+ * * Normalizes user tags into an array of strings.
+ * * Accepts either comma-delimited strings or arrays.
  * @param {string|string[]|null|undefined} tags
  * @returns {string[]}
  */
@@ -54,7 +54,7 @@ function normalizeTags(tags) {
 }
 
 /**
- * Safely parses arrays that may be persisted as JSON strings.
+ * * Safely parses arrays that may be persisted as JSON strings.
  * @param {unknown} value
  * @returns {Array}
  */
@@ -71,8 +71,8 @@ function parseArrayField(value) {
 }
 
 /**
- * Builds a standardized in-memory Student/session user object from a DB row
- * or existing user-like object.
+ * * Builds a standardized in-memory Student/session user object from a DB row
+ * * or existing user-like object.
  * @param {Object} userData
  * @param {Object} [options]
  * @param {boolean} [options.isGuest]
@@ -141,8 +141,8 @@ function createStudentFromUserData(userData, options = {}) {
 }
 
 /**
- * Retrieves the students in a class from the database.
- * Creates an actual student class for each student rather than just returning their data.
+ * * Retrieves the students in a class from the database.
+ * * Creates an actual student class for each student rather than just returning their data.
  * @param {integer} classId - The class id.
  * @returns {Promise|Object} A promise that resolves to the class users or an error object.
  */
@@ -218,9 +218,9 @@ async function getStudentsInClass(classId) {
 }
 
 /**
- * Retrieves a student's id from their email
- * @param email
- * @returns {Promise|Number}
+ * * Retrieves a student's id from their email
+ * @param {string} email - Student email.
+ * @returns {Promise<number>|number|undefined}
  */
 function getIdFromEmail(email) {
     try {
@@ -242,6 +242,11 @@ function getIdFromEmail(email) {
     }
 }
 
+/**
+ * * Get a user email from an ID.
+ * @param {number} userId - userId.
+ * @returns {Promise<string|null>}
+ */
 async function getEmailFromId(userId) {
     let email = null;
     for (const user of Object.values(classStateStore.getAllUsers())) {

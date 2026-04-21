@@ -3,6 +3,11 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { startClass } = require("@services/class-service");
 const { SCOPES } = require("@modules/permissions");
 
+/**
+ * * Register start controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

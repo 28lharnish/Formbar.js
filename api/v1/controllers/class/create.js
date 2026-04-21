@@ -4,6 +4,11 @@ const { isAuthenticated } = require("@middleware/authentication");
 const classService = require("@services/class-service");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register create controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

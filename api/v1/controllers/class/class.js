@@ -7,6 +7,11 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
+/**
+ * * Register class controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

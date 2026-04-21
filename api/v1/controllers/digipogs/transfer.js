@@ -3,6 +3,11 @@ const { hasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const AppError = require("@errors/app-error");
 
+/**
+ * * Register transfer controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

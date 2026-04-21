@@ -10,6 +10,11 @@ const net = require("net");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
 
+/**
+ * * Validate an IP address or CIDR range.
+ * @param {string} ip - IP address or CIDR range.
+ * @returns {boolean}
+ */
 function validateIp(ip) {
     const cidrMatch = ip.match(/^(.+)\/(\d+)$/);
     if (cidrMatch) {
@@ -23,6 +28,11 @@ function validateIp(ip) {
     return net.isIP(ip) !== 0;
 }
 
+/**
+ * * Register ip controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

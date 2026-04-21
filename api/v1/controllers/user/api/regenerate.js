@@ -4,6 +4,11 @@ const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const userService = require("@services/user-service");
 
+/**
+ * * Register regenerate controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

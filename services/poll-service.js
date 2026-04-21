@@ -13,7 +13,7 @@ const { requireInternalParam } = require("@modules/error-wrapper");
 const { pollRuntimeStore } = require("@stores/poll-runtime-store");
 
 /**
- * Gets a classroom by ID and throws an error if not found.
+ * * Gets a classroom by ID and throws an error if not found.
  * @param {number} classId - The ID of the class.
  * @returns {Object} The classroom object.
  * @throws {NotFoundError} If classroom is not found.
@@ -27,8 +27,9 @@ function getClassroom(classId) {
 }
 
 /**
- * Resets all students' poll responses in a classroom.
+ * * Resets all students' poll responses in a classroom.
  * @param {Object} classroom - The classroom object.
+ * @returns {void}
  */
 function resetStudentPollResponses(classroom) {
     for (const key in classroom.students) {
@@ -38,7 +39,7 @@ function resetStudentPollResponses(classroom) {
 }
 
 /**
- * Checks if a user is excluded from voting in a poll.
+ * * Checks if a user is excluded from voting in a poll.
  * @param {Object} classroom - The classroom object.
  * @param {Object} user - The user object.
  * @param {Object} student - The student object.
@@ -61,7 +62,7 @@ function isUserExcludedFromVoting(classroom, user, student) {
 }
 
 /**
- * Validates if a poll response is valid for the current poll.
+ * * Validates if a poll response is valid for the current poll.
  * @param {Object} poll - The poll object.
  * @param {(string|string[])} res - The response to validate.
  * @param {boolean} isRemoving - Whether the user is removing their response.
@@ -89,7 +90,7 @@ function isValidPollResponse(poll, res, isRemoving) {
 }
 
 /**
- * Calculates the weight of a poll response.
+ * * Calculates the weight of a poll response.
  * @param {Object} poll - The poll object.
  * @param {(string|string[])} res - The response.
  * @returns {number} The calculated weight.
@@ -113,12 +114,13 @@ function calculateResponseWeight(poll, res) {
 }
 
 /**
- * Updates a student's poll response state.
+ * * Updates a student's poll response state.
  * @param {Object} student - The student object.
  * @param {(string|string[])} res - The button response.
  * @param {string} textRes - The text response.
  * @param {boolean} isRemoving - Whether the user is removing their response.
  * @param {boolean} allowMultipleResponses - Whether multiple responses are allowed.
+ * @returns {void}
  */
 function updateStudentPollResponse(student, res, textRes, isRemoving, allowMultipleResponses) {
     if (isRemoving) {
@@ -133,7 +135,7 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
 }
 
 /**
- * Creates a new poll in the class.
+ * * Creates a new poll in the class.
  * @param {number} classId - The ID of the class.
  * @param {Object} pollData - The data for the poll.
  * @param {Object} userData - The user session object.
@@ -215,7 +217,7 @@ async function createPoll(classId, pollData, userData) {
 }
 
 /**
- * Updates poll properties dynamically. Can update individual properties or clear the entire poll.
+ * * Updates poll properties dynamically. Can update individual properties or clear the entire poll.
  * @param {number} classId - The ID of the class.
  * @param {Object} options - An object containing poll properties to update.
  * @param {Object} userSession - The user session object.
@@ -223,10 +225,10 @@ async function createPoll(classId, pollData, userData) {
  * @throws {ValidationError} If classId or options are missing
  * @throws {NotFoundError} If classroom is not found
  *
- * Examples:
- * - updatePoll(classId, {status: false}, session) - Ends the poll
- * - updatePoll(classId, {success: true}, session) - Resumes the poll
- * - updatePoll(classId, {}, session) - Clears the poll (empty object)
+ * * Examples:
+ * * - updatePoll(classId, {status: false}, session) - Ends the poll
+ * * - updatePoll(classId, {success: true}, session) - Resumes the poll
+ * * - updatePoll(classId, {}, session) - Clears the poll (empty object)
  */
 async function updatePoll(classId, options, userSession) {
     // If no classId or options provided, throw validation error
@@ -274,8 +276,8 @@ async function updatePoll(classId, options, userSession) {
 }
 
 /**
- * Gets previous polls for a class from the database with pagination.
- * Post-processes results to ensure proper types (booleans as actual booleans, responses as parsed objects).
+ * * Gets previous polls for a class from the database with pagination.
+ * * Post-processes results to ensure proper types (booleans as actual booleans, responses as parsed objects).
  * @param {number} classId - The ID of the class.
  * @param {number} [offset=0] - The number of records to skip.
  * @param {number} [limit=20] - The maximum number of records to return.
@@ -328,8 +330,9 @@ async function getPreviousPolls(classId, offset = 0, limit = 20) {
 }
 
 /**
- * Saves the current poll data to the poll history table in the database.
+ * * Saves the current poll data to the poll history table in the database.
  * @param {number} classId - The ID of the class whose poll should be saved.
+ * @returns {Promise<void>}
  */
 async function savePollToHistory(classId) {
     const classroom = classStateStore.getClassroom(classId);
@@ -349,12 +352,13 @@ async function savePollToHistory(classId) {
 }
 
 /**
- * Clears the current poll in the specified class, optionally updates the class state,
- * and saves poll answers to the database.
+ * * Clears the current poll in the specified class, optionally updates the class state,
+ * * and saves poll answers to the database.
  *
  * @param {number} classId - The ID of the class.
  * @param {Object} userSession - The user session object.
  * @param {boolean} [updateClass=true] - Whether to update the class state after clearing the poll.
+ * @returns {Promise<void>}
  */
 async function clearPoll(classId, userSession, updateClass = true) {
     const classroom = classStateStore.getClassroom(classId);
@@ -422,11 +426,12 @@ async function clearPoll(classId, userSession, updateClass = true) {
 }
 
 /**
- * Handles a student's poll response, updates their answer, manages pog meter, and triggers class updates.
+ * * Handles a student's poll response, updates their answer, manages pog meter, and triggers class updates.
  * @param {number} classId - The ID of the class.
  * @param {(string|string[])} res - The button response(s) from the student, or 'remove' to clear.
  * @param {string} textRes - The text response from the student.
  * @param {Object} userSession - The user session object.
+ * @returns {void}
  */
 function sendPollResponse(classId, res, textRes, userSession) {
     const resLength = textRes != null ? textRes.length : 0;
@@ -507,7 +512,7 @@ function sendPollResponse(classId, res, textRes, userSession) {
 }
 
 /**
- * Function to get the poll responses in a class.
+ * * Function to get the poll responses in a class.
  * @param {Object} classData - The data of the class.
  * @returns {Object} An object containing the poll responses.
  */
@@ -544,7 +549,7 @@ function getPollResponses(classData) {
 }
 
 /**
- * Gets the current poll for an active class and validates access.
+ * * Gets the current poll for an active class and validates access.
  * @param {number|string} classId - The class ID.
  * @param {Object} userData - The requesting user session object.
  * @returns {Promise<Object>} Poll data including total student count.
@@ -579,8 +584,9 @@ async function getCurrentPoll(classId, userData) {
 }
 
 /**
- * Deletes all custom polls owned by a user
+ * * Deletes all custom polls owned by a user
  * @param {number} userId - The ID of the user whose custom polls should be deleted
+ * @returns {Promise<void>}
  */
 async function deleteCustomPolls(userId) {
     const customPolls = await dbGetAll("SELECT * FROM custom_polls WHERE owner=?", userId);

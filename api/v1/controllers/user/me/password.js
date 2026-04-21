@@ -3,6 +3,11 @@ const userService = require("@services/user-service");
 const ValidationError = require("@errors/validation-error");
 const AppError = require("@errors/app-error");
 
+/**
+ * * Register password controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

@@ -3,6 +3,11 @@ const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { isAuthenticated } = require("@middleware/authentication");
 
+/**
+ * * Register authorize controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

@@ -12,6 +12,11 @@ const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register verify controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger
@@ -180,6 +185,12 @@ module.exports = (router) => {
         });
     });
 
+    /**
+     * * Handle the verify user request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const verifyUserHandler = async (req, res) => {
         const id = req.params.id;
         req.infoEvent("user.verify.attempt", "Attempting to verify user", { pendingUserId: id });

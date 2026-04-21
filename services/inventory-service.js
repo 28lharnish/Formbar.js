@@ -1,6 +1,11 @@
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
+/**
+ * * Get a user inventory.
+ * @param {number} userId - userId.
+ * @returns {Promise<Object[]>}
+ */
 async function getUserInventory(userId) {
     const inventoryItems = await dbGetAll(
         "SELECT i.item_id, i.quantity, ir.name, ir.description, ir.stack_size, ir.image_url FROM inventory i JOIN item_registry ir ON i.item_id = ir.id WHERE i.user_id = ?",
@@ -9,6 +14,15 @@ async function getUserInventory(userId) {
     return inventoryItems;
 }
 
+/**
+ * * Create an inventory item.
+ * @param {Object} itemData - Item data.
+ * @param {string} itemData.name - Item name.
+ * @param {string} itemData.description - Item description.
+ * @param {number} [itemData.stackSize] - Maximum stack size.
+ * @param {string} [itemData.iconUrl] - Item icon URL.
+ * @returns {Promise<number>}
+ */
 async function createItem({ name, description, stackSize = 1, iconUrl = "" }) {
     const itemId = await dbRun("INSERT INTO item_registry (name, description, stack_size, image_url) VALUES (?, ?, ?, ?)", [
         name,
@@ -19,6 +33,13 @@ async function createItem({ name, description, stackSize = 1, iconUrl = "" }) {
     return itemId;
 }
 
+/**
+ * * Add quantity of an item to a user inventory.
+ * @param {number} userId - userId.
+ * @param {Object} itemId - itemId.
+ * @param {number} quantity - quantity.
+ * @returns {Promise<void>}
+ */
 async function addItemToInventory(userId, itemId, quantity) {
     // Check if the item already exists in the user's inventory
     const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
@@ -32,6 +53,13 @@ async function addItemToInventory(userId, itemId, quantity) {
     }
 }
 
+/**
+ * * Remove quantity of an item from a user inventory.
+ * @param {number} userId - userId.
+ * @param {Object} itemId - itemId.
+ * @param {number} quantity - quantity.
+ * @returns {Promise<void>}
+ */
 async function removeItemFromInventory(userId, itemId, quantity) {
     // Check if the item exists in the user's inventory
     const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);

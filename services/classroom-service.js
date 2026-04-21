@@ -1,13 +1,13 @@
 /**
- * Classroom Service — defines the Classroom model and the shared in-memory state store.
+ * * Classroom Service — defines the Classroom model and the shared in-memory state store.
  *
- * The `Classroom` class represents a classroom that can be loaded into memory for
- * an active session. The `classStateStore` singleton holds all currently-loaded
- * classrooms and their connected users.
+ * * The `Classroom` class represents a classroom that can be loaded into memory for
+ * * an active session. The `classStateStore` singleton holds all currently-loaded
+ * * classrooms and their connected users.
  *
- * This module is intentionally small and dependency-light so that both class-service
- * (session logic) and room-service (persistent membership) can import it without
- * circular-dependency issues.
+ * * This module is intentionally small and dependency-light so that both class-service
+ * * (session logic) and room-service (persistent membership) can import it without
+ * * circular-dependency issues.
  *
  * @module services/classroom-service
  */
@@ -65,11 +65,21 @@ class Classroom {
     }
 }
 
+/**
+ * * Fetch a classroom from the database.
+ * @param {number} id - id.
+ * @returns {Promise<Object|null>}
+ */
 function getClassroomFromDb(id) {
     requireInternalParam(id, "id");
     return dbGet("SELECT * FROM classroom WHERE id = ?", [id]);
 }
 
+/**
+ * * Resolve a class code to a classroom ID.
+ * @param {string} code - code.
+ * @returns {Promise<number|null>}
+ */
 function getClassIDFromCode(code) {
     const cachedClassId = classCodeCacheStore.get(code);
     if (cachedClassId) {

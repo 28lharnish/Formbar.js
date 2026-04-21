@@ -4,6 +4,11 @@ const { parseJson } = require("@middleware/parse-json");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 
+/**
+ * * Register create controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

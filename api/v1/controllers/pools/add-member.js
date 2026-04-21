@@ -6,6 +6,11 @@ const digipogService = require("@services/digipog-service");
 const AppError = require("@errors/app-error");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register add-member controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

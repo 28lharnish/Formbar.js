@@ -4,7 +4,18 @@ const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register remove controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
+    /**
+     * * Handle the remove link request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const removeLinkHandler = async (req, res) => {
         const classId = req.params.id;
         const { name } = req.body;

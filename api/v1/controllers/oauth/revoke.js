@@ -1,5 +1,10 @@
 const authService = require("@services/auth-service");
 
+/**
+ * * Register revoke controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

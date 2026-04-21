@@ -5,6 +5,11 @@ const { getUserScopes } = require("@modules/scope-resolver");
 const { getUserRoles } = require("@services/role-service");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel } = require("@modules/permissions");
 
+/**
+ * * Register me controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

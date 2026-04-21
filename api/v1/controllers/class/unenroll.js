@@ -2,6 +2,11 @@ const { unenrollFromClass } = require("@services/class-membership-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
+/**
+ * * Register unenroll controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

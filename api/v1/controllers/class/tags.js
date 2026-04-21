@@ -6,7 +6,18 @@ const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register tags controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
+    /**
+     * * Handle the set tags request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const setTagsHandler = async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.tags.update.attempt", "Attempting to update class tags", { classId });

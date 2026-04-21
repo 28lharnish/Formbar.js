@@ -4,6 +4,11 @@ const { SCOPES } = require("@modules/permissions");
 const { updateClassSetting } = require("@services/class-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
+/**
+ * * Register settings controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

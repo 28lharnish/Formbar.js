@@ -5,6 +5,11 @@ const { SCOPES } = require("@modules/permissions");
 const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
 
+/**
+ * * Register end controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

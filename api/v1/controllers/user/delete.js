@@ -4,7 +4,18 @@ const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 
+/**
+ * * Register delete controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
+    /**
+     * * Handle the delete user request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const deleteUserHandler = async (req, res) => {
         const userId = req.params.id;
         req.infoEvent("user.delete.attempt", "Attempting to delete user");

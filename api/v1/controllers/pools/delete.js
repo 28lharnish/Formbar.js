@@ -5,6 +5,11 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const digipogService = require("@services/digipog-service");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register delete controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger
