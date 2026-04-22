@@ -23,7 +23,7 @@ async function getUserInventory(userId) {
  * @param {string} [itemData.iconUrl] - Item icon URL.
  * @returns {Promise<number>}
  */
-async function createItem({ name, description, stackSize = 1, iconUrl = "" }) {
+async function registerItem({ name, description, stackSize = 1, iconUrl = "" }) {
     const itemId = await dbRun("INSERT INTO item_registry (name, description, stack_size, image_url) VALUES (?, ?, ?, ?)", [
         name,
         description,
@@ -80,7 +80,7 @@ async function removeItemFromInventory(userId, itemId, quantity) {
 
 module.exports = {
     getUserInventory,
-    createItem,
+    registerItem,
     addItemToInventory,
     removeItemFromInventory,
 };

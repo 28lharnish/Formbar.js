@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const { dbRun } = require("@modules/database");
 const { sha256 } = require("@modules/crypto");
 const { createPool } = require("@services/digipog-service");
-const { createItem, addItemToInventory } = require("@services/inventory-service");
+const { registerItem, addItemToInventory } = require("@services/inventory-service");
 
 const SHARES_PER_APP = 100;
 
@@ -18,7 +18,7 @@ async function createApp({ name, description, ownerId }) {
     await dbRun("BEGIN TRANSACTION");
 
     try {
-        const shareItemId = await createItem({
+        const shareItemId = await registerItem({
             name: `${name} Share`,
             description: `Share of ${name}`,
             stackSize: SHARES_PER_APP,
