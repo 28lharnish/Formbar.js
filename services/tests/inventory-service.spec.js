@@ -21,7 +21,7 @@ jest.mock("@modules/database", () => {
     };
 });
 
-const { getInventory, addItemToInventory, removeItemFromInventory } = require("@services/inventory-service");
+const { getUserInventory, addItemToInventory, removeItemFromInventory } = require("@services/inventory-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -38,29 +38,29 @@ afterAll(async () => {
 const USER_ID = 1;
 const ITEM_ID = 10;
 
-describe("getInventory()", () => {
+describe("getUserInventory()", () => {
     it("returns an empty array when the user has no items", async () => {
-        const result = await getInventory(USER_ID);
+        const result = await getUserInventory(USER_ID);
         expect(result).toEqual([]);
     });
 
     it("returns all items belonging to the user", async () => {
         await addItemToInventory(USER_ID, ITEM_ID, 3);
         await addItemToInventory(USER_ID, 20, 1);
-        const result = await getInventory(USER_ID);
+        const result = await getUserInventory(USER_ID);
         expect(result).toHaveLength(2);
     });
 
     it("does not return items belonging to other users", async () => {
         await addItemToInventory(USER_ID, ITEM_ID, 1);
         await addItemToInventory(2, ITEM_ID, 5); // different user
-        const result = await getInventory(USER_ID);
+        const result = await getUserInventory(USER_ID);
         expect(result).toHaveLength(1);
     });
 
     it("returns rows with item_id and quantity fields", async () => {
         await addItemToInventory(USER_ID, ITEM_ID, 7);
-        const result = await getInventory(USER_ID);
+        const result = await getUserInventory(USER_ID);
         expect(result[0]).toHaveProperty("item_id", ITEM_ID);
         expect(result[0]).toHaveProperty("quantity", 7);
     });
@@ -84,7 +84,7 @@ describe("addItemToInventory()", () => {
     it("handles adding to multiple different items independently", async () => {
         await addItemToInventory(USER_ID, 10, 1);
         await addItemToInventory(USER_ID, 20, 4);
-        const items = await getInventory(USER_ID);
+        const items = await getUserInventory(USER_ID);
         const item10 = items.find((i) => i.item_id === 10);
         const item20 = items.find((i) => i.item_id === 20);
         expect(item10.quantity).toBe(1);
