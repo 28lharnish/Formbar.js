@@ -25,6 +25,8 @@ const SCOPES = {
         SYSTEM: {
             ADMIN: "class.system.admin",
 			PANEL_ACCESS: "class.system.panel_access",
+			CAN_DELETE_CLASS: "class.system.can_delete_class",
+			CAN_RENAME_CLASS: "class.system.can_rename_class",
             BLOCKED: "class.system.blocked",
         },
 
