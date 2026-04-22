@@ -1,7 +1,7 @@
 const { dbGet, dbGetAll } = require("@modules/database");
 const { getUserOwnedClasses } = require("@services/user-service");
 const { getUserJoinedClasses } = require("@services/class-service");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES, computeClassPermissionLevel, MANAGER_PERMISSIONS, parseScopesField } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
