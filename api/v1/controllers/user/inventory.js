@@ -16,14 +16,32 @@ module.exports = (router) => {
     });
 
     router.delete("/user/:id/inventory/:itemId", isAuthenticated, isOwnerOrHasScopes(ownsInventory, ["global.inventory.manage_self"]), async (req, res) => {
-        const {itemId} = req.params;
-        const {quantity} = req.body;
+        const { id } = req.params;
+        const { itemId } = req.params;
+        const { quantity } = req.body;
 
+        requireParam(id, "id");
         requireParam(itemId, "itemId");
         requireBodyParam(quantity, "quantity");
 
-        req.infoEvent("Removing item from inventory", { itemId, quantity });
-        await removeItemFromInventory(req.params.id, itemId, quantity);
+        const parsedUserId = Number(id);
+        const parsedItemId = Number(itemId);
+        const parsedQuantity = Number(quantity);
+
+        if (!Number.isInteger(parsedUserId)) {
+            throw new Error("Invalid id");
+        }
+
+        if (!Number.isInteger(parsedItemId)) {
+            throw new Error("Invalid itemId");
+        }
+
+        if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
+            throw new Error("Invalid quantity");
+        }
+
+        req.infoEvent("Removing item from inventory", { itemId: parsedItemId, quantity: parsedQuantity });
+        await removeItemFromInventory(parsedUserId, parsedItemId, parsedQuantity);
         res.status(200).json({ success: true, data: {} });
     });
 };
