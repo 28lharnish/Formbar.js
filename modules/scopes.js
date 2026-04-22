@@ -14,9 +14,6 @@ const SCOPES = {
         POOLS: {
             MANAGE: "global.pools.manage",
         },
-        INVENTORY: {
-            MANAGE_OTHERS: "global.inventory.manage_others",
-        },
         SYSTEM: {
             ADMIN: "global.system.admin",
             MODERATE: "global.system.moderate",

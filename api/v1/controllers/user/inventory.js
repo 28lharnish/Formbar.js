@@ -10,13 +10,13 @@ module.exports = (router) => {
         return req.user.id === req.params.id;
     }
 
-    router.get("/user/:id/inventory/", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.INVENTORY.MANAGE_OTHERS]), async (req, res) => {
+    router.get("/user/:id/inventory/", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.USERS.MANAGE]), async (req, res) => {
         req.infoEvent("Fetching user inventory");
         const inventory = await getUserInventory(req.params.id);
         res.status(200).json({ success: true, data: inventory });
     });
 
-    router.delete("/user/:id/inventory/:itemId", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.INVENTORY.MANAGE_OTHERS]), async (req, res) => {
+    router.delete("/user/:id/inventory/:itemId", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.USERS.MANAGE]), async (req, res) => {
         const {itemId} = req.params;
         const {quantity} = req.body;
 
