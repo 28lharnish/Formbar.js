@@ -8,7 +8,7 @@ const NotFoundError = require("@errors/not-found-error");
  */
 async function getUserInventory(userId) {
     const inventoryItems = await dbGetAll(
-        "SELECT i.item_id, i.quantity, ir.name, ir.description, ir.stack_size, ir.image_url FROM inventory i JOIN item_registry ir ON i.item_id = ir.id WHERE i.user_id = ?",
+        "SELECT item_id, quantity FROM inventory WHERE user_id = ?",
         [userId]
     );
     return inventoryItems;
@@ -43,10 +43,22 @@ async function registerItem({ name, description, stackSize = 1, iconUrl = "" }) 
 async function addItemToInventory(userId, itemId, quantity) {
     // Check if the item already exists in the user's inventory
     const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
+    const itemInfo = await dbGet("SELECT stack_size FROM item_registry WHERE id = ?", [itemId]);
+
     if (existingItem) {
         // If it exists, update the quantity
         const newQuantity = existingItem.quantity + quantity;
-        await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [newQuantity, userId, itemId]);
+
+        // if quantity exceeds stack size, add new row with remaining quantity
+        if (newQuantity > itemInfo.stack_size) {
+
+            await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [itemInfo.stack_size, userId, itemId]);
+            await dbRun("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)", [userId, itemId, newQuantity - itemInfo.stack_size]);
+
+        } else {
+            await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [newQuantity, userId, itemId]);
+        }
+
     } else {
         // If it doesn't exist, insert a new record
         await dbRun("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)", [userId, itemId, quantity]);

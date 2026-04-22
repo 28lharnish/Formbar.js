@@ -6,5 +6,4 @@ CREATE TABLE IF NOT EXISTS inventory (
     user_id INTEGER NOT NULL,
     item_id INTEGER NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
-    UNIQUE(user_id, item_id)
 );

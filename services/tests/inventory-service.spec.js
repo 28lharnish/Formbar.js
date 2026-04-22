@@ -138,4 +138,13 @@ describe("removeItemFromInventory()", () => {
         const otherRow = await mockDatabase.dbGet("SELECT quantity FROM inventory WHERE user_id = 2 AND item_id = ?", [1]);
         expect(otherRow.quantity).toBe(5);
     });
+
+    it("handles item overflow correctly", async () => {
+        await addItemToInventory(USER_ID, 1, 95);
+        await addItemToInventory(USER_ID, 1, 10); // should create a new row with quantity 5
+        const items = await mockDatabase.dbGetAll("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
+        const totalQuantity = items.reduce((sum, row) => sum + row.quantity, 0);
+        expect(items).toHaveLength(2);
+        expect(totalQuantity).toBe(105);
+    });
 });
