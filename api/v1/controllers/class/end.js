@@ -4,6 +4,11 @@ const { endClass } = require("@services/class-service");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 
+/**
+ * * Register end controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

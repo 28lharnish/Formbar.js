@@ -5,6 +5,11 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const membershipService = require("@services/class-membership-service");
 const NotFoundError = require("@errors/not-found-error");
 
+/**
+ * * Register delete controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

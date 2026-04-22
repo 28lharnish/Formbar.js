@@ -6,6 +6,11 @@ const { getUserScopes } = require("@modules/scope-resolver");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
+/**
+ * * Register students controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

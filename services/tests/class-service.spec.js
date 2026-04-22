@@ -3,7 +3,7 @@
  *
  * Focuses on:
  *  - Pure helper functions (validateClassroomName, normalizeClassroomData)
- *  - Database-only read functions (getClassCode, getUserJoinedClasses, getClassLinks)
+ *  - Database-only read functions (getClassCode, getUserJoinedClasses)
  *  - createClass (DB + in-memory state; no socket emissions at creation time)
  *
  * Note: getClassIdByCode was removed in favor of getClassIDFromCode from
@@ -47,7 +47,6 @@ const {
     initializeClassroom,
     getClassCode,
     getUserJoinedClasses,
-    getClassLinks,
     getTimer,
     startTimer,
     endTimer,
@@ -178,34 +177,6 @@ describe("getUserJoinedClasses()", () => {
         const owner = await seedUser("owner2@example.com", "Owner2");
         await seedClassroom({ ownerId: owner.id, name: "Physics" }); // no classusers entry
         const result = await getUserJoinedClasses(owner.id);
-        expect(result).toHaveLength(0);
-    });
-});
-
-describe("getClassLinks()", () => {
-    it("returns an empty array when the class has no links", async () => {
-        const { id } = await seedClassroom();
-        const result = await getClassLinks(id);
-        expect(result).toEqual([]);
-    });
-
-    it("returns links for the given class", async () => {
-        const { id } = await seedClassroom();
-        await mockDatabase.dbRun("INSERT INTO links (name, url, classId) VALUES (?, ?, ?)", ["Google", "https://google.com", id]);
-        await mockDatabase.dbRun("INSERT INTO links (name, url, classId) VALUES (?, ?, ?)", ["Docs", "https://docs.google.com", id]);
-
-        const result = await getClassLinks(id);
-        expect(result).toHaveLength(2);
-        expect(result[0]).toHaveProperty("name");
-        expect(result[0]).toHaveProperty("url");
-    });
-
-    it("does not return links belonging to other classes", async () => {
-        const { id: id1 } = await seedClassroom({ name: "Class A", key: 1111 });
-        const { id: id2 } = await seedClassroom({ name: "Class B", key: 2222 });
-        await mockDatabase.dbRun("INSERT INTO links (name, url, classId) VALUES (?, ?, ?)", ["Link", "https://example.com", id2]);
-
-        const result = await getClassLinks(id1);
         expect(result).toHaveLength(0);
     });
 });

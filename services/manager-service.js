@@ -26,6 +26,11 @@ const GLOBAL_PERMISSION_LEVEL_SQL = `
     END
 `;
 
+/**
+ * * Normalize the manager user sort option.
+ * @param {string} sortBy - sortBy.
+ * @returns {string}
+ */
 function normalizeManagerSort(sortBy) {
     if (!sortBy) return "name";
 
@@ -33,6 +38,11 @@ function normalizeManagerSort(sortBy) {
     return Object.prototype.hasOwnProperty.call(MANAGER_SORTS, normalized) ? normalized : "name";
 }
 
+/**
+ * * Build SQL filters for manager user search.
+ * @param {string} search - search.
+ * @returns {Object}
+ */
 function buildManagerUserSearch(search) {
     const normalized = String(search || "")
         .trim()
@@ -51,6 +61,11 @@ function buildManagerUserSearch(search) {
     };
 }
 
+/**
+ * * Build a pending user object from token data.
+ * @param {string} decodedData - decodedData.
+ * @returns {Object}
+ */
 function buildPendingUser(decodedData) {
     if (!decodedData || !decodedData.newSecret || !decodedData.email) {
         return null;
@@ -66,6 +81,12 @@ function buildPendingUser(decodedData) {
     };
 }
 
+/**
+ * * Get pending users from verification tokens.
+ * @param {string} search - search.
+ * @param {string} sortBy - sortBy.
+ * @returns {Promise<Object[]>}
+ */
 async function getPendingUsers(search = "", sortBy = "name") {
     // Get unverified users and compute their permission levels from roles
     const unverifiedUsers = await dbGetAll(
@@ -139,6 +160,14 @@ async function getPendingUsers(search = "", sortBy = "name") {
     return pendingUsers;
 }
 
+/**
+ * * Get manager users with pagination.
+ * @param {number} limit - limit.
+ * @param {number} offset - offset.
+ * @param {string} search - search.
+ * @param {string} sortBy - sortBy.
+ * @returns {Promise<Object>}
+ */
 async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sortBy = "name") {
     const normalizedSort = normalizeManagerSort(sortBy);
     const { clause, params } = buildManagerUserSearch(search);
@@ -168,6 +197,10 @@ async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sor
     };
 }
 
+/**
+ * * Get all manager dashboard data.
+ * @returns {Promise<Object>}
+ */
 async function getManagerData() {
     const users = await dbGetAll(
         `SELECT u.id, u.email, u.displayName, u.verified,
@@ -209,6 +242,11 @@ async function getManagerData() {
     return { users, classrooms };
 }
 
+/**
+ * * Get manager dashboard data with pagination.
+ * @param {number} limit - limit.
+ * @returns {Promise<Object>}
+ */
 async function getManagerDataPaginated({ limit = 24, offset = 0, search = "", sortBy = "name" } = {}) {
     const [classrooms, paginatedUsers, pendingUsers] = await Promise.all([
         dbGetAll("SELECT * FROM classroom"),

@@ -6,7 +6,18 @@ const { isAuthenticated } = require("@middleware/authentication");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
+/**
+ * * Register request controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
+    /**
+     * * Handle the request help request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const requestHelpHandler = async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.help.request.attempt", "Attempting to request class help", { classId });

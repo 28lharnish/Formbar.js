@@ -27,6 +27,10 @@ let passwordResetTemplate;
 let verifyEmailTemplate;
 let pinResetTemplate;
 
+/**
+ * * Load the password reset email template.
+ * @returns {string}
+ */
 function loadPasswordResetTemplate() {
     if (passwordResetTemplate) {
         return passwordResetTemplate;
@@ -47,6 +51,10 @@ function loadPasswordResetTemplate() {
     }
 }
 
+/**
+ * * Load the PIN reset email template.
+ * @returns {string}
+ */
 function loadPinResetTemplate() {
     if (pinResetTemplate) {
         return pinResetTemplate;
@@ -66,6 +74,11 @@ function loadPinResetTemplate() {
     }
 }
 
+/**
+ * * Send a PIN reset email.
+ * @param {number} userId - userId.
+ * @returns {Promise<void>}
+ */
 async function requestPinReset(userId) {
     requireInternalParam(userId, "userId");
 
@@ -84,6 +97,12 @@ async function requestPinReset(userId) {
     sendMail(user.email, "Formbar PIN Reset", template({ resetUrl: `${frontendUrl}/user/me/pin?code=${token}` }));
 }
 
+/**
+ * * Reset a PIN using a token.
+ * @param {string} newPin - newPin.
+ * @param {string} token - token.
+ * @returns {Promise<void>}
+ */
 async function resetPin(newPin, token) {
     requireInternalParam(newPin, "newPin");
     requireInternalParam(token, "token");
@@ -100,6 +119,13 @@ async function resetPin(newPin, token) {
     await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, user.id]);
 }
 
+/**
+ * * Update a user PIN after verifying the old PIN.
+ * @param {number} userId - userId.
+ * @param {string} oldPin - oldPin.
+ * @param {string} newPin - newPin.
+ * @returns {Promise<void>}
+ */
 async function updatePin(userId, oldPin, newPin) {
     requireInternalParam(userId, "userId");
     requireInternalParam(newPin, "newPin");
@@ -129,6 +155,12 @@ async function updatePin(userId, oldPin, newPin) {
     await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, userId]);
 }
 
+/**
+ * * Verify a user PIN.
+ * @param {number} userId - userId.
+ * @param {string} pin - pin.
+ * @returns {Promise<boolean>}
+ */
 async function verifyPin(userId, pin) {
     requireInternalParam(userId, "userId");
     requireInternalParam(pin, "pin");
@@ -161,6 +193,10 @@ async function verifyPin(userId, pin) {
     return true;
 }
 
+/**
+ * * Load the verification email template.
+ * @returns {string}
+ */
 function loadVerifyEmailTemplate() {
     if (verifyEmailTemplate) {
         return verifyEmailTemplate;
@@ -180,6 +216,11 @@ function loadVerifyEmailTemplate() {
     }
 }
 
+/**
+ * * Get user data from the database.
+ * @param {number} userId - userId.
+ * @returns {Promise<Object|null>}
+ */
 async function getUserDataFromDb(userId) {
     const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
     if (!user) {
@@ -199,6 +240,11 @@ async function getUserDataFromDb(userId) {
     };
 }
 
+/**
+ * * Send a password reset email.
+ * @param {string} email - email.
+ * @returns {Promise<void>}
+ */
 async function requestPasswordReset(email) {
     requireInternalParam(email, "email");
 
@@ -216,6 +262,12 @@ async function requestPasswordReset(email) {
     return true;
 }
 
+/**
+ * * Send a verification email.
+ * @param {number} userId - userId.
+ * @param {string} apiBaseUrl - apiBaseUrl.
+ * @returns {Promise<void>}
+ */
 async function requestVerificationEmail(userId, apiBaseUrl) {
     requireInternalParam(userId, "userId");
 
@@ -241,6 +293,11 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
     return { alreadyVerified: false };
 }
 
+/**
+ * * Verify an email address from a code.
+ * @param {string} code - code.
+ * @returns {Promise<void>}
+ */
 async function verifyEmailFromCode(code) {
     requireInternalParam(code, "code");
 
@@ -262,6 +319,12 @@ async function verifyEmailFromCode(code) {
     return { userId: user.id, alreadyVerified: Boolean(user.verified) };
 }
 
+/**
+ * * Reset a password using a token.
+ * @param {string} password - password.
+ * @param {string} token - token.
+ * @returns {Promise<void>}
+ */
 async function resetPassword(password, token) {
     requireInternalParam(password, "password");
     requireInternalParam(token, "token");
@@ -280,6 +343,13 @@ async function resetPassword(password, token) {
     return true;
 }
 
+/**
+ * * Update a password after verifying the old password.
+ * @param {number} userId - userId.
+ * @param {string} oldPassword - oldPassword.
+ * @param {string} newPassword - newPassword.
+ * @returns {Promise<void>}
+ */
 async function updatePassword(userId, oldPassword, newPassword) {
     requireInternalParam(userId, "userId");
     requireInternalParam(newPassword, "newPassword");
@@ -311,6 +381,11 @@ async function updatePassword(userId, oldPassword, newPassword) {
     return true;
 }
 
+/**
+ * * Create and save a new API key for a user.
+ * @param {number} userId - userId.
+ * @returns {Promise<string>}
+ */
 async function regenerateAPIKey(userId) {
     requireInternalParam(userId, "userId");
 
@@ -341,7 +416,9 @@ async function regenerateAPIKey(userId) {
 // User lookup
 
 /**
- * Gets the class id for the given user by checking in-memory classrooms.
+ * * Gets the class id for the given user by checking in-memory classrooms.
+ * @param {string} email - User email.
+ * @returns {number|null|Error}
  */
 function getUserClass(email) {
     try {
@@ -359,7 +436,9 @@ function getUserClass(email) {
 }
 
 /**
- * Gets the email associated with an API key, with caching.
+ * * Gets the email associated with an API key, with caching.
+ * @param {string} api - API key.
+ * @returns {Promise<string|Object|Error>}
  */
 async function getEmailFromAPIKey(api) {
     try {
@@ -399,7 +478,9 @@ async function getEmailFromAPIKey(api) {
 }
 
 /**
- * Gets the current user's data including class/session info.
+ * * Gets the current user's data including class/session info.
+ * @param {Object} userIdentifier - User lookup data.
+ * @returns {Promise<Object|Error>}
  */
 async function getUser(userIdentifier) {
     try {
@@ -472,7 +553,9 @@ async function getUser(userIdentifier) {
 }
 
 /**
- * Gets the classes owned by a user from their email.
+ * * Gets the classes owned by a user from their email.
+ * @param {string} email - User email.
+ * @returns {Promise<Object[]>}
  */
 async function getUserOwnedClasses(email) {
     const userId = (await dbGet("SELECT id FROM users WHERE email = ?", [email])).id;
@@ -482,7 +565,9 @@ async function getUserOwnedClasses(email) {
 // Session Management
 
 /**
- * Logs a user out from a specific socket, cleaning up session state.
+ * * Logs a user out from a specific socket, cleaning up session state.
+ * @param {Object} socket - Socket connection.
+ * @returns {void}
  */
 function logout(socket) {
     const email = socket.request.session.email;
@@ -549,7 +634,10 @@ function logout(socket) {
 }
 
 /**
- * Deletes a user account and all associated data.
+ * * Deletes a user account and all associated data.
+ * @param {number|string} userId - User ID or pending user secret.
+ * @param {Object} userSession - Session user data.
+ * @returns {Promise<string|void>}
  */
 async function deleteUser(userId, userSession) {
     try {

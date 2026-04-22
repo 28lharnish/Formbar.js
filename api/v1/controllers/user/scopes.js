@@ -7,6 +7,11 @@ const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { getUserRoles } = require("@services/role-service");
 const NotFoundError = require("@errors/not-found-error");
 
+/**
+ * * Register scopes controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

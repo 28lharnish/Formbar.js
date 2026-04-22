@@ -5,6 +5,11 @@ const { isUserEnrolled, getClassLinks } = require("@services/class-membership-se
 const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 
+/**
+ * * Register links controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

@@ -4,6 +4,11 @@ const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register get-notifications controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

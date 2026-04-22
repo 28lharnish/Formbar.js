@@ -5,6 +5,11 @@ const { userHasScope } = require("@modules/scope-resolver");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
+/**
+ * * Register api-permission-check controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     // Maps permissionType query params to scope strings
     const PERMISSION_TYPE_TO_SCOPE = {

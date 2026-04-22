@@ -2,6 +2,11 @@ const { deleteNotification, emptyInboxForUser, getNotificationById } = require("
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
+/**
+ * * Register delete-notification controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

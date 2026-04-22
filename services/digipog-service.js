@@ -1,6 +1,7 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
+const { getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
 const AppError = require("@errors/app-error");
@@ -9,6 +10,10 @@ const AppError = require("@errors/app-error");
 
 const failedAttempts = new Map();
 
+/**
+ * * Remove expired digipog rate-limit attempts.
+ * @returns {void}
+ */
 function cleanupOldAttempts() {
     const now = Date.now();
     for (const [userId, data] of failedAttempts.entries()) {
@@ -26,6 +31,11 @@ if (typeof cleanupInterval.unref === "function") {
     cleanupInterval.unref();
 }
 
+/**
+ * * Check the award rate limit for an account.
+ * @param {string|number} accountId - Account ID.
+ * @returns {Object}
+ */
 function checkRateLimit(accountId) {
     const now = Date.now();
     const userAttempts = failedAttempts.get(accountId);
@@ -79,6 +89,12 @@ function checkRateLimit(accountId) {
     return { allowed: true };
 }
 
+/**
+ * * Record a digipog award attempt.
+ * @param {string|number} accountId - Account ID.
+ * @param {boolean} success - Whether the attempt succeeded.
+ * @returns {void}
+ */
 function recordAttempt(accountId, success) {
     const now = Date.now();
     const userAttempts = failedAttempts.get(accountId) || { attempts: [], lockedUntil: null };
@@ -90,23 +106,11 @@ function recordAttempt(accountId, success) {
     failedAttempts.set(accountId, userAttempts);
 }
 
-function parseStoredScopes(value) {
-    if (Array.isArray(value)) {
-        return value.filter((scope) => typeof scope === "string");
-    }
-
-    if (typeof value !== "string" || !value.trim()) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
-    } catch {
-        return [];
-    }
-}
-
+/**
+ * * Build a user object with global role data.
+ * @param {number} userId - userId.
+ * @returns {Promise<Object|null>}
+ */
 async function getComputedGlobalUser(userId) {
     const user = await dbGet("SELECT id, email FROM users WHERE id = ?", [userId]);
     if (!user) {
@@ -136,25 +140,55 @@ async function getComputedGlobalUser(userId) {
 
 // Pool helpers
 
+/**
+ * * Create a digipog pool.
+ * @param {Object} poolData - Pool data.
+ * @param {string} poolData.name - Pool name.
+ * @param {string} [poolData.description] - Pool description.
+ * @param {number} poolData.ownerId - Owner user ID.
+ * @returns {Promise<number>}
+ */
 async function createPool({ name, description = "", ownerId }) {
     const poolId = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [name, description, 0]);
     await addUserToPool(poolId, ownerId, 1);
     return poolId;
 }
 
+/**
+ * * Delete a digipog pool.
+ * @param {number} poolId - poolId.
+ * @returns {Promise<void>}
+ */
 async function deletePool(poolId) {
     await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
     await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
 }
 
+/**
+ * * Get pools joined by a user.
+ * @param {number} userId - userId.
+ * @returns {Promise<Object[]>}
+ */
 async function getPoolsForUser(userId) {
     return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
 }
 
+/**
+ * * Get a digipog pool by ID.
+ * @param {number} poolId - poolId.
+ * @returns {Promise<Object|null>}
+ */
 async function getPoolById(poolId) {
     return dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolId]);
 }
 
+/**
+ * * Get pools joined by a user with pagination.
+ * @param {number} userId - userId.
+ * @param {number} limit - limit.
+ * @param {number} offset - offset.
+ * @returns {Promise<Object[]>}
+ */
 async function getPoolsForUserPaginated(userId, limit = 20, offset = 0) {
     const totalRow = await dbGet("SELECT COUNT(*) AS count FROM digipog_pool_users WHERE user_id = ?", [userId]);
     const pools = await dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ? ORDER BY pool_id DESC LIMIT ? OFFSET ?", [
@@ -169,17 +203,28 @@ async function getPoolsForUserPaginated(userId, limit = 20, offset = 0) {
     };
 }
 
+/**
+ * * Get members of a pool.
+ * @param {number} poolId - poolId.
+ * @returns {Promise<Object[]>}
+ */
 async function getUsersForPool(poolId) {
     return dbGetAll("SELECT user_id, owner FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
 }
 
+/**
+ * * Check whether a user belongs to a pool.
+ * @param {number} userId - userId.
+ * @param {number} poolId - poolId.
+ * @returns {Promise<boolean>}
+ */
 async function isUserInPool(userId, poolId) {
     const row = await dbGet("SELECT 1 FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!row;
 }
 
 /**
- * Checks whether a specific user is an owner of a pool.
+ * * Checks whether a specific user is an owner of a pool.
  * @param {number} poolId - The pool to check.
  * @param {number} userId - The user to check.
  * @returns {Promise<boolean>} True if the user is an owner of the pool.
@@ -190,7 +235,7 @@ async function isPoolOwnedByUser(poolId, userId) {
 }
 
 /**
- * Middleware-compatible ownership check for pools.
+ * * Middleware-compatible ownership check for pools.
  * @param {Object} req - Express request object
  * @returns {Promise<boolean>} Whether the requesting user owns the pool
  */
@@ -198,10 +243,23 @@ function poolOwnerCheck(req) {
     return isPoolOwnedByUser(Number(req.params.id), req.user.id);
 }
 
+/**
+ * * Add a user to a pool.
+ * @param {number} poolId - poolId.
+ * @param {number} userId - userId.
+ * @param {boolean} ownerFlag - ownerFlag.
+ * @returns {Promise<void>}
+ */
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
     return dbRun("INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)", [poolId, userId, ownerFlag ? 1 : 0]);
 }
 
+/**
+ * * Remove a user from a pool.
+ * @param {number} poolId - poolId.
+ * @param {number} userId - userId.
+ * @returns {Promise<void>}
+ */
 async function removeUserFromPool(poolId, userId) {
     if (await isPoolOwnedByUser(poolId, userId)) {
         const poolUsers = await getUsersForPool(poolId);
@@ -215,10 +273,25 @@ async function removeUserFromPool(poolId, userId) {
     await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ? AND user_id = ?", [poolId, userId]);
 }
 
+/**
+ * * Set pool ownership for a user.
+ * @param {number} poolId - poolId.
+ * @param {number} userId - userId.
+ * @param {boolean} ownerFlag - ownerFlag.
+ * @returns {Promise<void>}
+ */
 async function setUserOwnerFlag(poolId, userId, ownerFlag) {
     return dbRun("UPDATE digipog_pool_users SET owner = ? WHERE pool_id = ? AND user_id = ?", [ownerFlag ? 1 : 0, poolId, userId]);
 }
 
+/**
+ * * Add a member to a pool after permission checks.
+ * @param {Object} membershipData - Membership data.
+ * @param {number} membershipData.actingUserId - Acting user ID.
+ * @param {number} membershipData.poolId - Pool ID.
+ * @param {number} membershipData.userId - User ID to add.
+ * @returns {Promise<Object>}
+ */
 async function addMemberToPool({ actingUserId, poolId, userId }) {
     if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
@@ -248,6 +321,14 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
     return { success: true, message: "User added to pool successfully." };
 }
 
+/**
+ * * Remove a member from a pool after permission checks.
+ * @param {Object} membershipData - Membership data.
+ * @param {number} membershipData.actingUserId - Acting user ID.
+ * @param {number} membershipData.poolId - Pool ID.
+ * @param {number} membershipData.userId - User ID to remove.
+ * @returns {Promise<Object>}
+ */
 async function removeMemberFromPool({ actingUserId, poolId, userId }) {
     if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
@@ -272,6 +353,13 @@ async function removeMemberFromPool({ actingUserId, poolId, userId }) {
     return { success: true, message: "User removed from pool successfully." };
 }
 
+/**
+ * * Pay out and clear a pool.
+ * @param {Object} payoutData - Payout data.
+ * @param {number} payoutData.actingUserId - Acting user ID.
+ * @param {number} payoutData.poolId - Pool ID.
+ * @returns {Promise<Object>}
+ */
 async function payoutPool({ actingUserId, poolId }) {
     if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
@@ -325,6 +413,11 @@ async function payoutPool({ actingUserId, poolId }) {
 
 // Transactions
 
+/**
+ * * Get all transactions for a user.
+ * @param {number} userId - userId.
+ * @returns {Promise<Object[]>}
+ */
 async function getUserTransactions(userId) {
     const transactions = await dbGetAll(
         "SELECT * FROM transactions WHERE (from_id = ? AND from_type = 'user') OR (to_id = ? AND to_type = 'user') ORDER BY date DESC",
@@ -333,6 +426,13 @@ async function getUserTransactions(userId) {
     return enrichTransactions(transactions);
 }
 
+/**
+ * * Get user transactions with pagination.
+ * @param {number} userId - userId.
+ * @param {number} limit - limit.
+ * @param {number} offset - offset.
+ * @returns {Promise<Object[]>}
+ */
 async function getUserTransactionsPaginated(userId, limit = 25, offset = 0) {
     let whereQuery = "WHERE (from_id = ? AND from_type = 'user') OR (to_id = ? AND to_type = 'user')";
     const params = [userId, userId];
@@ -347,6 +447,11 @@ async function getUserTransactionsPaginated(userId, limit = 25, offset = 0) {
     };
 }
 
+/**
+ * * Add display data to transaction rows.
+ * @param {Array} transactions - transactions.
+ * @returns {Promise<Object[]>}
+ */
 async function enrichTransactions(transactions) {
     if (!transactions || transactions.length === 0) {
         return [];
@@ -393,6 +498,11 @@ async function enrichTransactions(transactions) {
     }));
 }
 
+/**
+ * * Fetch users and index them by ID.
+ * @param {number[]} userIds - userIds.
+ * @returns {Promise<Map<number, Object>>}
+ */
 async function fetchUsersByIds(userIds) {
     if (userIds.length === 0) return new Map();
 
@@ -409,6 +519,11 @@ async function fetchUsersByIds(userIds) {
     return userMap;
 }
 
+/**
+ * * Fetch pools and index them by ID.
+ * @param {number[]} poolIds - poolIds.
+ * @returns {Promise<Map<number, Object>>}
+ */
 async function fetchPoolsByIds(poolIds) {
     if (poolIds.length === 0) return new Map();
 
@@ -425,6 +540,11 @@ async function fetchPoolsByIds(poolIds) {
     return poolMap;
 }
 
+/**
+ * * Fetch classes and index them by ID.
+ * @param {number[]} classIds - classIds.
+ * @returns {Promise<Map<number, Object>>}
+ */
 async function fetchClassesByIds(classIds) {
     if (classIds.length === 0) return new Map();
 
@@ -441,6 +561,15 @@ async function fetchClassesByIds(classIds) {
     return classMap;
 }
 
+/**
+ * * Build the display object for a transaction party.
+ * @param {number} id - id.
+ * @param {string} type - type.
+ * @param {Object} users - users.
+ * @param {Object} pools - pools.
+ * @param {Object} classes - classes.
+ * @returns {Object|null}
+ */
 function buildTransactionParty(id, type, users, pools, classes) {
     const normalizedType = type || "unknown";
     let username = null;
@@ -464,6 +593,11 @@ function buildTransactionParty(id, type, users, pools, classes) {
 
 const AWARD_RECIPIENT_TYPES = new Set(["user", "pool", "class"]);
 
+/**
+ * * Normalize award recipient fields.
+ * @param {Object} awardData - awardData.
+ * @returns {Object}
+ */
 function normalizeAwardRecipient(awardData) {
     let to = awardData?.to;
     let deprecatedFormatUsed = false;
@@ -497,6 +631,14 @@ function normalizeAwardRecipient(awardData) {
     return { to: normalizedRecipient, deprecatedFormatUsed };
 }
 
+/**
+ * * Validate a digipog award request.
+ * @param {Object} awardData - Award data.
+ * @param {Object} awardData.from - Sender data.
+ * @param {Object} awardData.to - Recipient data.
+ * @param {number} awardData.amount - Amount to award.
+ * @returns {void}
+ */
 function validateAwardRequest({ from, to, amount }) {
     if (!from || Number.isNaN(amount)) {
         return "Missing required fields.";
@@ -517,14 +659,25 @@ function validateAwardRequest({ from, to, amount }) {
     return null;
 }
 
-function getGlobalPermissionLevelForUser(user) {
-    const globalScopes = (user?.roles?.global || []).flatMap((role) => parseStoredScopes(role.scopes));
-    return computeGlobalPermissionLevel(globalScopes);
+/**
+ * * Check whether class scopes allow awarding digipogs.
+ * @param {string} scopes - scopes.
+ * @returns {boolean}
+ */
+function hasClassDigipogAwardAuthority(scopes) {
+    return scopes.includes(SCOPES.CLASS.SYSTEM.ADMIN) || scopes.includes(SCOPES.CLASS.DIGIPOGS.AWARD);
 }
 
-async function getClassPermissionLevelForUser(userId, classId, ownerId) {
+/**
+ * * Check whether a user can award digipogs in a class.
+ * @param {number} userId - userId.
+ * @param {number} classId - classId.
+ * @param {number} ownerId - ownerId.
+ * @returns {Promise<boolean>}
+ */
+async function userCanAwardDigipogsInClass(userId, classId, ownerId) {
     if (ownerId === userId) {
-        return TEACHER_PERMISSIONS;
+        return true;
     }
 
     const roleRows = await dbGetAll(
@@ -534,10 +687,15 @@ async function getClassPermissionLevelForUser(userId, classId, ownerId) {
         [userId, classId]
     );
 
-    return computeClassPermissionLevel(roleRows.flatMap((row) => parseStoredScopes(row.scopes)));
+    return hasClassDigipogAwardAuthority(roleRows.flatMap((row) => parseScopesField(row.scopes)));
 }
 
-async function getTeacherClassIdsForUser(userId) {
+/**
+ * * Get class IDs where a user can award digipogs.
+ * @param {number} userId - userId.
+ * @returns {Promise<number[]>}
+ */
+async function getAwardableClassIdsForUser(userId) {
     const senderRoleRows = await dbGetAll(
         `SELECT ur.classId, r.scopes
          FROM user_roles ur
@@ -548,16 +706,20 @@ async function getTeacherClassIdsForUser(userId) {
 
     const senderClassScopes = new Map();
     for (const row of senderRoleRows) {
-        const scopes = parseStoredScopes(row.scopes);
+        const scopes = parseScopesField(row.scopes);
         const existingScopes = senderClassScopes.get(row.classId) || [];
         senderClassScopes.set(row.classId, existingScopes.concat(scopes));
     }
 
-    return [...senderClassScopes.entries()]
-        .filter(([, scopes]) => computeClassPermissionLevel(scopes) >= TEACHER_PERMISSIONS)
-        .map(([classId]) => classId);
+    return [...senderClassScopes.entries()].filter(([, scopes]) => hasClassDigipogAwardAuthority(scopes)).map(([classId]) => classId);
 }
 
+/**
+ * * Check whether a user belongs to any listed class.
+ * @param {number} userId - userId.
+ * @param {number[]} classIds - classIds.
+ * @returns {Promise<boolean>}
+ */
 async function userIsInAnyClass(userId, classIds) {
     if (classIds.length === 0) {
         return false;
@@ -568,6 +730,12 @@ async function userIsInAnyClass(userId, classIds) {
     return Boolean(row);
 }
 
+/**
+ * * Check whether a user is in a class owned by another user.
+ * @param {number} userId - userId.
+ * @param {number} ownerId - ownerId.
+ * @returns {Promise<boolean>}
+ */
 async function userIsInClassOwnedByUser(userId, ownerId) {
     const row = await dbGet(
         `SELECT 1 FROM classusers cu1
@@ -581,15 +749,31 @@ async function userIsInClassOwnedByUser(userId, ownerId) {
     return Boolean(row);
 }
 
+/**
+ * * Check whether class authority allows awarding a user.
+ * @param {Object} senderId - senderId.
+ * @param {Object} recipientId - recipientId.
+ * @returns {Promise<boolean>}
+ */
 async function canAwardUserByClassAuthority(senderId, recipientId) {
-    const teacherClassIds = await getTeacherClassIdsForUser(senderId);
-    if (await userIsInAnyClass(recipientId, teacherClassIds)) {
+    const awardableClassIds = await getAwardableClassIdsForUser(senderId);
+    if (await userIsInAnyClass(recipientId, awardableClassIds)) {
         return true;
     }
 
     return userIsInClassOwnedByUser(recipientId, senderId);
 }
 
+/**
+ * * Award digipogs to eligible users in a class.
+ * @param {Object} awardData - Award data.
+ * @param {Object} awardData.from - Sender data.
+ * @param {Object} awardData.to - Recipient class data.
+ * @param {number} awardData.amount - Amount to award.
+ * @param {number} awardData.senderPermissionLevel - Sender permission level.
+ * @param {Function} awardData.fail - Failure helper.
+ * @returns {Promise<Object>}
+ */
 async function awardDigipogsToClass({ from, to, amount, senderPermissionLevel, fail }) {
     if (to.code) {
         to.id = await getClassIDFromCode(to.code);
@@ -605,8 +789,8 @@ async function awardDigipogsToClass({ from, to, amount, senderPermissionLevel, f
         return fail("Recipient class not found.");
     }
 
-    const classPermissionLevel = await getClassPermissionLevelForUser(from, to.id, classInfo.owner);
-    if (classPermissionLevel < TEACHER_PERMISSIONS && senderPermissionLevel < TEACHER_PERMISSIONS) {
+    const canAwardTargetClass = await userCanAwardDigipogsInClass(from, to.id, classInfo.owner);
+    if (!canAwardTargetClass && senderPermissionLevel < TEACHER_PERMISSIONS) {
         return fail("Sender does not have permission to award to this class.");
     }
 
@@ -619,6 +803,15 @@ async function awardDigipogsToClass({ from, to, amount, senderPermissionLevel, f
     return null;
 }
 
+/**
+ * * Award digipogs to members of a pool.
+ * @param {Object} awardData - Award data.
+ * @param {Object} awardData.to - Recipient pool data.
+ * @param {number} awardData.amount - Amount to award.
+ * @param {number} awardData.senderPermissionLevel - Sender permission level.
+ * @param {Function} awardData.fail - Failure helper.
+ * @returns {Promise<Object>}
+ */
 async function awardDigipogsToPool({ to, amount, senderPermissionLevel, fail }) {
     if (!to.id) {
         return fail("Missing pool identifier.");
@@ -638,6 +831,16 @@ async function awardDigipogsToPool({ to, amount, senderPermissionLevel, fail }) 
     return null;
 }
 
+/**
+ * * Award digipogs to one user.
+ * @param {Object} awardData - Award data.
+ * @param {Object} awardData.from - Sender data.
+ * @param {Object} awardData.to - Recipient user data.
+ * @param {number} awardData.amount - Amount to award.
+ * @param {number} awardData.senderPermissionLevel - Sender permission level.
+ * @param {Function} awardData.fail - Failure helper.
+ * @returns {Promise<Object>}
+ */
 async function awardDigipogsToUser({ from, to, amount, senderPermissionLevel, fail }) {
     const toUser = await dbGet("SELECT id FROM users WHERE id = ?", [to.id]);
     if (!toUser) {
@@ -656,6 +859,16 @@ async function awardDigipogsToUser({ from, to, amount, senderPermissionLevel, fa
     return null;
 }
 
+/**
+ * * Apply a normalized digipog award.
+ * @param {Object} awardData - Award data.
+ * @param {Object} awardData.from - Sender data.
+ * @param {Object} awardData.to - Recipient data.
+ * @param {number} awardData.amount - Amount to award.
+ * @param {number} awardData.senderPermissionLevel - Sender permission level.
+ * @param {Function} awardData.fail - Failure helper.
+ * @returns {Promise<Object>}
+ */
 async function applyAwardDigipogs({ from, to, amount, senderPermissionLevel, fail }) {
     if (to.type === "class") {
         return awardDigipogsToClass({ from, to, amount, senderPermissionLevel, fail });
@@ -668,12 +881,23 @@ async function applyAwardDigipogs({ from, to, amount, senderPermissionLevel, fai
     return awardDigipogsToUser({ from, to, amount, senderPermissionLevel, fail });
 }
 
+/**
+ * * Build the success message for an award response.
+ * @param {boolean} deprecatedFormatUsed - deprecatedFormatUsed.
+ * @returns {string}
+ */
 function buildAwardSuccessMessage(deprecatedFormatUsed) {
     return deprecatedFormatUsed
         ? "Digipogs awarded successfully. Warning: Deprecated award format used. See documentation for updated usage."
         : "Digipogs awarded successfully.";
 }
 
+/**
+ * * Validate and apply a digipog award.
+ * @param {Object} awardData - awardData.
+ * @param {Object} user - user.
+ * @returns {Promise<Object>}
+ */
 async function awardDigipogs(awardData, user) {
     try {
         const from = user?.userId ?? user?.id;
@@ -692,6 +916,11 @@ async function awardDigipogs(awardData, user) {
         }
 
         const accountId = `award-${from}`;
+        /**
+         * * Build a failed award response and record the attempt.
+         * @param {string} message - Failure message.
+         * @returns {{success: boolean, message: string}}
+         */
         const fail = (message) => {
             recordAttempt(accountId, false);
             return { success: false, message };
@@ -737,6 +966,11 @@ async function awardDigipogs(awardData, user) {
     }
 }
 
+/**
+ * * Transfer digipogs between two users.
+ * @param {Object} transferData - transferData.
+ * @returns {Promise<Object>}
+ */
 async function transferDigipogs(transferData) {
     try {
         const { pin, reason = "", pool } = transferData;

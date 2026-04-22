@@ -24,18 +24,18 @@ describe("pollResp", () => {
         expect(events).toContain("pollResp");
     });
 
-    it("should do nothing if the class has no active poll", () => {
+    it("should do nothing if the class has no active poll", async () => {
         const classData = createTestClass(testData.code, "Test Class");
         createTestUser(testData.email, testData.code, 2);
         classData.poll.status = false;
 
-        pollRespHandler("a", "");
+        await pollRespHandler("a", "");
 
         const student = classStateStore.getClassroomStudent(testData.classId, testData.email);
         expect(student.pollRes.buttonRes).toBe("");
     });
 
-    it("should record a valid poll response", () => {
+    it("should record a valid poll response", async () => {
         const classData = createTestClass(testData.code, "Test Class");
         createTestUser(testData.email, testData.code, 2);
 
@@ -53,13 +53,13 @@ describe("pollResp", () => {
             weight: 1,
         };
 
-        pollRespHandler("a", "");
+        await pollRespHandler("a", "");
 
         const student = classStateStore.getClassroomStudent(testData.classId, testData.email);
         expect(student.pollRes.buttonRes).toBe("a");
     });
 
-    it("should reject an invalid poll response", () => {
+    it("should reject an invalid poll response", async () => {
         const classData = createTestClass(testData.code, "Test Class");
         createTestUser(testData.email, testData.code, 2);
 
@@ -74,13 +74,13 @@ describe("pollResp", () => {
             weight: 1,
         };
 
-        pollRespHandler("z", "");
+        await pollRespHandler("z", "");
 
         const student = classStateStore.getClassroomStudent(testData.classId, testData.email);
         expect(student.pollRes.buttonRes).toBe("");
     });
 
-    it("should not update response when vote changes are disabled and a response already exists", () => {
+    it("should not update response when vote changes are disabled and a response already exists", async () => {
         const classData = createTestClass(testData.code, "Test Class");
         const userData = createTestUser(testData.email, testData.code, 2);
         userData.pollRes.buttonRes = "a";
@@ -99,7 +99,7 @@ describe("pollResp", () => {
             weight: 1,
         };
 
-        pollRespHandler("b", "");
+        await pollRespHandler("b", "");
 
         const student = classStateStore.getClassroomStudent(testData.classId, testData.email);
         expect(student.pollRes.buttonRes).toBe("a");

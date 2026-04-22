@@ -11,6 +11,8 @@ describe("tags", () => {
     beforeEach(() => {
         socket = createSocket();
         socketUpdates = createSocketUpdates();
+        createTestClass(testData.code, "Test Class");
+        createTestUser(testData.email, testData.code, 3);
 
         tagsRun(socket, socketUpdates);
         setTagsHandler = socket.on.mock.calls.find((call) => call[0] === "setTags")[1];
@@ -30,7 +32,7 @@ describe("tags", () => {
 
     describe("setTags event", () => {
         it("should update the class tags and call socketUpdates.classUpdate", async () => {
-            const classData = createTestClass(testData.code, "Test Class");
+            const classData = classStateStore.getClassroom(testData.classId);
             classData.tags = ["Offline"];
 
             await setTagsHandler(["tag1", "tag2"]);
@@ -42,7 +44,7 @@ describe("tags", () => {
         });
 
         it("should ignore non-string tag entries", async () => {
-            const classData = createTestClass(testData.code, "Test Class");
+            const classData = classStateStore.getClassroom(testData.classId);
 
             await setTagsHandler(["validTag", 123, null, "anotherTag"]);
 
@@ -60,9 +62,9 @@ describe("tags", () => {
 
     describe("saveTags event", () => {
         it("should update the student tags in the class and call socketUpdates.classUpdate", async () => {
-            const classData = createTestClass(testData.code, "Test Class");
+            const classData = classStateStore.getClassroom(testData.classId);
             classData.tags = ["tag1", "tag2", "Offline"];
-            const userData = createTestUser(testData.email, testData.code, 3);
+            const userData = classStateStore.getUser(testData.email);
 
             await saveTagsHandler(userData.id, ["tag1"]);
 
@@ -72,9 +74,9 @@ describe("tags", () => {
         });
 
         it("should clear response if student gains the Excluded tag", async () => {
-            const classData = createTestClass(testData.code, "Test Class");
+            const classData = classStateStore.getClassroom(testData.classId);
             classData.tags = ["Excluded", "Offline"];
-            const userData = createTestUser(testData.email, testData.code, 3);
+            const userData = classStateStore.getUser(testData.email);
             userData.pollRes = { buttonRes: "a", textRes: "", date: null };
             userData.tags = [];
 

@@ -2,6 +2,11 @@ const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
 const { requireBodyParam } = require("@modules/error-wrapper");
 
+/**
+ * * Register token controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

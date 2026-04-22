@@ -10,25 +10,12 @@ const {
 const { Classroom, classStateStore, getClassIDFromCode } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const {
-    computeClassPermissionLevel,
-    BANNED_PERMISSIONS,
-    GUEST_PERMISSIONS,
-    MOD_PERMISSIONS,
-    TEACHER_PERMISSIONS,
-    MANAGER_PERMISSIONS,
-} = require("@modules/permissions");
-const { isClassOwner, getUserScopes } = require("@modules/scope-resolver");
+const { SCOPES, CLASS_MOD_SCOPES, CLASS_TEACHER_SCOPES } = require("@modules/permissions");
+const { getAssignedClassScopes, getClassAccessProfile, userHasAnyScope, userHasScope } = require("@modules/scope-resolver");
 const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
-const {
-    loadCustomRoles,
-    getClassRoles,
-    getStudentRoleAssignments,
-    addDefaultClassRoles,
-    findRoleByPermissionLevel,
-} = require("@services/role-service");
+const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, addDefaultClassRoles } = require("@services/role-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReferences } = require("@modules/role-reference");
 const { io } = require("@modules/web-server");
@@ -37,6 +24,11 @@ const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
+/**
+ * * Get classes joined by a user.
+ * @param {number} userId - userId.
+ * @returns {Promise<Object[]>}
+ */
 function getUserJoinedClasses(userId) {
     return dbGetAll(
         "SELECT classroom.name, classroom.id FROM classroom JOIN classusers ON classroom.id = classusers.classId WHERE classusers.studentId = ?",
@@ -44,41 +36,32 @@ function getUserJoinedClasses(userId) {
     );
 }
 
-function getClassLinks(classId) {
-    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
-}
-
+/**
+ * * Get the join code for a class.
+ * @param {number} classId - classId.
+ * @returns {Promise<string|null>}
+ */
 async function getClassCode(classId) {
     const result = await dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
     return result ? result.key : null;
 }
 
-function getClassPermissionLevelForUser(classUser, classroom) {
-    if (!classUser) {
-        return GUEST_PERMISSIONS;
-    }
-
-    const userScopes = getUserScopes(classUser, classroom);
-    return computeClassPermissionLevel(userScopes.class, {
-        isOwner: isClassOwner(classUser, classroom),
-        globalScopes: userScopes.global,
-    });
-}
-
-function hasClassPermissionLevel(classUser, classroom, minimumLevel) {
-    return getClassPermissionLevelForUser(classUser, classroom) >= minimumLevel;
-}
-
-function findAvailableRoleByPermissionLevel(classroom, permissionLevel) {
+/**
+ * * Find the first available class role containing a scope.
+ * @param {Object} classroom - classroom.
+ * @param {string} scope - scope.
+ * @returns {Object|null}
+ */
+function findAvailableRoleByScope(classroom, scope) {
     if (!classroom || !Array.isArray(classroom.availableRoles)) {
         return null;
     }
 
-    return classroom.availableRoles.find((role) => computeClassPermissionLevel(role.scopes) === permissionLevel) || null;
+    return classroom.availableRoles.find((role) => Array.isArray(role.scopes) && role.scopes.includes(scope)) || null;
 }
 
 /**
- * Validates a classroom name
+ * * Validates a classroom name
  * @param {string} className - The classroom name to validate
  * @returns {{valid: boolean, error?: string}} Returns validation result with error message if invalid
  */
@@ -112,8 +95,8 @@ function validateClassroomName(className) {
 }
 
 /**
- * Normalizes classroom data fetched from database
- * Parses JSON fields and normalizes tags and poll history
+ * * Normalizes classroom data fetched from database
+ * * Parses JSON fields and normalizes tags and poll history
  * @param {Object} classroom - The classroom object from database
  * @returns {Object} The normalized classroom object (mutates in place)
  */
@@ -129,7 +112,7 @@ function normalizeClassroomData(classroom) {
 }
 
 /**
- * Creates a new classroom with the given name and owner
+ * * Creates a new classroom with the given name and owner
  * @async
  * @param {string} className - The name of the class to create
  * @param {number} ownerId - The ID of the user creating the class
@@ -176,8 +159,8 @@ async function createClass(className, ownerId, ownerEmail) {
 }
 
 /**
- * Initializes a classroom in memory
- * Fetches all necessary data from the database and creates/updates the classroom in memory
+ * * Initializes a classroom in memory
+ * * Fetches all necessary data from the database and creates/updates the classroom in memory
  * @private
  * @param {number} id - The class ID to initialize
  * @returns {Promise<void>}
@@ -247,9 +230,10 @@ async function initializeClassroom(id) {
 }
 
 /**
- * Starts a class session by activating the class, emitting the start class event,
- * and updating the class state in memory and to connected clients.
+ * * Starts a class session by activating the class, emitting the start class event,
+ * * and updating the class state in memory and to connected clients.
  * @param {string|number} classId - The ID of the class to start.
+ * @returns {Promise<void>}
  */
 async function startClass(classId) {
     await advancedEmitToClass("startClassSound", classId, { api: true });
@@ -260,10 +244,11 @@ async function startClass(classId) {
 }
 
 /**
- * Ends a class session by deactivating the class, emitting the end class event,
- * and updating the class state in memory and to connected clients.
+ * * Ends a class session by deactivating the class, emitting the end class event,
+ * * and updating the class state in memory and to connected clients.
  * @param {string|number} classId - The ID of the class to end.
  * @param {Object} [userSession] - The session object of the user ending the class.
+ * @returns {Promise<void>}
  */
 async function endClass(classId, userSession) {
     await advancedEmitToClass("endClassSound", classId, { api: true });
@@ -276,8 +261,8 @@ async function endClass(classId, userSession) {
 }
 
 /**
- * Internal function to add a user to a classroom session in memory.
- * Does not perform authorization checks - caller must validate permissions.
+ * * Internal function to add a user to a classroom session in memory.
+ * * Does not perform authorization checks - caller must validate permissions.
  * @private
  * @param {number} classId - The class ID
  * @param {string} email - User's email
@@ -325,7 +310,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         currentUser.isClassOwner = classroomDb.owner === user.id;
 
         // If the user is banned, don't let them join
-        if (getClassPermissionLevelForUser(currentUser, classroom) === BANNED_PERMISSIONS && !currentUser.isClassOwner) {
+        if (getAssignedClassScopes(currentUser, classroom).includes(SCOPES.CLASS.SYSTEM.BLOCKED) && !currentUser.isClassOwner) {
             throw new ForbiddenError("You are banned from that class");
         }
         currentUser.activeClass = classId;
@@ -388,7 +373,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 }
 
 /**
- * Allows a user to join a class by classId or class key.
+ * * Allows a user to join a class by classId or class key.
  * @param {Object} userData - The session object of the user attempting to join.
  * @param {string|number} classId - The ID or key of the class to join.
  * @returns {Promise<boolean>} Returns true if joined successfully.
@@ -442,9 +427,9 @@ async function joinClass(userData, classId) {
 }
 
 /**
- * Removes a user from a class session.
- * Kicks the user from the classroom if they are a guest, or from the session otherwise.
- * Emits leave sound and updates the class state.
+ * * Removes a user from a class session.
+ * * Kicks the user from the classroom if they are a guest, or from the session otherwise.
+ * * Emits leave sound and updates the class state.
  * @param {Object} userData - The session object of the user leaving the class.
  * @param {number} [classId] - The ID of the class to leave. If not provided, uses the user's active class.
  * @returns {boolean} True if the user was removed successfully, false otherwise.
@@ -469,7 +454,7 @@ async function leaveClass(userData, classId) {
 }
 
 /**
- * Checks if the class with the given classId is currently active.
+ * * Checks if the class with the given classId is currently active.
  * @param {number} classId - The ID of the class to check.
  * @returns {boolean} True if the class is active, false otherwise.
  */
@@ -483,9 +468,10 @@ function isClassActive(classId) {
 }
 
 /**
- * Deletes all classrooms owned by the specified user, along with related data
- * (class users, polls, links) and in-memory session state.
+ * * Deletes all classrooms owned by the specified user, along with related data
+ * * (class users, polls, links) and in-memory session state.
  * @param {number|string} userId - The ID of the user whose classrooms should be deleted.
+ * @returns {Promise<void>}
  */
 async function deleteClassrooms(userId) {
     const classrooms = await dbGetAll("SELECT * FROM classroom WHERE owner=?", userId);
@@ -510,8 +496,12 @@ async function deleteClassrooms(userId) {
 // Kick
 
 /**
- * Kicks a student from a class.
- * If exitRoom is true, fully removes them; otherwise just removes from session.
+ * * Kicks a student from a class.
+ * * If exitRoom is true, fully removes them; otherwise just removes from session.
+ * @param {number} userId - User ID.
+ * @param {number} classId - Class ID.
+ * @param {Object} options - Kick options.
+ * @returns {Promise<void>}
  */
 async function classKickStudent(userId, classId, options = { exitRoom: true, ban: false }) {
     try {
@@ -526,7 +516,7 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
             user.help = false;
 
             if (options.ban) {
-                const blockedRole = findAvailableRoleByPermissionLevel(classroom, BANNED_PERMISSIONS);
+                const blockedRole = findAvailableRoleByScope(classroom, SCOPES.CLASS.SYSTEM.BLOCKED);
                 user.roles = {
                     global: user.roles?.global || [],
                     class: blockedRole ? buildRoleReferences([blockedRole]) : [],
@@ -578,7 +568,9 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 }
 
 /**
- * Kicks all non-teacher students from a class.
+ * * Kicks all non-teacher students from a class.
+ * @param {number} classId - Class ID.
+ * @returns {Promise<void>}
  */
 async function classKickStudents(classId) {
     try {
@@ -587,7 +579,7 @@ async function classKickStudents(classId) {
 
         const kickOperations = [];
         for (const student of Object.values(classroom.students)) {
-            if (hasClassPermissionLevel(student, classroom, TEACHER_PERMISSIONS)) {
+            if (userHasScope(student, SCOPES.CLASS.SYSTEM.ADMIN, classroom) || userHasAnyScope(student, CLASS_TEACHER_SCOPES, classroom)) {
                 continue;
             }
 
@@ -601,7 +593,7 @@ async function classKickStudents(classId) {
 }
 
 /**
- * Regenerates the classroom join code and updates cache/state.
+ * * Regenerates the classroom join code and updates cache/state.
  * @param {number|string} classId
  * @returns {Promise<string>} The new classroom code.
  */
@@ -630,8 +622,11 @@ async function regenerateClassCode(classId) {
 }
 
 /**
- * Broadcasts a class update using any connected socket in the class.
- * Prefers a specific user's sockets first when provided.
+ * * Broadcasts a class update using any connected socket in the class.
+ * * Prefers a specific user's sockets first when provided.
+ * @param {number} classId - Class ID.
+ * @param {string} preferredEmail - Email to update first.
+ * @returns {void}
  */
 function broadcastClassUpdate(classId, preferredEmail) {
     if (!classId) return false;
@@ -658,7 +653,10 @@ function broadcastClassUpdate(classId, preferredEmail) {
 // Break
 
 /**
- * Requests a break for a student.
+ * * Requests a break for a student.
+ * @param {string} reason - Break reason.
+ * @param {Object} userData - Session user data.
+ * @returns {void}
  */
 function requestBreak(reason, userData) {
     const classId = userData.classId;
@@ -677,7 +675,11 @@ function requestBreak(reason, userData) {
 }
 
 /**
- * Approves or denies a break for a student.
+ * * Approves or denies a break for a student.
+ * @param {boolean} breakApproval - Whether the break is approved.
+ * @param {number} userId - Student user ID.
+ * @param {Object} userData - Session user data.
+ * @returns {Promise<boolean|string>}
  */
 async function approveBreak(breakApproval, userId, userData) {
     const email = await getEmailFromId(userId);
@@ -695,7 +697,9 @@ async function approveBreak(breakApproval, userId, userData) {
 }
 
 /**
- * Ends a student's active break.
+ * * Ends a student's active break.
+ * @param {Object} userData - Session user data.
+ * @returns {void}
  */
 function endBreak(userData) {
     const email = userData.email;
@@ -713,7 +717,10 @@ function endBreak(userData) {
 // Help
 
 /**
- * Sends a help ticket for a student.
+ * * Sends a help ticket for a student.
+ * @param {string} reason - Help reason.
+ * @param {Object} userSession - Session user data.
+ * @returns {void}
  */
 function sendHelpTicket(reason, userSession) {
     const classId = userSession.classId;
@@ -738,7 +745,10 @@ function sendHelpTicket(reason, userSession) {
 }
 
 /**
- * Deletes a help ticket for a student.
+ * * Deletes a help ticket for a student.
+ * @param {number} studentId - Student user ID.
+ * @param {Object} userData - Session user data.
+ * @returns {Promise<void>}
  */
 async function deleteHelpTicket(studentId, userData) {
     const classId = userData.classId;
@@ -754,7 +764,9 @@ async function deleteHelpTicket(studentId, userData) {
 // Tags
 
 /**
- * Sets the allowed tags for a class and normalizes existing student tags.
+ * * Sets the allowed tags for a class and normalizes existing student tags.
+ * @param {Object} userSession - Session user data.
+ * @returns {Promise<void>}
  */
 async function setTags(tags, userSession) {
     if (!Array.isArray(tags)) return;
@@ -773,8 +785,8 @@ async function setTags(tags, userSession) {
     classStateStore.updateClassroom(classId, { tags });
 
     for (const student of Object.values(classroom.students)) {
-        const permissionLevel = getClassPermissionLevelForUser(student, classroom);
-        if (permissionLevel === BANNED_PERMISSIONS || permissionLevel === MANAGER_PERMISSIONS) continue;
+        const accessProfile = getClassAccessProfile(student, classroom);
+        if (accessProfile.isBlocked || accessProfile.isManager) continue;
         if (!student.tags) student.tags = [];
 
         let studentTags = [];
@@ -791,7 +803,10 @@ async function setTags(tags, userSession) {
 }
 
 /**
- * Saves the tags for a specific student in the class.
+ * * Saves the tags for a specific student in the class.
+ * @param {number} studentId - Student user ID.
+ * @param {Object} userSession - Session user data.
+ * @returns {Promise<void>}
  */
 async function saveTags(studentId, tags, userSession) {
     const email = await getEmailFromId(studentId);
@@ -833,9 +848,10 @@ async function saveTags(studentId, tags, userSession) {
 // Class Users
 
 /**
- * Gets the users of a class, merging in-memory session data with DB data.
+ * * Gets the users of a class, merging in-memory session data with DB data.
  * @param {Object} user - The requesting user (used for permission-based filtering).
  * @param {string} key - The class key/code.
+ * @returns {Promise<Object[]>}
  */
 async function getClassUsers(user, key) {
     const dbClassUsers = await new Promise((resolve, reject) => {
@@ -857,7 +873,12 @@ async function getClassUsers(user, key) {
     let classId = await getClassIDFromCode(key);
 
     const cdClassroom = classId ? classStateStore.getClassroom(classId) : null;
-    const requesterPermissionLevel = cdClassroom ? getClassPermissionLevelForUser(user, cdClassroom) : GUEST_PERMISSIONS;
+    const requesterCanViewTeacherState =
+        cdClassroom && user
+            ? userHasScope(user, SCOPES.CLASS.SYSTEM.ADMIN, cdClassroom) || userHasAnyScope(user, CLASS_TEACHER_SCOPES, cdClassroom)
+            : false;
+    const requesterCanViewModState =
+        requesterCanViewTeacherState || (cdClassroom && user ? userHasAnyScope(user, CLASS_MOD_SCOPES, cdClassroom) : false);
     if (cdClassroom) {
         cDClassUsers = cdClassroom.students || {};
     }
@@ -883,7 +904,7 @@ async function getClassUsers(user, key) {
             };
         }
 
-        if (requesterPermissionLevel < TEACHER_PERMISSIONS) {
+        if (!requesterCanViewTeacherState) {
             if (classUsers[userRow.email].help) {
                 classUsers[userRow.email].help = true;
             }
@@ -892,7 +913,7 @@ async function getClassUsers(user, key) {
             }
         }
 
-        if (requesterPermissionLevel < MOD_PERMISSIONS) {
+        if (!requesterCanViewModState) {
             delete classUsers[userRow.email].help;
             delete classUsers[userRow.email].break;
             delete classUsers[userRow.email].pogMeter;
@@ -904,6 +925,11 @@ async function getClassUsers(user, key) {
 
 // Timer
 
+/**
+ * * Get the active timer for a class.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function getTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -911,6 +937,14 @@ function getTimer(classId) {
     return classroom.timer;
 }
 
+/**
+ * * Start a class timer.
+ * @param {Object} timerData - Timer data.
+ * @param {number} timerData.classId - Class ID.
+ * @param {number} timerData.duration - Timer duration in seconds.
+ * @param {string} [timerData.sound] - Completion sound.
+ * @returns {Object}
+ */
 function startTimer({ classId, duration, sound }) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -930,6 +964,11 @@ function startTimer({ classId, duration, sound }) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * * Resume a paused class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function resumeTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -967,6 +1006,11 @@ function resumeTimer(classId) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * * Pause a class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function pauseTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -993,6 +1037,11 @@ function pauseTimer(classId) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * * End a class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function endTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -1007,6 +1056,11 @@ function endTimer(classId) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * * Clear a class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function clearTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -1024,9 +1078,10 @@ function clearTimer(classId) {
 }
 
 /**
- * Clears poll votes from students who should be excluded based on class settings,
- * tags, permission levels, break status, and offline status.
+ * * Clears poll votes from students who should be excluded based on class settings,
+ * * tags, permission levels, break status, and offline status.
  * @param {string|number} classId
+ * @returns {void}
  */
 function clearVotesFromExcludedStudents(classId) {
     const classData = classStateStore.getClassroom(classId);
@@ -1036,7 +1091,7 @@ function clearVotesFromExcludedStudents(classId) {
 
     for (const student of Object.values(classData.students)) {
         let shouldExclude = false;
-        const permissionLevel = getClassPermissionLevelForUser(student, classData);
+        const accessProfile = getClassAccessProfile(student, classData);
 
         if (classData.poll && classData.poll.excludedRespondents && classData.poll.excludedRespondents.includes(student.id)) {
             shouldExclude = true;
@@ -1047,13 +1102,13 @@ function clearVotesFromExcludedStudents(classId) {
         }
 
         if (classData.settings && classData.settings.isExcluded) {
-            if (classData.settings.isExcluded.guests && permissionLevel === GUEST_PERMISSIONS) {
+            if (classData.settings.isExcluded.guests && accessProfile.category === "guest") {
                 shouldExclude = true;
             }
-            if (classData.settings.isExcluded.mods && permissionLevel === MOD_PERMISSIONS) {
+            if (classData.settings.isExcluded.mods && accessProfile.category === "mod") {
                 shouldExclude = true;
             }
-            if (classData.settings.isExcluded.teachers && permissionLevel === TEACHER_PERMISSIONS) {
+            if (classData.settings.isExcluded.teachers && accessProfile.category === "teacher") {
                 shouldExclude = true;
             }
         }
@@ -1062,7 +1117,7 @@ function clearVotesFromExcludedStudents(classId) {
             shouldExclude = true;
         }
 
-        if ((student.tags && student.tags.includes("Offline")) || permissionLevel >= TEACHER_PERMISSIONS) {
+        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
             shouldExclude = true;
         }
 
@@ -1082,7 +1137,7 @@ function clearVotesFromExcludedStudents(classId) {
 }
 
 /**
- * Updates one or more class settings in memory and broadcasts the changes via socket.
+ * * Updates one or more class settings in memory and broadcasts the changes via socket.
  *
  * @param {string|number} classId - The unique identifier of the class.
  * @param {Object} classSettings - Partial object of class settings to update.
@@ -1122,7 +1177,6 @@ async function updateClassSetting(classId, classSettings) {
 module.exports = {
     getUserJoinedClasses,
     getClassCode,
-    getClassLinks,
     validateClassroomName,
     initializeClassroom,
     addUserToClassroomSession,

@@ -3,6 +3,10 @@ const { createTestClass, createTestUser, testData, createSocket, createSocketUpd
 const { classStateStore } = require("@services/classroom-service");
 
 jest.mock("@modules/database");
+jest.mock("@modules/logger", () => ({
+    getLogger: jest.fn().mockResolvedValue({ log: jest.fn() }),
+    logEvent: jest.fn(),
+}));
 
 describe("deletePoll", () => {
     let socket;
@@ -12,6 +16,8 @@ describe("deletePoll", () => {
     beforeEach(() => {
         socket = createSocket();
         socketUpdates = createSocketUpdates();
+        createTestClass(testData.code, "Test Class");
+        createTestUser(testData.email, testData.code, 3);
 
         pollRemovalRun(socket, socketUpdates);
         deletePollHandler = socket.on.mock.calls.find((call) => call[0] === "deletePoll")[1];
@@ -48,8 +54,7 @@ describe("deletePoll", () => {
         dbGet.mockResolvedValueOnce({ id: 1, owner: testData.userId, prompt: "Test" });
         dbRun.mockResolvedValue({});
 
-        const classData = createTestClass(testData.code, "Test Class");
-        const student = createTestUser(testData.email, testData.code, 3);
+        const student = classStateStore.getUser(testData.email);
         student.sharedPolls = [1];
         student.ownedPolls = [1];
 

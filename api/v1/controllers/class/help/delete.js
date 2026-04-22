@@ -4,7 +4,18 @@ const { deleteHelpTicket } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 
+/**
+ * * Register delete controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
+    /**
+     * * Handle the delete help request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const deleteHelpHandler = async (req, res) => {
         const classId = req.params.id;
         const targetUserId = req.params.userId;

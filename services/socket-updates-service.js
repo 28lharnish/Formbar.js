@@ -1,16 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database, dbGetAll } = require("@modules/database");
-const {
-    SCOPES,
-    computeGlobalPermissionLevel,
-    computeClassPermissionLevel,
-    GUEST_PERMISSIONS,
-    MOD_PERMISSIONS,
-    TEACHER_PERMISSIONS,
-    MANAGER_PERMISSIONS,
-    BANNED_PERMISSIONS,
-} = require("@modules/permissions");
-const { userHasScope, isClassOwner, getUserScopes } = require("@modules/scope-resolver");
+const { SCOPES, parseScopesField, MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { userHasScope, getClassAccessProfile, getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
@@ -32,6 +23,11 @@ const PASSIVE_SOCKETS = [
     "setClassSetting",
 ];
 
+/**
+ * * Get poll IDs associated with a class.
+ * @param {number} classId - classId.
+ * @returns {Promise<number[]>}
+ */
 async function getClassPollIds(classId) {
     const cacheKey = String(classId);
     const cached = classPollIdCache.get(cacheKey);
@@ -49,6 +45,11 @@ async function getClassPollIds(classId) {
     return pollIds;
 }
 
+/**
+ * * Clear cached poll IDs for a class.
+ * @param {number} classId - classId.
+ * @returns {void}
+ */
 function invalidateClassPollCache(classId) {
     if (classId == null) {
         classPollIdCache.clear();
@@ -57,6 +58,13 @@ function invalidateClassPollCache(classId) {
     classPollIdCache.delete(String(classId));
 }
 
+/**
+ * * Emit a socket event to all sockets for a user.
+ * @param {string} email - email.
+ * @param {string} event - event.
+ * @param {*} data - data.
+ * @returns {Promise<void>}
+ */
 async function emitToUser(email, event, ...data) {
     const sockets = socketStateStore.getUserSocketsByEmail(email);
     if (!sockets) return;
@@ -67,10 +75,11 @@ async function emitToUser(email, event, ...data) {
 }
 
 /**
- * Calls a SocketUpdates method on all sockets for a user
+ * * Calls a SocketUpdates method on all sockets for a user
  * @param {string} email - The user's email
  * @param {string} methodName - The name of the SocketUpdates method to call (e.g., 'classUpdate', 'customPollUpdate')
  * @param {...any} args - Arguments to pass to the method
+ * @returns {boolean}
  */
 function userUpdateSocket(email, methodName, ...args) {
     // Dynamically load to prevent circular dependency error
@@ -95,37 +104,8 @@ function userUpdateSocket(email, methodName, ...args) {
 // Scopes that grant access to the control panel
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.SYSTEM.PANEL_ACCESS, SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
 
-function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(getUserScopes(user).global);
-}
-
-function getClassPermissionLevelForUser(classUser, classroom) {
-    const userScopes = getUserScopes(classUser, classroom);
-    return computeClassPermissionLevel(userScopes.class, {
-        isOwner: isClassOwner(classUser, classroom),
-        globalScopes: userScopes.global,
-    });
-}
-
-function parseStoredScopes(value) {
-    if (Array.isArray(value)) {
-        return value.filter((scope) => typeof scope === "string");
-    }
-
-    if (typeof value !== "string" || !value.trim()) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
-    } catch {
-        return [];
-    }
-}
-
 /**
- * Checks if a class user has access to the control panel.
+ * * Checks if a class user has access to the control panel.
  * @param {Object} user - The class user object
  * @param {Object} classroom - The classroom object
  * @returns {boolean}
@@ -135,11 +115,12 @@ function hasControlPanelAccess(user, classroom) {
 }
 
 /**
- * Emits an event to sockets based on user scopes
+ * * Emits an event to sockets based on user scopes
  * @param {string} event - The event to emit
  * @param {string} classId - The id of the class
  * @param {{scope?: string, scopes?: string[], api?: boolean, email?: string}} options - The options object
- * @param  {...any} data - Additional data to emit with the event
+ * @param {...any} data - Additional data to emit with the event
+ * @returns {Promise<void>}
  */
 async function advancedEmitToClass(event, classId, options, ...data) {
     const classData = classStateStore.getClassroom(classId);
@@ -170,11 +151,13 @@ async function advancedEmitToClass(event, classId, options, ...data) {
 }
 
 /**
- * Sets the class id for all sockets in a specific API.
- * If no class id is provided, then the class id will be set to null.
+ * * Sets the class id for all sockets in a specific API.
+ * * If no class id is provided, then the class id will be set to null.
  *
  * @param {string} api - The API identifier.
  * @param {string} [classId=null] - The class code to set.
+ * @param {number|string|null} classId - Class ID.
+ * @returns {Promise<void>}
  */
 async function setClassOfApiSockets(api, classId) {
     try {
@@ -197,12 +180,14 @@ async function setClassOfApiSockets(api, classId) {
 }
 
 /**
- * Sets the class id for all sockets belonging to a specific user.
- * This is used when a user joins a class via HTTP to ensure their sockets receive class updates.
- * If no class id is provided, then the class id will be set to null.
+ * * Sets the class id for all sockets belonging to a specific user.
+ * * This is used when a user joins a class via HTTP to ensure their sockets receive class updates.
+ * * If no class id is provided, then the class id will be set to null.
  *
  * @param {string} email - The user's email identifier.
  * @param {string} [classId=null] - The class id to set.
+ * @param {number|string|null} classId - Class ID.
+ * @returns {Promise<void>}
  */
 async function setClassOfUserSockets(email, classId) {
     try {
@@ -237,6 +222,10 @@ async function setClassOfUserSockets(email, classId) {
     } catch (err) {}
 }
 
+/**
+ * * Broadcast manager dashboard updates.
+ * @returns {Promise<void>}
+ */
 async function managerUpdate() {
     try {
         const { users, classrooms } = await getManagerData();
@@ -255,14 +244,14 @@ async function managerUpdate() {
 }
 
 /**
- * Sorts students into either included or excluded from the poll.
+ * * Sorts students into either included or excluded from the poll.
  * @returns {Object} An object containing two arrays: included and excluded students.
  */
 function sortStudentsInPoll(classData) {
     const totalStudentsIncluded = [];
     const totalStudentsExcluded = [];
     for (const student of Object.values(classData.students)) {
-        const permissionLevel = getClassPermissionLevelForUser(student, classData);
+        const accessProfile = getClassAccessProfile(student, classData);
         // Store whether the student is included or excluded
         let included = false;
         let excluded = false;
@@ -282,15 +271,15 @@ function sortStudentsInPoll(classData) {
 
         // Check exclusion based on class settings for permission levels
         if (classData.settings && classData.settings.isExcluded) {
-            if (classData.settings.isExcluded.guests && permissionLevel === GUEST_PERMISSIONS) {
+            if (classData.settings.isExcluded.guests && accessProfile.category === "guest") {
                 excluded = true;
                 included = false;
             }
-            if (classData.settings.isExcluded.mods && permissionLevel === MOD_PERMISSIONS) {
+            if (classData.settings.isExcluded.mods && accessProfile.category === "mod") {
                 excluded = true;
                 included = false;
             }
-            if (classData.settings.isExcluded.teachers && permissionLevel === TEACHER_PERMISSIONS) {
+            if (classData.settings.isExcluded.teachers && accessProfile.category === "teacher") {
                 excluded = true;
                 included = false;
             }
@@ -303,7 +292,7 @@ function sortStudentsInPoll(classData) {
         }
 
         // Prevent students from being included if they are offline or teacher or higher
-        if ((student.tags && student.tags.includes("Offline")) || permissionLevel >= TEACHER_PERMISSIONS) {
+        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
             excluded = true;
             included = false;
         }
@@ -324,6 +313,11 @@ function sortStudentsInPoll(classData) {
     };
 }
 
+/**
+ * * Build poll response summary data.
+ * @param {Object} classData - classData.
+ * @returns {Object}
+ */
 function getPollResponseInformation(classData) {
     let totalResponses = 0;
     let { totalStudentsIncluded, totalStudentsExcluded } = sortStudentsInPoll(classData);
@@ -373,6 +367,13 @@ function getPollResponseInformation(classData) {
     };
 }
 
+/**
+ * * Build the class update payload.
+ * @param {Object} classData - classData.
+ * @param {Object} hasTeacherPermissions - hasTeacherPermissions.
+ * @param {Object} options - options.
+ * @returns {Object}
+ */
 function getClassUpdateData(studentData, classData, hasTeacherPermissions, options = { restrictToControlPanel: false, studentEmail: null }) {
 	const canReadPoll = userHasScope(studentData, SCOPES.CLASS.POLL.READ, classData) || studentData === 'control';
 	const canReadRoles = userHasScope(studentData, SCOPES.CLASS.ROLES.READ, classData) || studentData === 'control';
@@ -578,7 +579,7 @@ class SocketUpdates {
             )
                 .then((rows) => {
                     const bannedStudents = rows
-                        .filter((row) => computeClassPermissionLevel(parseStoredScopes(row.scopes)) === BANNED_PERMISSIONS)
+                        .filter((row) => parseScopesField(row.scopes).includes(SCOPES.CLASS.SYSTEM.BLOCKED))
                         .map((row) => row.id);
 
                     advancedEmitToClass("classBannedUsersUpdate", classId, { scope: SCOPES.CLASS.STUDENTS.BAN }, bannedStudents);

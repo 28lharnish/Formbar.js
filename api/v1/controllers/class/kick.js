@@ -5,6 +5,11 @@ const { advancedEmitToClass } = require("@services/socket-updates-service");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
+/**
+ * * Register kick controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger
@@ -72,6 +77,12 @@ module.exports = (router) => {
         });
     });
 
+    /**
+     * * Handle the kick all students request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const kickAllStudentsHandler = async (req, res) => {
         const classId = Number(req.params.id);
         const targetUserId = req.params.userId !== undefined ? Number(req.params.userId) : undefined;

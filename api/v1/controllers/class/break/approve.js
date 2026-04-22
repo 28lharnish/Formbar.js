@@ -7,7 +7,18 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
+/**
+ * * Register approve controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
+    /**
+     * * Handle the approve break request.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @returns {Promise<void>}
+     */
     const approveBreakHandler = async (req, res) => {
         const classId = Number(req.params.id);
         const targetUserId = Number(req.params.userId);

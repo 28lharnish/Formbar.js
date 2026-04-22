@@ -3,7 +3,9 @@ jest.mock("@services/socket-updates-service");
 
 const { run: userRun } = require("../user");
 const { logout } = require("@services/user-service");
-const { createSocket, createSocketUpdates, testData } = require("@modules/tests/tests");
+const { SCOPES } = require("@modules/permissions");
+const { classStateStore } = require("@services/classroom-service");
+const { createSocket, createSocketUpdates, createTestClass, createTestUser, testData } = require("@modules/tests/tests");
 
 describe("user", () => {
     let socket;
@@ -14,10 +16,18 @@ describe("user", () => {
     beforeEach(() => {
         socket = createSocket();
         socketUpdates = createSocketUpdates();
+        createTestClass(testData.code, "Test Class");
+        const user = createTestUser(testData.email, testData.code, 4);
+        user.scopes = { global: [SCOPES.GLOBAL.CLASS.CREATE], class: [] };
 
         userRun(socket, socketUpdates);
         getOwnedClassesHandler = socket.on.mock.calls.find((call) => call[0] === "getOwnedClasses")[1];
         logoutHandler = socket.on.mock.calls.find((call) => call[0] === "logout")[1];
+    });
+
+    afterEach(() => {
+        classStateStore._state = { users: {}, classrooms: {} };
+        jest.clearAllMocks();
     });
 
     it("should register getOwnedClasses and logout events", () => {
@@ -26,8 +36,8 @@ describe("user", () => {
         expect(events).toContain("logout");
     });
 
-    it("should call socketUpdates.getOwnedClasses with the email", () => {
-        getOwnedClassesHandler(testData.email);
+    it("should call socketUpdates.getOwnedClasses with the email", async () => {
+        await getOwnedClassesHandler(testData.email);
         expect(socketUpdates.getOwnedClasses).toHaveBeenCalledWith(testData.email);
     });
 

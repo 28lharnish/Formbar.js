@@ -1,5 +1,9 @@
 const { dbGet, dbRun } = require("@modules/database");
 
+/**
+ * * Ensure the built-in developer pool exists.
+ * @returns {Promise<void>}
+ */
 async function ensureFormbarDeveloperPool() {
     const formbarDevPool = await dbGet("SELECT * FROM digipog_pools WHERE id = 0");
     if (formbarDevPool) {

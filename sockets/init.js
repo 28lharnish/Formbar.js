@@ -37,6 +37,7 @@ function removeUserSocketUpdate(email, socketId) {
 function initSocketRoutes() {
     io.on("connection", async (socket) => {
         const socketUpdates = new SocketUpdates(socket);
+        socket._socketUpdates = socketUpdates;
 
         // Import middleware
         const socketMiddlewareFiles = fs.readdirSync("./sockets/middleware").filter((file) => file.endsWith(".js"));

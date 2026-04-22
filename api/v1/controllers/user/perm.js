@@ -8,6 +8,11 @@ const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper"
 const { findRoleByPermissionLevel } = require("@services/role-service");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register perm controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

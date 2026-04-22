@@ -6,6 +6,11 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { createStudentFromUserData } = require("@services/student-service");
 
+/**
+ * * Get a configured OIDC client or throw when unsupported.
+ * @param {string} provider - Provider name.
+ * @returns {Object}
+ */
 function assertProviderSupported(provider) {
     try {
         return oidc.getClient(provider);
@@ -17,10 +22,23 @@ function assertProviderSupported(provider) {
     }
 }
 
+/**
+ * * Build the OIDC callback URL for a provider.
+ * @param {import("express").Request} req - Request object.
+ * @param {string} provider - Provider name.
+ * @returns {string}
+ */
 function buildCallbackUrl(req, provider) {
     return `${req.protocol}://${req.get("host")}/api/v1/auth/oidc/${provider}/callback`;
 }
 
+/**
+ * * Build the frontend redirect URL after OIDC login.
+ * @param {import("express").Request} req - Request object.
+ * @param {Object} tokens - Issued auth tokens.
+ * @param {Object} userData - User data.
+ * @returns {string|null}
+ */
 function getRedirectTarget(req, tokens, userData) {
     const clientOrigin = req.session?.oauthOrigin || (frontendUrl ? new URL("/login", frontendUrl).toString() : null);
     if (!clientOrigin) {
@@ -42,6 +60,12 @@ function getRedirectTarget(req, tokens, userData) {
     return redirect.toString();
 }
 
+/**
+ * * Get an email address from OIDC claims.
+ * @param {string} provider - Provider name.
+ * @param {Object} claims - Provider claims.
+ * @returns {string|null}
+ */
 function getEmailFromClaims(provider, claims) {
     const directEmail = typeof claims?.email === "string" ? claims.email : null;
     if (directEmail) {
@@ -58,6 +82,12 @@ function getEmailFromClaims(provider, claims) {
     return null;
 }
 
+/**
+ * * Get a display name from OIDC claims.
+ * @param {Object} claims - Provider claims.
+ * @param {string} email - User email.
+ * @returns {string}
+ */
 function getDisplayNameFromClaims(claims, email) {
     const name = typeof claims?.name === "string" ? claims.name.trim() : "";
     if (name) {
@@ -70,6 +100,11 @@ function getDisplayNameFromClaims(claims, email) {
     return combinedName || email;
 }
 
+/**
+ * * Register providers controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

@@ -5,6 +5,11 @@ const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
+/**
+ * * Register pin controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

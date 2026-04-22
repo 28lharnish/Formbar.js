@@ -1,5 +1,10 @@
 const fs = require("fs");
 
+/**
+ * * Register certs controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

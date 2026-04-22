@@ -7,6 +7,11 @@ const { getClassRoles, createClassRole, updateClassRole, deleteClassRole, getAct
 const { broadcastClassUpdate } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
 
+/**
+ * * Register roles controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

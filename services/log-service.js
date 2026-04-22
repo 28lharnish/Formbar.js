@@ -2,6 +2,10 @@ const fs = require("fs").promises;
 const logDir = "logs/";
 const AppError = require("@errors/app-error");
 
+/**
+ * * Get available log files and contents.
+ * @returns {Promise<Object[]>}
+ */
 async function getAllLogs() {
     try {
         const files = await fs.readdir(logDir);
@@ -23,6 +27,11 @@ async function getAllLogs() {
     }
 }
 
+/**
+ * * Read a log file by name.
+ * @param {string} logFileName - logFileName.
+ * @returns {Promise<string>}
+ */
 async function getLog(logFileName) {
     try {
         const content = await fs.readFile(`${logDir}${logFileName}`, "utf8");

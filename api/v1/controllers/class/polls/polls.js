@@ -9,6 +9,12 @@ const ValidationError = require("@errors/validation-error");
 const DEFAULT_POLL_LIMIT = 20;
 const MAX_POLL_LIMIT = 100;
 
+/**
+ * * Parse an integer query parameter.
+ * @param {string|number|undefined} value - Query value.
+ * @param {number} defaultValue - Default value.
+ * @returns {number}
+ */
 function parseIntegerQueryParam(value, defaultValue) {
     if (value == null) {
         return defaultValue;
@@ -22,6 +28,11 @@ function parseIntegerQueryParam(value, defaultValue) {
     return Number.parseInt(normalized, 10);
 }
 
+/**
+ * * Register polls controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

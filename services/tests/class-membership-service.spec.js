@@ -33,10 +33,16 @@ jest.mock("@services/socket-updates-service", () => ({
     invalidateClassPollCache: jest.fn(),
 }));
 
+jest.mock("@services/role-service", () => ({
+    findRoleByPermissionLevel: jest.fn(),
+}));
+
 const mockClassrooms = {};
 jest.mock("@services/classroom-service", () => ({
     classStateStore: {
         getClassroom: jest.fn((id) => mockClassrooms[id] || null),
+        getClassroomStudent: jest.fn(),
+        updateClassroomStudent: jest.fn(),
         removeClassroomStudent: jest.fn(),
         updateUser: jest.fn(),
     },
@@ -56,6 +62,7 @@ jest.mock("@services/class-service", () => ({
     initializeClassroom: jest.fn(),
     addUserToClassroomSession: jest.fn(() => true),
     endClass: jest.fn(),
+    classKickStudent: jest.fn(),
 }));
 
 jest.mock("@services/student-service", () => ({
@@ -70,6 +77,7 @@ const {
     deleteClassroom,
     getClassroomById,
     classroomOwnerCheck,
+    setClassroomBanStatus,
     enrollByCode,
     enrollInClass,
     unenrollFromClass,
@@ -79,8 +87,10 @@ const {
 const { emitToUser, advancedEmitToClass } = require("@services/socket-updates-service");
 const { classStateStore } = require("@services/classroom-service");
 const classService = require("@services/class-service");
+const { findRoleByPermissionLevel } = require("@services/role-service");
 const { getIdFromEmail } = require("@services/student-service");
 const { userSocketUpdates } = require("../../sockets/init");
+const { BANNED_PERMISSIONS, SCOPES } = require("@modules/permissions");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -127,6 +137,33 @@ describe("deleteClassroom", () => {
         const users = await mockDatabase.dbGetAll("SELECT * FROM classusers WHERE classId=?", [room.id]);
         expect(classroom).toBeUndefined();
         expect(users).toEqual([]);
+    });
+
+    it("deletes dependent poll and custom poll rows before removing source rows", async () => {
+        const room = await seedClassroom();
+        await seedClassUser(room.id, 1);
+        await seedClassUser(room.id, 2);
+        const pollId = await mockDatabase.dbRun("INSERT INTO poll_history (class, data, date) VALUES (?, ?, ?)", [room.id, "{}", "2026-04-21"]);
+        await mockDatabase.dbRun("INSERT INTO poll_answers (pollId, userId, buttonResponse, textResponse) VALUES (?, ?, ?, ?)", [
+            pollId,
+            2,
+            "A",
+            null,
+        ]);
+        await mockDatabase.dbRun("INSERT INTO shared_polls (pollId, userId) VALUES (?, ?)", [pollId, 2]);
+        const customPollId = await mockDatabase.dbRun("INSERT INTO custom_polls (owner, name, prompt, answers) VALUES (?, ?, ?, ?)", [
+            2,
+            "Exit Ticket",
+            "Done?",
+            "[]",
+        ]);
+
+        await deleteClassroom(room.id);
+
+        expect(await mockDatabase.dbGet("SELECT * FROM poll_history WHERE id=?", [pollId])).toBeUndefined();
+        expect(await mockDatabase.dbGet("SELECT * FROM poll_answers WHERE pollId=?", [pollId])).toBeUndefined();
+        expect(await mockDatabase.dbGet("SELECT * FROM shared_polls WHERE pollId=?", [pollId])).toBeUndefined();
+        expect(await mockDatabase.dbGet("SELECT * FROM custom_polls WHERE id=?", [customPollId])).toBeUndefined();
     });
 
     it("throws AppError when classroomId is null", async () => {
@@ -243,6 +280,78 @@ describe("getClassLinks", () => {
 
     it("throws AppError when classId is null", () => {
         expect(() => getClassLinks(null)).toThrow(AppError);
+    });
+});
+
+describe("setClassroomBanStatus", () => {
+    it("returns false when user does not exist", async () => {
+        getIdFromEmail.mockResolvedValueOnce(null);
+
+        const result = await setClassroomBanStatus(10, "missing@test.com", true);
+
+        expect(result).toBe(false);
+        expect(findRoleByPermissionLevel).not.toHaveBeenCalled();
+        expect(classService.classKickStudent).not.toHaveBeenCalled();
+    });
+
+    it("applies banned role, updates active student roles, and kicks user", async () => {
+        const room = await seedClassroom();
+        const bannedRole = { id: 9, name: "Banned", scopes: [SCOPES.CLASS.SYSTEM.BLOCKED] };
+        await mockDatabase.dbRun("INSERT INTO roles (id, name, isDefault, scopes) VALUES (?, ?, ?, ?)", [
+            bannedRole.id,
+            bannedRole.name,
+            0,
+            JSON.stringify(bannedRole.scopes),
+        ]);
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [1, 2, room.id]);
+        findRoleByPermissionLevel.mockResolvedValueOnce(bannedRole);
+        classStateStore.getClassroomStudent.mockReturnValueOnce({
+            roles: { global: [{ id: 100, name: "Student" }], class: [] },
+        });
+        mockClassrooms[room.id] = {
+            id: room.id,
+            availableRoles: [{ id: 8, name: "Blocked Alias", scopes: [SCOPES.CLASS.SYSTEM.BLOCKED] }],
+        };
+
+        const result = await setClassroomBanStatus(room.id, "student@test.com", true);
+
+        const roles = await mockDatabase.dbGetAll("SELECT userId, roleId, classId FROM user_roles WHERE userId=? AND classId=?", [1, room.id]);
+        expect(result).toBe(true);
+        expect(findRoleByPermissionLevel).toHaveBeenCalledWith(BANNED_PERMISSIONS, room.id);
+        expect(roles).toEqual([{ userId: 1, roleId: 9, classId: room.id }]);
+        expect(classStateStore.updateClassroomStudent).toHaveBeenCalledWith(room.id, "student@test.com", {
+            roles: {
+                global: [{ id: 100, name: "Student" }],
+                class: [{ id: 8, name: "Blocked Alias" }],
+            },
+        });
+        expect(classService.classKickStudent).toHaveBeenCalledWith(1, room.id, { exitRoom: true, ban: true });
+    });
+
+    it("removes class role and clears active class roles when unbanning", async () => {
+        const room = await seedClassroom();
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [1, 1, room.id]);
+        classStateStore.getClassroomStudent.mockReturnValueOnce({
+            roles: { global: [{ id: 3, name: "Mod" }], class: [{ id: 1, name: "Banned" }] },
+        });
+
+        const result = await setClassroomBanStatus(room.id, "student@test.com", false);
+
+        const roles = await mockDatabase.dbGetAll("SELECT userId, roleId, classId FROM user_roles WHERE userId=? AND classId=?", [1, room.id]);
+        expect(result).toBe(true);
+        expect(roles).toEqual([]);
+        expect(classStateStore.updateClassroomStudent).toHaveBeenCalledWith(room.id, "student@test.com", {
+            roles: {
+                global: [{ id: 3, name: "Mod" }],
+                class: [],
+            },
+        });
+        expect(classService.classKickStudent).toHaveBeenCalledWith(1, room.id, { exitRoom: true, ban: false });
+    });
+
+    it("throws AppError when classroomId or email are missing", async () => {
+        await expect(setClassroomBanStatus(null, "student@test.com", true)).rejects.toThrow(AppError);
+        await expect(setClassroomBanStatus(1, null, true)).rejects.toThrow(AppError);
     });
 });
 

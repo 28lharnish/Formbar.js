@@ -3,6 +3,11 @@ const { classStateStore } = require("@services/classroom-service");
 const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * * Register login controller routes.
+ * @param {import("express").Router} router - router.
+ * @returns {void}
+ */
 module.exports = (router) => {
     /**
      * @swagger

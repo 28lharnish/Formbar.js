@@ -1,15 +1,17 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbRun, dbGet } = require("@modules/database");
 const { getLogger, logEvent } = require("@modules/logger");
+const { SCOPES } = require("@modules/permissions");
+const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middleware");
 
 module.exports = {
     run(socket, socketUpdates) {
-        socket.on("deletePoll", async (pollId) => {
-            const { userId } = socket.request.session;
+        onSocketEvent(socket, "deletePoll", hasClassScope(SCOPES.CLASS.POLL.DELETE), async (socketContext, pollId) => {
+            const { userId } = socketContext.session;
             const ip = socket.handshake.address;
 
             const logger = await getLogger();
-            logEvent(logger, "info", "deletePoll", `ip=(${ip}) pollId=(${pollId}) session=${JSON.stringify(socket.request.session)}`);
+            logEvent(logger, "info", "deletePoll", `ip=(${ip}) pollId=(${pollId}) session=${JSON.stringify(socketContext.session)}`);
             if (!pollId) return socket.emit("message", "No poll is selected.");
 
             try {

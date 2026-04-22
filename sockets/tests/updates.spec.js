@@ -1,5 +1,6 @@
 const { run: updatesRun } = require("../updates");
-const { createSocket, createSocketUpdates, testData } = require("@modules/tests/tests");
+const { classStateStore } = require("@services/classroom-service");
+const { createSocket, createSocketUpdates, createTestClass, createTestUser, testData } = require("@modules/tests/tests");
 
 describe("updates", () => {
     let socket;
@@ -11,11 +12,18 @@ describe("updates", () => {
     beforeEach(() => {
         socket = createSocket();
         socketUpdates = createSocketUpdates();
+        createTestClass(testData.code, "Test Class");
+        createTestUser(testData.email, testData.code, 4);
 
         updatesRun(socket, socketUpdates);
         classUpdateHandler = socket.on.mock.calls.find((call) => call[0] === "classUpdate")[1];
         customPollUpdateHandler = socket.on.mock.calls.find((call) => call[0] === "customPollUpdate")[1];
         classBannedUsersUpdateHandler = socket.on.mock.calls.find((call) => call[0] === "classBannedUsersUpdate")[1];
+    });
+
+    afterEach(() => {
+        classStateStore._state = { users: {}, classrooms: {} };
+        jest.clearAllMocks();
     });
 
     it("should register classUpdate, customPollUpdate, and classBannedUsersUpdate events", () => {
@@ -30,13 +38,13 @@ describe("updates", () => {
         expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId, { global: false });
     });
 
-    it("should call socketUpdates.customPollUpdate with email on customPollUpdate", () => {
-        customPollUpdateHandler();
+    it("should call socketUpdates.customPollUpdate with email on customPollUpdate", async () => {
+        await customPollUpdateHandler();
         expect(socketUpdates.customPollUpdate).toHaveBeenCalledWith(testData.email);
     });
 
-    it("should call socketUpdates.classBannedUsersUpdate on classBannedUsersUpdate", () => {
-        classBannedUsersUpdateHandler();
+    it("should call socketUpdates.classBannedUsersUpdate on classBannedUsersUpdate", async () => {
+        await classBannedUsersUpdateHandler();
         expect(socketUpdates.classBannedUsersUpdate).toHaveBeenCalled();
     });
 });
