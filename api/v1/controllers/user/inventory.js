@@ -11,7 +11,7 @@ module.exports = (router) => {
     }
 
     router.get("/user/:id/inventory/", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.USERS.MANAGE]), async (req, res) => {
-        req.infoEvent("Fetching user inventory");
+        req.infoEvent("user.inventory.get","Fetching user inventory");
         const inventory = await getUserInventory(req.params.id);
         res.status(200).json({ success: true, data: inventory });
     });
@@ -29,19 +29,20 @@ module.exports = (router) => {
         const parsedQuantity = Number(quantity);
 
         if (!Number.isInteger(parsedUserId)) {
-            throw new Error("Invalid id");
+            throw new ValidationError("user.inventory.delete_item", "Invalid User Id", { reason: "invalid_user_id", event: "user.inventory.delete.failed" });
         }
 
         if (!Number.isInteger(parsedItemId)) {
-            throw new Error("Invalid itemId");
+            throw new ValidationError("user.inventory.delete_item", "Invalid Item Id", { reason: "invalid_item_id", event: "user.inventory.delete.failed" });
         }
 
         if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
-            throw new Error("Invalid quantity");
+            throw new ValidationError("user.inventory.delete_item", "Invalid Quantity", { reason: "invalid_quantity", event: "user.inventory.delete.failed" });
         }
 
-        req.infoEvent("Removing item from inventory", { itemId: parsedItemId, quantity: parsedQuantity });
+        req.infoEvent("user.inventory.delete_item","Removing item from inventory", { itemId: parsedItemId, quantity: parsedQuantity });
         await removeItemFromInventory(parsedUserId, parsedItemId, parsedQuantity);
         res.status(200).json({ success: true, data: {} });
     });
+
 };

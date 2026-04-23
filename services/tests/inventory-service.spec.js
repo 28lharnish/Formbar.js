@@ -21,7 +21,7 @@ jest.mock("@modules/database", () => {
     };
 });
 
-const { getUserInventory, addItemToInventory, removeItemFromInventory, registerItem } = require("@services/inventory-service");
+const { getUserInventory, getItemById, addItemToInventory, removeItemFromInventory, registerItem } = require("@services/inventory-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -75,6 +75,14 @@ describe("getUserInventory()", () => {
         const result = await getUserInventory(USER_ID);
         expect(result[0]).toHaveProperty("item_id", 1);
         expect(result[0]).toHaveProperty("quantity", 7);
+    });
+});
+
+describe("getItemById()", () => {
+    it("returns item info for a valid item id", async () => {
+        const item = await getItemById(1);
+        expect(item).toHaveProperty("id", 1);
+        expect(item).toHaveProperty("name", "Test Item");
     });
 });
 
@@ -147,4 +155,5 @@ describe("removeItemFromInventory()", () => {
         expect(items).toHaveLength(2);
         expect(totalQuantity).toBe(105);
     });
+    //TODO handles item underflow correctly (removing more than total quantity across multiple rows)")
 });

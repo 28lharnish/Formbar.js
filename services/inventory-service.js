@@ -33,6 +33,20 @@ async function registerItem({ name, description, stackSize = 1, iconUrl = "" }) 
     return itemId;
 }
 
+
+/**
+ * // * Get item info by id.
+ * @param {number} itemId
+ * @returns {Promise<Object>}
+ */
+async function getItemById(itemId) {
+    const item = await dbGet("SELECT * FROM item_registry WHERE id = ?", [itemId]);
+    if (!item) {
+        throw new NotFoundError("Item not found");
+    }
+    return item;
+}
+
 /**
  * * Add quantity of an item to a user inventory.
  * @param {number} userId - userId.
@@ -93,6 +107,7 @@ async function removeItemFromInventory(userId, itemId, quantity) {
 module.exports = {
     getUserInventory,
     registerItem,
+    getItemById,
     addItemToInventory,
     removeItemFromInventory,
 };
