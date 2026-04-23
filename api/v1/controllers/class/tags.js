@@ -72,7 +72,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/tags", isAuthenticated, async (req, res) => {
+    router.get("/class/:id/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {

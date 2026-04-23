@@ -77,7 +77,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/students/:userId/roles", isAuthenticated, async (req, res) => {
+    router.get("/class/:id/students/:userId/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.READ), async (req, res) => {
         const { id: classIdRaw, userId } = req.params;
         const classId = normalizeClassId(classIdRaw);
         requireQueryParam(classIdRaw, "id");

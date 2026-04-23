@@ -3,6 +3,7 @@ const { SCOPES } = require("@modules/permissions");
 const { userHasScope } = require("@modules/scope-resolver");
 const { getUserDataFromDb } = require("@services/user-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { isSelfOrHasScope } = require("@middleware/permission-check");
 const NotFoundError = require("@errors/not-found-error");
 const AppError = require("@errors/app-error");
 
@@ -46,46 +47,51 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/user/:id", async (req, res) => {
-        const userId = req.params.id;
-        req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });
+    router.get(
+        "/user/:id",
+        isAuthenticated,
+        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user."),
+        async (req, res) => {
+            const userId = req.params.id;
+            req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });
 
-        const userData = await getUserDataFromDb(userId);
-        if (!userData) {
-            throw new NotFoundError("User not found.", { event: "user.get.failed", reason: "user_not_found" });
-        }
+            const userData = await getUserDataFromDb(userId);
+            if (!userData) {
+                throw new NotFoundError("User not found.", { event: "user.get.failed", reason: "user_not_found" });
+            }
 
-        const { id, displayName, email, digipogs, API, pin, password, permissions, verified } = userData;
-        if (!id || !displayName || !email || digipogs === undefined || !API) {
-            throw new AppError("Unable to retrieve user information. Please try again.", {
-                event: "user.get.failed",
-                reason: "missing_required_fields",
+            const { id, displayName, email, digipogs, API, pin, password, permissions, verified } = userData;
+            if (!id || !displayName || !email || digipogs === undefined || !API) {
+                throw new AppError("Unable to retrieve user information. Please try again.", {
+                    event: "user.get.failed",
+                    reason: "missing_required_fields",
+                });
+            }
+
+            const requesterEmail = req.user?.email;
+            const requesterUser = requesterEmail ? classStateStore.getUser(requesterEmail) : null;
+            const isManager = requesterUser ? userHasScope(requesterUser, SCOPES.GLOBAL.USERS.MANAGE) : false;
+            const isOwnProfile = String(req.user?.id) === String(userId);
+            const emailVisible = isOwnProfile || isManager;
+
+            // Load in-memory state for live pogMeter
+            const liveUser = classStateStore.getUser(email);
+
+            req.infoEvent("user.view.success", "User data returned", { targetUserId: userId });
+            res.status(200).json({
+                success: true,
+                data: {
+                    id: id,
+                    displayName: displayName,
+                    email: emailVisible ? email : undefined,
+                    hasPin: isOwnProfile ? Boolean(pin) : undefined,
+                    hasPassword: isOwnProfile ? Boolean(password) : undefined,
+                    permissions: permissions,
+                    verified: verified,
+                    digipogs: digipogs,
+                    pogMeter: liveUser ? liveUser.pogMeter : 0,
+                },
             });
         }
-
-        const requesterEmail = req.user?.email;
-        const requesterUser = requesterEmail ? classStateStore.getUser(requesterEmail) : null;
-        const isManager = requesterUser ? userHasScope(requesterUser, SCOPES.GLOBAL.USERS.MANAGE) : false;
-        const isOwnProfile = String(req.user?.id) === String(userId);
-        const emailVisible = isOwnProfile || isManager;
-
-        // Load in-memory state for live pogMeter
-        const liveUser = classStateStore.getUser(email);
-
-        req.infoEvent("user.view.success", "User data returned", { targetUserId: userId });
-        res.status(200).json({
-            success: true,
-            data: {
-                id: id,
-                displayName: displayName,
-                email: emailVisible ? email : undefined,
-                hasPin: isOwnProfile ? Boolean(pin) : undefined,
-                hasPassword: isOwnProfile ? Boolean(password) : undefined,
-                permissions: permissions,
-                verified: verified,
-                digipogs: digipogs,
-                pogMeter: liveUser ? liveUser.pogMeter : 0,
-            },
-        });
-    });
+    );
 };

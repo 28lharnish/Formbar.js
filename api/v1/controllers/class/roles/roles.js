@@ -68,7 +68,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/roles", isAuthenticated, async (req, res) => {
+    router.get("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.READ), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
         req.infoEvent("class.roles.list.start", { classId, actorId: req.user.id });

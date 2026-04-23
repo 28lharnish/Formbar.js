@@ -1,5 +1,7 @@
 const { getCurrentPoll } = require("@services/poll-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { hasClassScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 /**
@@ -62,7 +64,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/polls/current", isAuthenticated, async (req, res) => {
+    router.get("/class/:id/polls/current", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.READ), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId);
 

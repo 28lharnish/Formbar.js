@@ -83,7 +83,7 @@ const kickController = require("../class/kick");
 const regenerateCodeController = require("../class/regenerate-code");
 
 const { classStateStore, Classroom } = require("@services/classroom-service");
-const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
+const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS, SCOPES } = require("@modules/permissions");
 
 const app = createTestApp(
     createController,
@@ -285,6 +285,125 @@ describe("GET /api/v1/class/:id", () => {
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
+    });
+
+    it("returns a restricted class payload for users without class read scopes", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-class-view@example.com",
+            displayName: "Teacher View",
+            permissions: 4,
+        });
+        const { tokens: studentTokens, user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-class-view@example.com",
+            displayName: "Student View",
+            permissions: 2,
+        });
+
+        const classId = await seedClassroom(teacher.id, { key: "SCP01", className: "Scope Class" });
+        await seedClassMembership(mockDatabase, student.id, classId, 2);
+
+        classStateStore.setClassroom(classId, {
+            classId,
+            className: "Scope Class",
+            isActive: true,
+            owner: teacher.id,
+            key: "SCP01",
+            poll: {
+                active: true,
+                responses: [],
+            },
+            tags: ["VisibleTag"],
+            settings: { emailEnabled: false },
+            timer: { active: false },
+            availableRoles: [{ id: 99, name: "Custom", scopes: [] }],
+            students: {
+                [teacher.email]: {
+                    id: teacher.id,
+                    email: teacher.email,
+                    roles: { global: [], class: [] },
+                },
+                [student.email]: {
+                    id: student.id,
+                    email: student.email,
+                    roles: { global: [], class: [] },
+                },
+            },
+        });
+
+        const res = await request(app).get(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.students).toEqual(expect.objectContaining({ [student.email]: expect.any(Object) }));
+        expect(res.body.data.students[teacher.email]).toBeUndefined();
+        expect(res.body.data.poll).toBeUndefined();
+        expect(res.body.data.tags).toBeUndefined();
+        expect(res.body.data.settings).toBeUndefined();
+        expect(res.body.data.roles).toBeUndefined();
+    });
+
+    it("returns expanded class sections when the user has matching class scopes", async () => {
+        const { user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-class-scope@example.com",
+            displayName: "Teacher Scope",
+            permissions: 4,
+        });
+        const { tokens: studentTokens, user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-class-scope@example.com",
+            displayName: "Student Scope",
+            permissions: 2,
+        });
+
+        const classId = await seedClassroom(teacher.id, { key: "SCP02", className: "Scoped Access Class" });
+        await seedClassMembership(mockDatabase, student.id, classId, 2);
+
+        classStateStore.setClassroom(classId, {
+            classId,
+            className: "Scoped Access Class",
+            isActive: true,
+            owner: teacher.id,
+            key: "SCP02",
+            poll: {
+                active: true,
+                responses: [{ answer: "Yes", responses: 0 }],
+            },
+            tags: ["VisibleTag"],
+            settings: { emailEnabled: false },
+            timer: { active: true, startTime: Date.now(), endTime: Date.now() + 1000 },
+            availableRoles: [{ id: 100, name: "Custom Reader", scopes: [SCOPES.CLASS.STUDENTS.READ] }],
+            students: {
+                [teacher.email]: {
+                    id: teacher.id,
+                    email: teacher.email,
+                    roles: { global: [], class: [] },
+                },
+                [student.email]: {
+                    id: student.id,
+                    email: student.email,
+                    roles: { global: [], class: [] },
+                    scopes: {
+                        global: [],
+                        class: [
+                            SCOPES.CLASS.STUDENTS.READ,
+                            SCOPES.CLASS.POLL.READ,
+                            SCOPES.CLASS.TAGS.MANAGE,
+                            SCOPES.CLASS.SESSION.SETTINGS,
+                            SCOPES.CLASS.ROLES.READ,
+                        ],
+                    },
+                },
+            },
+        });
+
+        const res = await request(app).get(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.students).toEqual(expect.objectContaining({ [teacher.email]: expect.any(Object), [student.email]: expect.any(Object) }));
+        expect(res.body.data.poll).toEqual(expect.objectContaining({ active: true }));
+        expect(res.body.data.tags).toEqual(["VisibleTag"]);
+        expect(res.body.data.settings).toEqual({ emailEnabled: false });
+        expect(res.body.data.roles).toEqual(expect.arrayContaining([expect.objectContaining({ id: 100 })]));
     });
 });
 
@@ -600,10 +719,31 @@ describe("GET /api/v1/class/:id/tags", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 404 when class is not loaded", async () => {
+    it("returns 403 when class is not loaded", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
         const res = await request(app).get("/api/v1/class/9999/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when user lacks class.tags.manage scope", async () => {
+        const { user: owner } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-tags-owner@example.com",
+            displayName: "Teacher Tags Owner",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-tags-view@example.com",
+            displayName: "Student Tags View",
+            permissions: 2,
+        });
+
+        const classId = await seedClassroom(owner.id);
+        await enrollUserInClass(user, classId, 2);
+        classStateStore.updateUser(user.email, { activeClass: classId });
+
+        const res = await request(app).get(`/api/v1/class/${classId}/tags`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
     });
 
     it("returns 200 with tags for a loaded class", async () => {

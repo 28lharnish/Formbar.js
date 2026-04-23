@@ -71,6 +71,13 @@ module.exports = (router) => {
             throw new ForbiddenError("User is not logged into the selected class", { event: "class.user_not_in_class", reason: "user_not_in_class" });
         }
 
+        const classStudent = rawClassData.students[user.email];
+        const canReadStudents = userHasScope(classStudent, SCOPES.CLASS.STUDENTS.READ, rawClassData);
+        const canReadPoll = userHasScope(classStudent, SCOPES.CLASS.POLL.READ, rawClassData);
+        const canReadRoles = userHasScope(classStudent, SCOPES.CLASS.ROLES.READ, rawClassData);
+        const canManageTags = userHasScope(classStudent, SCOPES.CLASS.TAGS.MANAGE, rawClassData);
+        const canReadSettings = userHasScope(classStudent, SCOPES.CLASS.SESSION.SETTINGS, rawClassData);
+
         // Get the users in the class
         const classUsers = await getClassUsers(user, rawClassData.key);
 
@@ -88,13 +95,12 @@ module.exports = (router) => {
                 name: rawClassData.className,
                 isActive: rawClassData.isActive,
                 owner: rawClassData.owner,
-                students: userHasScope(rawClassData.students[user.email], SCOPES.CLASS.STUDENTS.READ, rawClassData)
-                    ? classUsers
-                    : { [user.email]: classUsers[user.email] },
-                tags: rawClassData.tags,
-                settings: rawClassData.settings,
+                poll: canReadPoll ? rawClassData.poll : undefined,
+                students: canReadStudents ? classUsers : { [user.email]: classUsers[user.email] },
+                tags: canManageTags ? rawClassData.tags : undefined,
+                settings: canReadSettings ? rawClassData.settings : undefined,
                 timer: rawClassData.timer,
-                roles: rawClassData.availableRoles || [],
+                roles: canReadRoles ? rawClassData.availableRoles || [] : undefined,
             },
         });
     });

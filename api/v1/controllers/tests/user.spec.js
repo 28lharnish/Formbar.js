@@ -119,10 +119,19 @@ async function seedSecondStudent() {
 }
 
 describe("GET /api/v1/user/:id", () => {
-    it("returns 200 with user data for an existing user (no auth required)", async () => {
+    it("returns 401 when unauthenticated", async () => {
         const { user } = await seedStudent();
 
         const res = await request(app).get(`/api/v1/user/${user.id}`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 200 with user data for an authenticated self request", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}`).set("Authorization", `Bearer ${tokens.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
@@ -132,31 +141,38 @@ describe("GET /api/v1/user/:id", () => {
         });
     });
 
-    it("returns 404 for a non-existent user", async () => {
-        const res = await request(app).get("/api/v1/user/99999");
+    it("returns 403 when a non-manager requests another user id that does not belong to them", async () => {
+        const { tokens } = await seedStudent();
+        const res = await request(app).get("/api/v1/user/99999").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 
-    it("does not expose email to unauthenticated visitors", async () => {
-        const { user } = await seedStudent();
+    it("returns 403 for authenticated users viewing other profiles without manager scope", async () => {
+        const { tokens: viewerTokens } = await seedStudent();
+        const { user: targetUser } = await seedSecondStudent();
 
-        const res = await request(app).get(`/api/v1/user/${user.id}`);
+        const res = await request(app).get(`/api/v1/user/${targetUser.id}`).set("Authorization", `Bearer ${viewerTokens.accessToken}`);
 
-        expect(res.status).toBe(200);
-        expect(res.body.data.email).toBeUndefined();
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
     });
 
-    it("does not expose email even with a valid token (no auth middleware on this route)", async () => {
-        const { tokens, user } = await seedStudent();
+    it("allows managers to view other users", async () => {
+        const { tokens: managerTokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "manager-viewer@example.com",
+            displayName: "Manager Viewer",
+            permissions: 5,
+        });
+        const { user: targetUser } = await seedSecondStudent();
 
-        const res = await request(app).get(`/api/v1/user/${user.id}`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/user/${targetUser.id}`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
 
         expect(res.status).toBe(200);
-        // The route is public (no isAuthenticated middleware), so req.user is
-        // never populated and the email is not returned.
-        expect(res.body.data.email).toBeUndefined();
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.id).toBe(targetUser.id);
+        expect(res.body.data.email).toBe(targetUser.email);
     });
 });
 
