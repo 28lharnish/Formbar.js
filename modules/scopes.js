@@ -97,8 +97,8 @@ const SCOPES = {
     APP: {
         INVENTORY: {
             GIVE_ITEM: "app.inventory.give_item",
-        }
-    }
+        },
+    },
 };
 
 module.exports = {

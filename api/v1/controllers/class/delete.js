@@ -58,7 +58,11 @@ module.exports = (router) => {
     router.delete(
         "/class/:id",
         isAuthenticated,
-        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, [SCOPES.GLOBAL.SYSTEM.ADMIN], "You do not have permission to delete this classroom."),
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            [SCOPES.GLOBAL.SYSTEM.ADMIN],
+            "You do not have permission to delete this classroom."
+        ),
         async (req, res) => {
             const id = Number(req.params.id);
 

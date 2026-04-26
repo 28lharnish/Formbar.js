@@ -7,10 +7,7 @@ const NotFoundError = require("@errors/not-found-error");
  * @returns {Promise<Object[]>}
  */
 async function getUserInventory(userId) {
-    const inventoryItems = await dbGetAll(
-        "SELECT item_id, quantity FROM inventory WHERE user_id = ?",
-        [userId]
-    );
+    const inventoryItems = await dbGetAll("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
     return inventoryItems;
 }
 
@@ -32,7 +29,6 @@ async function registerItem({ name, description, stackSize = 1, iconUrl = "" }) 
     ]);
     return itemId;
 }
-
 
 /**
  * // * Get item info by id.
@@ -65,14 +61,11 @@ async function addItemToInventory(userId, itemId, quantity) {
 
         // if quantity exceeds stack size, add new row with remaining quantity
         if (newQuantity > itemInfo.stack_size) {
-
             await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [itemInfo.stack_size, userId, itemId]);
             await dbRun("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)", [userId, itemId, newQuantity - itemInfo.stack_size]);
-
         } else {
             await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [newQuantity, userId, itemId]);
         }
-
     } else {
         // If it doesn't exist, insert a new record
         await dbRun("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)", [userId, itemId, quantity]);

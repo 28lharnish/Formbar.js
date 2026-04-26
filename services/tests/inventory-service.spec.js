@@ -25,7 +25,6 @@ const { getUserInventory, getItemById, addItemToInventory, removeItemFromInvento
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
-    
 });
 
 afterEach(async () => {
