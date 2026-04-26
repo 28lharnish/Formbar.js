@@ -3,10 +3,11 @@ const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { getUserInventory, removeItemFromInventory } = require("@services/inventory-service");
 const { requireParam, requireBodyParam } = require("@modules/error-wrapper");
+const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
     function ownsInventory(req) {
-        return req.user.id === req.params.id;
+        return Number(req.user.id) === Number(req.params.id);
     }
 
     router.get("/user/:id/inventory/", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.USERS.MANAGE]), async (req, res) => {
@@ -20,7 +21,7 @@ module.exports = (router) => {
         isAuthenticated,
         isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.USERS.MANAGE]),
         async (req, res) => {
-            const { itemId } = req.params;
+            const { id, itemId } = req.params;
             const { quantity } = req.body;
 
             requireParam(id, "id");
