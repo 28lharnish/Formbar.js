@@ -7,7 +7,7 @@ const { getUserDataFromDb } = require("@services/user-service");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * * Register class controller routes.
+ * Register class controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

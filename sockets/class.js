@@ -50,7 +50,7 @@ module.exports = {
          */
         socket.on("leaveClass", async () => {
             try {
-                leaveClass(socket.request.session);
+                await leaveClass(socket.request.session, socket.request.session.classId);
             } catch (err) {
                 handleSocketError(err, socket, "leaveClass", "There was a server error. Please try again");
             }
@@ -189,14 +189,9 @@ module.exports = {
          */
         onSocketEvent(socket, "classRemoveFromSession", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (socketContext, userId) => {
             try {
-                socketContext.socket.infoEvent(
-                    "classRemoveFromSession",
-                    `ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`
-                );
-                socketContext.socket.infoEvent("classRemoveFromSession", `userId=(${userId})`);
-
                 const classId = await socketContext.resolveClassId();
                 await classKickStudent(userId, classId, { exitRoom: false, ban: false });
+                socketUpdates.classUpdate(classId);
             } catch (err) {
                 handleSocketError(err, socket, "classRemoveFromSession");
             }

@@ -4,32 +4,13 @@ const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { hasClassScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
-const ValidationError = require("@errors/validation-error");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 
 const DEFAULT_POLL_LIMIT = 20;
 const MAX_POLL_LIMIT = 100;
 
 /**
- * * Parse an integer query parameter.
- * @param {string|number|undefined} value - Query value.
- * @param {number} defaultValue - Default value.
- * @returns {number}
- */
-function parseIntegerQueryParam(value, defaultValue) {
-    if (value == null) {
-        return defaultValue;
-    }
-
-    const normalized = String(value).trim();
-    if (!/^-?\d+$/.test(normalized)) {
-        return NaN;
-    }
-
-    return Number.parseInt(normalized, 10);
-}
-
-/**
- * * Register polls controller routes.
+ * Register polls controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -72,13 +53,13 @@ module.exports = (router) => {
      *           maximum: 100
      *         description: Maximum number of polls to return
      *       - in: query
-     *         name: index
+     *         name: offset
      *         required: false
      *         schema:
      *           type: integer
      *           default: 0
      *           minimum: 0
-     *         description: Starting index for pagination (offset)
+     *         description: Number of polls to skip before returning results
      *     responses:
      *       200:
      *         description: Poll data retrieved successfully
@@ -177,18 +158,9 @@ module.exports = (router) => {
 
         req.infoEvent("class.polls.view", "Viewing class polls", { classId });
 
-        const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_POLL_LIMIT);
-        const offset = parseIntegerQueryParam(req.query.offset, 0);
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_POLL_LIMIT, MAX_POLL_LIMIT);
 
-        if (!Number.isInteger(limit) || limit < 0 || limit > MAX_POLL_LIMIT) {
-            throw new ValidationError(`Invalid limit. Expected an integer between 0 and ${MAX_POLL_LIMIT}.`);
-        }
-
-        if (!Number.isInteger(offset) || offset < 0) {
-            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
-        }
-
-        const { polls, total } = await getPreviousPolls(classId, offset, limit);
+        const { polls, total } = await getPreviousPolls(classId, limit, offset);
 
         req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, offset });
 
@@ -196,12 +168,7 @@ module.exports = (router) => {
             success: true,
             data: {
                 polls,
-                pagination: {
-                    total,
-                    limit,
-                    offset,
-                    hasMore: offset + polls.length < total,
-                },
+                pagination: buildPagination(total, limit, offset, polls.length),
             },
         });
     });

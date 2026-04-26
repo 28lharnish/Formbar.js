@@ -12,6 +12,11 @@ const whitelistedIps = {};
 const blacklistedIps = {};
 
 // Removes expired refresh tokens and authorization codes from the database
+/**
+ * Clean Refresh Tokens.
+ *
+ * @returns {Promise<*>}
+ */
 async function cleanRefreshTokens() {
     try {
         const nowInSeconds = Math.floor(Date.now() / 1000);
@@ -29,6 +34,12 @@ async function cleanRefreshTokens() {
     }
 }
 
+/**
+ * Load the persisted user record when in-memory session state is stale.
+ *
+ * @param {*} email - email.
+ * @returns {Promise<*>}
+ */
 async function loadComputedUserByEmail(email) {
     const userRow = await dbGet("SELECT id FROM users WHERE email = ?", [email]);
     if (!userRow) {
@@ -38,6 +49,12 @@ async function loadComputedUserByEmail(email) {
     return getUserDataFromDb(userRow.id);
 }
 
+/**
+ * Synchronize User Into Class State Store.
+ *
+ * @param {*} userData - userData.
+ * @returns {*}
+ */
 function syncUserIntoClassStateStore(userData) {
     let user = classStateStore.getUser(userData.email);
 
@@ -158,6 +175,14 @@ async function isAuthenticated(req, res, next) {
 }
 
 // Create a function to check if the user's email is verified
+/**
+ * Determine whether the current user can pass email verification checks.
+ *
+ * @param {import("express").Request} req - req.
+ * @param {import("express").Response} res - res.
+ * @param {import("express").NextFunction} next - next.
+ * @returns {Promise<*>}
+ */
 async function isVerified(req, res, next) {
     // Use req.user if available (set by isAuthenticated), otherwise decode from token
     let email = req.user?.email;

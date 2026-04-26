@@ -2,6 +2,12 @@ const AppError = require("@errors/app-error");
 const { getLogger, logEvent } = require("@modules/logger");
 const process = require("process");
 
+/**
+ * Detect malformed JSON or body-parser failures so they stay operational.
+ *
+ * @param {*} err - err.
+ * @returns {boolean}
+ */
 function isRequestParseError(err) {
     return err instanceof SyntaxError && (err.status === 400 || err.statusCode === 400) && err.type === "entity.parse.failed";
 }

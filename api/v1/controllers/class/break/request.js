@@ -9,7 +9,7 @@ const AppError = require("@errors/app-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 /**
- * * Register request controller routes.
+ * Register request controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

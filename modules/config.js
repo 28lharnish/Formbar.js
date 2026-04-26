@@ -13,6 +13,11 @@ require("dotenv").config();
  *
  * @returns {Object} An object containing the generated public and private keys.
  */
+/**
+ * Generate the RSA key pair used to sign and verify tokens for this instance.
+ *
+ * @returns {*}
+ */
 function generateKeyPair() {
     // Generate a new RSA key pair
     const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
@@ -37,6 +42,11 @@ function generateKeyPair() {
     };
 }
 
+/**
+ * Load runtime settings, generated keys, and rate-limit values from disk and the environment.
+ *
+ * @returns {*}
+ */
 function getConfig() {
     let publicKey;
     let privateKey;

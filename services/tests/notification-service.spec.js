@@ -24,6 +24,7 @@ jest.mock("@modules/database", () => {
 const {
     createNotification,
     getNotificationsForUser,
+    getNotificationsForUserPaginated,
     getNotificationById,
     markNotificationAsRead,
     deleteNotification,
@@ -89,6 +90,26 @@ describe("getNotificationsForUser()", () => {
     it("returns an empty array when the user has no notifications", async () => {
         const result = await getNotificationsForUser(999);
         expect(result).toEqual([]);
+    });
+});
+
+describe("getNotificationsForUserPaginated()", () => {
+    it("returns notifications ordered by newest first with a total count", async () => {
+        await createNotification(1, "a", {});
+        await createNotification(1, "b", {});
+        await createNotification(1, "c", {});
+
+        const result = await getNotificationsForUserPaginated(1, 2, 1);
+
+        expect(result.total).toBe(3);
+        expect(result.notifications).toHaveLength(2);
+        expect(result.notifications[0].type).toBe("b");
+        expect(result.notifications[1].type).toBe("a");
+    });
+
+    it("returns an empty page for a user with no notifications", async () => {
+        const result = await getNotificationsForUserPaginated(999);
+        expect(result).toEqual({ notifications: [], total: 0 });
     });
 });
 

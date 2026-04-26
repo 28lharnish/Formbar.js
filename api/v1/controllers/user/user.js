@@ -7,7 +7,7 @@ const NotFoundError = require("@errors/not-found-error");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register user controller routes.
+ * Register user controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -46,7 +46,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/user/:id", async (req, res) => {
+    router.get("/user/:id", isAuthenticated, async (req, res) => {
         const userId = req.params.id;
         req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });
 

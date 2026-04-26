@@ -1,4 +1,4 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { hasClassScope, isClassMember } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { setTags } = require("@services/class-service");
@@ -7,13 +7,28 @@ const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register tags controller routes.
+ * Register tags controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
     /**
-     * * Handle the set tags request.
+     * Ensure the requested class is loaded in memory.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @param {import("express").NextFunction} next - next.
+     * @returns {void}
+     */
+    const ensureClassLoaded = (req, res, next) => {
+        const classId = req.params.id;
+        if (!classId || !classStateStore.getClassroom(classId)) {
+            throw new NotFoundError("Class not found or not loaded.");
+        }
+        next();
+    };
+
+    /**
+     * Handle the set tags request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}
@@ -30,7 +45,7 @@ module.exports = (router) => {
             throw new ValidationError("tags must be an array of strings");
         }
 
-        setTags(tags, req.user);
+        await setTags(tags, req.user);
         req.infoEvent("class.tags.update.success", "Class tags updated", { classId, tagCount: tags.length });
         res.status(200).json({
             success: true,
@@ -40,7 +55,7 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/tags:
+     * /api/v1/class/{id}/tags:
      *   get:
      *     summary: Get current class tags
      *     tags:
@@ -72,7 +87,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/tags", isAuthenticated, async (req, res) => {
+    router.get("/class/:id/tags", isAuthenticated, ensureClassLoaded, isClassMember(), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {
@@ -91,7 +106,7 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/:id/tags:
+     * /api/v1/class/{id}/tags:
      *   put:
      *     summary: Set class tags
      *     tags:

@@ -74,7 +74,7 @@ async function resolveAPIKey(rawAPIKey) {
 }
 
 /**
- * Resolve just the email for an API key.
+ * Resolve only the email address for an API key when that is all the caller needs.
  * @param {string} apiKey - Plaintext API key.
  * @returns {Promise<string|null>}
  */

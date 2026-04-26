@@ -2,7 +2,7 @@ const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * * Get a user inventory.
+ * Get a user inventory.
  * @param {number} userId - userId.
  * @returns {Promise<Object[]>}
  */
@@ -12,7 +12,7 @@ async function getInventory(userId) {
 }
 
 /**
- * * Create an inventory item.
+ * Create an inventory item.
  * @param {Object} itemData - Item data.
  * @param {string} itemData.name - Item name.
  * @param {string} itemData.description - Item description.
@@ -31,7 +31,7 @@ async function createItem({ name, description, stackSize = 1, iconUrl = "" }) {
 }
 
 /**
- * * Add quantity of an item to a user inventory.
+ * Add quantity of an item to a user inventory.
  * @param {number} userId - userId.
  * @param {Object} itemId - itemId.
  * @param {number} quantity - quantity.
@@ -51,7 +51,7 @@ async function addItemToInventory(userId, itemId, quantity) {
 }
 
 /**
- * * Remove quantity of an item from a user inventory.
+ * Remove quantity of an item from a user inventory.
  * @param {number} userId - userId.
  * @param {Object} itemId - itemId.
  * @param {number} quantity - quantity.

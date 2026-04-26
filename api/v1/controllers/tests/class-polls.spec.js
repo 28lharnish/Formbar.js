@@ -357,7 +357,7 @@ describe("GET /api/v1/class/:id/polls", () => {
                 hasMore: false,
             },
         });
-        expect(getPreviousPolls).toHaveBeenCalledWith(String(classId), 0, 20);
+        expect(getPreviousPolls).toHaveBeenCalledWith(String(classId), 20, 0);
     });
 
     it("returns standardized previous poll fields", async () => {
@@ -413,7 +413,7 @@ describe("GET /api/v1/class/:id/polls", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(getPreviousPolls).toHaveBeenCalledWith(String(classId), 10, 5);
+        expect(getPreviousPolls).toHaveBeenCalledWith(String(classId), 5, 10);
     });
 
     it("returns 400 when limit is invalid", async () => {

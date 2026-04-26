@@ -21,7 +21,7 @@ jest.mock("@modules/database", () => {
     };
 });
 
-const { getIpAccess } = require("@services/ip-service");
+const { getIpAccess, getIpAccessPaginated } = require("@services/ip-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -110,5 +110,24 @@ describe("getIpAccess()", () => {
 
         expect(whiteIps.sort()).toEqual(["white1", "white2"]);
         expect(blackIps.sort()).toEqual(["black1", "black2"]);
+    });
+});
+
+describe("getIpAccessPaginated()", () => {
+    it("returns paginated whitelist entries with a total count", async () => {
+        await seedIp("192.168.1.1", true);
+        const id2 = await seedIp("10.0.0.1", true);
+        await seedIp("1.2.3.4", false);
+
+        const result = await getIpAccessPaginated("whitelist", 1, 1);
+
+        expect(result.total).toBe(2);
+        expect(result.ips).toHaveLength(1);
+        expect(result.ips[0]).toMatchObject({ id: id2, ip: "10.0.0.1" });
+    });
+
+    it("returns an empty page when the filtered list is empty", async () => {
+        const result = await getIpAccessPaginated("blacklist", 10, 0);
+        expect(result).toEqual({ ips: [], total: 0 });
     });
 });

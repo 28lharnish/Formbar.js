@@ -20,6 +20,11 @@ const dailyRotateTransport = new winston.transports.DailyRotateFile({
 });
 
 // Delete empty log files to avoid clutter
+/**
+ * Remove empty rotated log files so the logs directory does not fill up with noise.
+ *
+ * @returns {*}
+ */
 function deleteEmptyLogFiles() {
     try {
         fs.readdirSync("logs").forEach((file) => {
@@ -33,12 +38,22 @@ function deleteEmptyLogFiles() {
 
 // Will make good later. This is temporary I swear to god. Steven, fix it.
 
+/**
+ * Load the optional Seq transport only when the dependency is available.
+ *
+ * @returns {Promise<*>}
+ */
 async function loadSeqTransport() {
     const seqModule = await import("@datalust/winston-seq");
     return seqModule.SeqTransport;
 }
 
 // Create a new logger instance using the winston library
+/**
+ * Create the shared Winston logger used for app and request event logging.
+ *
+ * @returns {Promise<*>}
+ */
 async function createLogger() {
     deleteEmptyLogFiles();
     const SeqTransport = await loadSeqTransport();
@@ -68,6 +83,16 @@ async function createLogger() {
 }
 
 // wrapper to log events
+/**
+ * Write a structured log event with the common Formbar event shape.
+ *
+ * @param {*} logger - logger.
+ * @param {*} level - level.
+ * @param {*} event - event.
+ * @param {*} message - message.
+ * @param {*} meta - meta.
+ * @returns {*}
+ */
 function logEvent(logger, level, event, message = "", meta = {}) {
     logger.log({
         level: level,
@@ -80,6 +105,11 @@ function logEvent(logger, level, event, message = "", meta = {}) {
 let logger;
 
 // the singleton is a temporary solution hopefully.
+/**
+ * Return the singleton logger instance, creating it on first use.
+ *
+ * @returns {Promise<*>}
+ */
 async function getLogger() {
     if (!logger) {
         logger = await createLogger();

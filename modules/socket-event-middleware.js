@@ -8,6 +8,12 @@ const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
 
+/**
+ * Coerce class identifiers into numeric IDs when possible so socket session state stays aligned with DB values.
+ *
+ * @param {*} raw - raw.
+ * @returns {*}
+ */
 function normalizeClassId(raw) {
     if (raw === undefined || raw === null || raw === "") {
         return raw;
@@ -17,6 +23,12 @@ function normalizeClassId(raw) {
     return Number.isNaN(n) ? raw : n;
 }
 
+/**
+ * Persist session changes after socket middleware updates class-related state.
+ *
+ * @param {*} session - session.
+ * @returns {*}
+ */
 function saveSession(session) {
     if (!session || typeof session.save !== "function") {
         return Promise.resolve();
@@ -27,6 +39,13 @@ function saveSession(session) {
     });
 }
 
+/**
+ * Resolve the active user from memory first, then fall back to the database when needed.
+ *
+ * @param {import("socket.io").Socket} socket - socket.
+ * @param {*} email - email.
+ * @returns {Promise<*>}
+ */
 async function getSocketUserData(socket, email) {
     const cachedUser = classStateStore.getUser(email);
     if (cachedUser) {
@@ -46,6 +65,14 @@ async function getSocketUserData(socket, email) {
     return userRow ? getUserDataFromDb(userRow.id) : null;
 }
 
+/**
+ * Build a lazily-resolved event context so socket guards can inspect user, class, and session state.
+ *
+ * @param {import("socket.io").Socket} socket - socket.
+ * @param {*} event - event.
+ * @param {*} args - args.
+ * @returns {Promise<*>}
+ */
 async function createSocketContext(socket, event, args) {
     const logger = await getLogger();
     const baseMeta = {
@@ -135,10 +162,24 @@ async function createSocketContext(socket, event, args) {
     };
 }
 
+/**
+ * Prefer the explicit denial message when one was supplied by the caller.
+ *
+ * @param {*} message - message.
+ * @param {*} fallback - fallback.
+ * @returns {*}
+ */
 function getDeniedMessage(message, fallback) {
     return message || fallback;
 }
 
+/**
+ * Build a socket guard that rejects users who do not have the required global scope.
+ *
+ * @param {*} scope - scope.
+ * @param {*} message - message.
+ * @returns {boolean}
+ */
 function hasScope(scope, message) {
     return async function (socketContext) {
         const user = await socketContext.resolveUser();
@@ -159,6 +200,13 @@ function hasScope(scope, message) {
     };
 }
 
+/**
+ * Build a socket guard that verifies class membership and class-specific scope access.
+ *
+ * @param {*} scope - scope.
+ * @param {*} message - message.
+ * @returns {boolean}
+ */
 function hasClassScope(scope, message) {
     return async function (socketContext) {
         const user = await socketContext.resolveUser();
@@ -194,6 +242,14 @@ function hasClassScope(scope, message) {
     };
 }
 
+/**
+ * Register a socket event with middleware execution and shared error handling.
+ *
+ * @param {import("socket.io").Socket} socket - socket.
+ * @param {*} event - event.
+ * @param {...*} middlewaresAndHandler - middlewaresAndHandler.
+ * @returns {*}
+ */
 function onSocketEvent(socket, event, ...middlewaresAndHandler) {
     const handler = middlewaresAndHandler.pop();
     const middlewares = middlewaresAndHandler;

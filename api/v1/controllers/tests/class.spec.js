@@ -83,7 +83,7 @@ const kickController = require("../class/kick");
 const regenerateCodeController = require("../class/regenerate-code");
 
 const { classStateStore, Classroom } = require("@services/classroom-service");
-const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
+const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 
 const app = createTestApp(
     createController,
@@ -354,6 +354,46 @@ describe("POST /api/v1/class/:id/join", () => {
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
+
+    it("requires guests to use code enrollment instead of joining by class id", async () => {
+        const { tokens: teacherTokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            displayName: "Teacher",
+            permissions: 4,
+        });
+
+        const createRes = await createClassAsTeacher(teacherTokens, "Guest Code Only");
+        const { classId, key } = createRes.body.data;
+
+        const { loginAsGuest } = require("@services/auth-service");
+        const { createStudentFromUserData } = require("@services/student-service");
+        const guestUser = {
+            id: 9001,
+            email: "guest-join@example.com",
+            displayName: "Guest",
+            API: null,
+            digipogs: 0,
+            permissions: GUEST_PERMISSIONS,
+            globalRoles: [],
+            role: "Guest",
+            verified: 0,
+        };
+        classStateStore.setUser(guestUser.email, createStudentFromUserData(guestUser, { isGuest: true }));
+        const { accessToken } = loginAsGuest(guestUser);
+
+        const joinRes = await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${accessToken}`);
+
+        expect(joinRes.status).toBe(403);
+        expect(joinRes.body.success).toBe(false);
+
+        const enrollRes = await request(app).post(`/api/v1/class/enroll/${key}`).set("Authorization", `Bearer ${accessToken}`);
+
+        expect(enrollRes.status).toBe(200);
+        expect(enrollRes.body).toMatchObject({
+            success: true,
+            data: { roomId: classId },
+        });
+    });
 });
 
 describe("POST /api/v1/class/:id/leave", () => {
@@ -437,6 +477,36 @@ describe("GET /api/v1/class/:id/students", () => {
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
+    });
+
+    it("returns paginated class students for a loaded classroom", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-students@example.com",
+            displayName: "Teacher Students",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "STUD1", className: "Students Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const { user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-students@example.com",
+            displayName: "Student Students",
+            permissions: 2,
+        });
+        await enrollUserInClass(student, classId, 2);
+
+        const res = await request(app).get(`/api/v1/class/${classId}/students?limit=1`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(Array.isArray(res.body.data.students)).toBe(true);
+        expect(res.body.data.students).toHaveLength(1);
+        expect(res.body.data.pagination).toEqual({
+            total: 2,
+            limit: 1,
+            offset: 0,
+            hasMore: true,
+        });
     });
 });
 
@@ -653,6 +723,32 @@ describe("PUT /api/v1/class/:id/tags", () => {
             .send({ tags: ["math"] });
         expect(res.status).toBe(403);
     });
+
+    it("persists tags for a loaded class when the teacher is active in that class", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-tags@example.com",
+            displayName: "Tag Teacher",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+
+        classStateStore.updateUser(user.email, { activeClass: classId });
+
+        const res = await request(app)
+            .put(`/api/v1/class/${classId}/tags`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ tags: ["math", "science"] });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        const classroom = classStateStore.getClassroom(classId);
+        expect(classroom.tags).toEqual(["math", "science", "Offline"]);
+
+        const persisted = await mockDatabase.dbGet("SELECT tags FROM classroom WHERE id = ?", [classId]);
+        expect(persisted.tags).toBe("math,science,Offline");
+    });
 });
 
 describe("GET /api/v1/class/:id/links", () => {
@@ -671,12 +767,18 @@ describe("GET /api/v1/class/:id/links", () => {
 
         await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "Course Website", "https://example.com"]);
 
-        const res = await request(app).get(`/api/v1/class/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/class/${classId}/links?limit=1`).set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.data.links)).toBe(true);
         expect(res.body.data.links).toHaveLength(1);
         expect(res.body.data.links[0]).toMatchObject({ name: "Course Website", url: "https://example.com" });
+        expect(res.body.data.pagination).toEqual({
+            total: 1,
+            limit: 1,
+            offset: 0,
+            hasMore: false,
+        });
     });
 });
 
@@ -895,8 +997,14 @@ describe("GET /api/v1/class/:id/banned", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
-        expect(res.body.data).toHaveLength(0);
+        expect(Array.isArray(res.body.data.banned)).toBe(true);
+        expect(res.body.data.banned).toHaveLength(0);
+        expect(res.body.data.pagination).toEqual({
+            total: 0,
+            limit: 20,
+            offset: 0,
+            hasMore: false,
+        });
     });
 });
 
@@ -931,6 +1039,29 @@ describe("POST /api/v1/class/:id/students/:userId/kick", () => {
 
         const classUser = await mockDatabase.dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [classId, student.id]);
         expect(classUser).toBeUndefined();
+    });
+
+    it("returns 404 when the student is no longer enrolled in the class", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-kick-missing@example.com",
+            displayName: "Teacher Kick Missing",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "KICK2", className: "Kick Missing Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const { user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-kick-missing@example.com",
+            displayName: "Student Missing",
+            permissions: 2,
+        });
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/kick`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
     });
 });
 

@@ -1,7 +1,7 @@
 const { dbGet, dbRun } = require("@modules/database");
 
 /**
- * * Ensure the built-in developer pool exists.
+ * Ensure the built-in developer pool exists.
  * @returns {Promise<void>}
  */
 async function ensureFormbarDeveloperPool() {

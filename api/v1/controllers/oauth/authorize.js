@@ -4,7 +4,7 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const { isAuthenticated } = require("@middleware/authentication");
 
 /**
- * * Register authorize controller routes.
+ * Register authorize controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -94,7 +94,7 @@ module.exports = (router) => {
         req.infoEvent("oauth.authorize.attempt", "OAuth authorization attempt", { client_id, scope });
 
         // Create an authorization token for the client
-        const authorizationCode = authService.generateAuthorizationCode({ client_id, redirect_uri, scope, authorization });
+        const authorizationCode = await authService.generateAuthorizationCode({ client_id, redirect_uri, scope, authorization });
 
         // Build redirect URL
         let url;

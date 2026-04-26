@@ -6,7 +6,7 @@ const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
 /**
- * * Register verify controller routes.
+ * Register verify controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

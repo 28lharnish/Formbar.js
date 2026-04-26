@@ -15,7 +15,66 @@ const UNAUTHENTICATED_USER_RATE_LIMIT = 25;
 const AUTHENTICATED_USER_RATE_LIMIT = 120;
 const AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS = 25;
 const TEACHER_RATE_LIMIT = 225;
+const GLOBAL_BUCKET_MULTIPLIER = 4;
+const MAX_PATH_BUCKETS_PER_IDENTITY = 250;
 
+/**
+ * Strip the bearer prefix from an Authorization header before token validation.
+ *
+ * @param {*} value - value.
+ * @returns {*}
+ */
+function getBearerToken(value) {
+    return typeof value === "string" ? value.replace(/^Bearer\s+/i, "") : null;
+}
+
+/**
+ * Collapse variable path segments so similar routes share a stable rate-limit bucket.
+ *
+ * @param {*} path - path.
+ * @returns {*}
+ */
+function normalizeRateLimitPath(path) {
+    return String(path || "/")
+        .split("/")
+        .map((segment) => {
+            if (!segment) return segment;
+            if (/^\d+$/.test(segment)) return ":id";
+            if (/^[0-9a-f-]{16,}$/i.test(segment)) return ":token";
+            if (segment.length > 24) return ":value";
+            return segment;
+        })
+        .join("/");
+}
+
+/**
+ * Detect auth routes that should use the stricter login and token exchange limits.
+ *
+ * @param {*} path - path.
+ * @returns {boolean}
+ */
+function isAuthPath(path) {
+    return /(?:^|\/)auth(?:\/|$)/.test(path);
+}
+
+/**
+ * Pick a non-critical bucket to evict when one identity has too many tracked paths.
+ *
+ * @param {*} userRequests - userRequests.
+ * @param {*} path - path.
+ * @param {*} globalPath - globalPath.
+ * @returns {*}
+ */
+function getBucketKeyToEvict(userRequests, path, globalPath) {
+    return Object.keys(userRequests).find((key) => key !== path && key !== globalPath && key !== "hasBeenMessaged");
+}
+
+/**
+ * Resolve a stable identity from the request so API keys, JWTs, and IPs share consistent limits.
+ *
+ * @param {import("express").Request} req - req.
+ * @returns {Promise<*>}
+ */
 async function resolveRateLimitIdentity(req) {
     const fallbackIdentity = `ip:${req.ip || "unknown"}`;
 
@@ -34,7 +93,7 @@ async function resolveRateLimitIdentity(req) {
 
     const authorizationHeader = req.headers.authorization;
     if (authorizationHeader) {
-        const decodedToken = verifyToken(authorizationHeader);
+        const decodedToken = verifyToken(getBearerToken(authorizationHeader));
         if (decodedToken && !decodedToken.error && decodedToken.email) {
             const userRow = await dbGet("SELECT id FROM users WHERE email = ?", [decodedToken.email]);
             if (userRow?.id) {
@@ -49,6 +108,14 @@ async function resolveRateLimitIdentity(req) {
     return { identifier: fallbackIdentity, user: null };
 }
 
+/**
+ * Enforce per-identity request caps and fail fast with 429 before the handlers do extra work.
+ *
+ * @param {import("express").Request} req - req.
+ * @param {import("express").Response} res - res.
+ * @param {import("express").NextFunction} next - next.
+ * @returns {Promise<*>}
+ */
 async function rateLimiter(req, res, next) {
     const { identifier, user } = await resolveRateLimitIdentity(req);
     const currentTime = Date.now();
@@ -59,7 +126,7 @@ async function rateLimiter(req, res, next) {
     if (permissionLevel >= TEACHER_PERMISSIONS) {
         maximumRequests = TEACHER_RATE_LIMIT;
     } else if (permissionLevel >= STUDENT_PERMISSIONS) {
-        maximumRequests = req.path.startsWith("/auth/") ? AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS : AUTHENTICATED_USER_RATE_LIMIT;
+        maximumRequests = isAuthPath(req.path) ? AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS : AUTHENTICATED_USER_RATE_LIMIT;
     }
 
     // Apply the configurable multiplier so test runs can relax limits.
@@ -72,23 +139,37 @@ async function rateLimiter(req, res, next) {
 
     // Get the user's request log
     const userRequests = rateLimits[identifier];
-    const path = req.path;
+    const path = normalizeRateLimitPath(req.path);
+    const globalPath = "__global__";
 
     // Initialize request array for this path if it doesn't exist
     if (!userRequests[path]) {
         userRequests[path] = [];
     }
+    if (!userRequests[globalPath]) {
+        userRequests[globalPath] = [];
+    }
+
+    const bucketKeys = Object.keys(userRequests).filter((key) => key !== "hasBeenMessaged");
+    if (bucketKeys.length > MAX_PATH_BUCKETS_PER_IDENTITY) {
+        const keyToEvict = getBucketKeyToEvict(userRequests, path, globalPath);
+        if (keyToEvict) {
+            delete userRequests[keyToEvict];
+        }
+    }
 
     // Remove timestamps that are outside the time frame
-    while (userRequests[path].length && currentTime - userRequests[path][0] > timeFrame) {
-        userRequests[path].shift();
-        userRequests["hasBeenMessaged"] = false;
+    for (const key of [path, globalPath]) {
+        while (userRequests[key].length && currentTime - userRequests[key][0] > timeFrame) {
+            userRequests[key].shift();
+            userRequests["hasBeenMessaged"] = false;
+        }
     }
 
     // Check if the user has exceeded the limit
     // If they have, send a rate limit response
     // Otherwise, log the request and proceed
-    if (userRequests[path].length >= maximumRequests) {
+    if (userRequests[path].length >= maximumRequests || userRequests[globalPath].length >= maximumRequests * GLOBAL_BUCKET_MULTIPLIER) {
         if (!userRequests["hasBeenMessaged"]) {
             userRequests["hasBeenMessaged"] = true;
             req.warnEvent("rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
@@ -104,9 +185,11 @@ async function rateLimiter(req, res, next) {
     }
 
     userRequests[path].push(currentTime);
+    userRequests[globalPath].push(currentTime);
     next();
 }
 
 module.exports = {
     rateLimiter,
+    getBucketKeyToEvict,
 };

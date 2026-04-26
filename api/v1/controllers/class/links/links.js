@@ -1,12 +1,16 @@
 const { SCOPES } = require("@modules/permissions");
 const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const { isUserEnrolled, getClassLinks } = require("@services/class-membership-service");
+const { isUserEnrolled, getClassLinksPaginated } = require("@services/class-membership-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const ForbiddenError = require("@errors/forbidden-error");
 
+const DEFAULT_LINK_LIMIT = 20;
+const MAX_LINK_LIMIT = 100;
+
 /**
- * * Register links controller routes.
+ * Register links controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -18,7 +22,7 @@ module.exports = (router) => {
      *     summary: Get all links for a class
      *     tags:
      *       - Class - Links
-     *     description: Retrieves all links associated with a classroom. Requires authentication and membership in the classroom.
+     *     description: Retrieves paginated links associated with a classroom. Requires authentication and membership in the classroom.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -29,6 +33,23 @@ module.exports = (router) => {
      *         schema:
      *           type: string
      *         description: Class ID
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 20
+     *           minimum: 1
+     *           maximum: 100
+     *         description: Number of links to return per page
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 0
+     *           minimum: 0
+     *         description: Number of links to skip before returning results
      *     responses:
      *       200:
      *         description: Links retrieved successfully
@@ -93,6 +114,17 @@ module.exports = (router) => {
      *           type: array
      *           items:
      *             $ref: '#/components/schemas/Link'
+     *         pagination:
+     *           type: object
+     *           properties:
+     *             total:
+     *               type: integer
+     *             limit:
+     *               type: integer
+     *             offset:
+     *               type: integer
+     *             hasMore:
+     *               type: boolean
      *     LinksResponse:
      *       type: object
      *       properties:
@@ -107,12 +139,16 @@ module.exports = (router) => {
         requireQueryParam(classId, "id");
         req.infoEvent("class.links.view.attempt", "Attempting to view class links", { classId });
 
-        const links = await getClassLinks(classId);
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_LINK_LIMIT, MAX_LINK_LIMIT);
+        const { links, total } = await getClassLinksPaginated(classId, limit, offset);
         if (links) {
             req.infoEvent("class.links.view.success", "Class links returned", { classId, linkCount: links.length });
             res.status(200).json({
                 success: true,
-                data: { links },
+                data: {
+                    links,
+                    pagination: buildPagination(total, limit, offset, links.length),
+                },
             });
         }
     });

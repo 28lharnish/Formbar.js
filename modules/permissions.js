@@ -44,6 +44,12 @@ const CLASS_TEACHER_SCOPES = [
 const CLASS_MANAGER_SCOPES = [SCOPES.CLASS.SYSTEM.ADMIN];
 const CLASS_BLOCKED_SCOPES = [SCOPES.CLASS.SYSTEM.BLOCKED];
 
+/**
+ * Normalize a stored scope field into an array of string scope keys.
+ *
+ * @param {*} value - value.
+ * @returns {*}
+ */
 function parseScopesField(value) {
     if (Array.isArray(value)) {
         return value.filter((scope) => typeof scope === "string");
@@ -61,11 +67,25 @@ function parseScopesField(value) {
     }
 }
 
+/**
+ * Keep only scopes that belong to the requested permission domain.
+ *
+ * @param {*} value - value.
+ * @param {*} domain - domain.
+ * @returns {*}
+ */
 function filterScopesByDomain(value, domain) {
     const prefix = domain === "global" ? "global." : "class.";
     return parseScopesField(value).filter((scope) => typeof scope === "string" && scope.startsWith(prefix));
 }
 
+/**
+ * Check whether any candidate scope exists in the resolved scope set.
+ *
+ * @param {*} scopeSet - scopeSet.
+ * @param {*} candidateScopes - candidateScopes.
+ * @returns {boolean}
+ */
 function hasAnyScope(scopeSet, candidateScopes) {
     return candidateScopes.some((scope) => scopeSet.has(scope));
 }
@@ -105,6 +125,14 @@ function normalizeScopes(input, options = {}) {
     return [...scopes];
 }
 
+/**
+ * Expand a role-like value into the scopes that apply for one domain.
+ *
+ * @param {*} roleLike - roleLike.
+ * @param {*} domain - domain.
+ * @param {*} options - options.
+ * @returns {*}
+ */
 function getScopesFromRoleLike(roleLike, domain, options = {}) {
     if (!roleLike) {
         return [];
@@ -130,11 +158,23 @@ function getScopesFromRoleLike(roleLike, domain, options = {}) {
     return [];
 }
 
+/**
+ * Detect whether the global scopes include admin access.
+ *
+ * @param {*} globalScopes - globalScopes.
+ * @returns {boolean}
+ */
 function hasGlobalAdminScope(globalScopes) {
     const scopeSet = new Set(normalizeScopes(globalScopes, { domain: "global" }));
     return hasAnyScope(scopeSet, GLOBAL_MANAGER_SCOPES);
 }
 
+/**
+ * Collapse global scopes into the highest matching permission level.
+ *
+ * @param {*} globalScopes - globalScopes.
+ * @returns {*}
+ */
 function computeGlobalPermissionLevel(globalScopes) {
     const scopeSet = new Set(normalizeScopes(globalScopes, { domain: "global" }));
 
@@ -161,6 +201,13 @@ function computeGlobalPermissionLevel(globalScopes) {
     return GUEST_PERMISSIONS;
 }
 
+/**
+ * Collapse class scopes into the highest matching class permission level.
+ *
+ * @param {*} classScopes - classScopes.
+ * @param {*} options - options.
+ * @returns {*}
+ */
 function computeClassPermissionLevel(classScopes, options = {}) {
     const scopeSet = new Set(normalizeScopes(classScopes, { domain: "class" }));
     const hasOwnerBypass = Boolean(options.isOwner);
@@ -188,14 +235,36 @@ function computeClassPermissionLevel(classScopes, options = {}) {
     return GUEST_PERMISSIONS;
 }
 
+/**
+ * Check whether the resolved global permission meets a minimum level.
+ *
+ * @param {*} globalScopes - globalScopes.
+ * @param {*} minimumLevel - minimumLevel.
+ * @returns {boolean}
+ */
 function hasGlobalPermissionLevel(globalScopes, minimumLevel) {
     return computeGlobalPermissionLevel(globalScopes) >= minimumLevel;
 }
 
+/**
+ * Check whether the resolved class permission meets a minimum level.
+ *
+ * @param {*} classScopes - classScopes.
+ * @param {*} minimumLevel - minimumLevel.
+ * @param {*} options - options.
+ * @returns {boolean}
+ */
 function hasClassPermissionLevel(classScopes, minimumLevel, options = {}) {
     return computeClassPermissionLevel(classScopes, options) >= minimumLevel;
 }
 
+/**
+ * Resolve the permission level for the requested domain from mixed input.
+ *
+ * @param {*} input - input.
+ * @param {*} options - options.
+ * @returns {*}
+ */
 function computePermissionLevel(input, options = {}) {
     const domain = options.domain === "global" ? "global" : "class";
     const scopes = normalizeScopes(input, options);

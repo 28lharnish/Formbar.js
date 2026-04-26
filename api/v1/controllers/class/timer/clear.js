@@ -5,7 +5,7 @@ const { SCOPES } = require("@modules/permissions");
 const classService = require("@services/class-service");
 
 /**
- * * Register clear controller routes.
+ * Register clear controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

@@ -8,7 +8,7 @@ const { broadcastClassUpdate } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * * Register roles controller routes.
+ * Register roles controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

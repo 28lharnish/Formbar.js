@@ -122,7 +122,7 @@ describe("OIDC callback redirects", () => {
         jest.clearAllMocks();
     });
 
-    it("redirects the callback to the stored client URL with the callback data in query params", async () => {
+    it("redirects the callback to the stored client URL and stores tokens in HttpOnly cookies", async () => {
         const agent = request.agent(app);
 
         const startRes = await agent.get("/api/v1/auth/oidc/google").query({ origin: "http://localhost:3000/login?redirect=%2Fclasses" });
@@ -139,12 +139,10 @@ describe("OIDC callback redirects", () => {
         const redirectLocation = new URL(callbackRes.headers.location);
         expect(`${redirectLocation.origin}${redirectLocation.pathname}`).toBe("http://localhost:3000/login");
         expect(redirectLocation.searchParams.get("redirect")).toBe("/classes");
-        expect(redirectLocation.searchParams.get("accessToken")).toBe("formbar-access-token");
-        expect(redirectLocation.searchParams.get("refreshToken")).toBe("formbar-refresh-token");
-        expect(redirectLocation.searchParams.get("legacyToken")).toBe("formbar-legacy-token");
-        expect(redirectLocation.searchParams.get("userId")).toBe("7");
-        expect(redirectLocation.searchParams.get("email")).toBe("oidc@example.com");
-        expect(redirectLocation.searchParams.get("displayName")).toBe("OIDC User");
+        expect(redirectLocation.searchParams.get("oidc")).toBe("success");
+        expect(redirectLocation.searchParams.get("accessToken")).toBeNull();
+        expect(callbackRes.headers["set-cookie"].join(";")).toContain("formbar_access_token=formbar-access-token");
+        expect(callbackRes.headers["set-cookie"].join(";")).toContain("HttpOnly");
     });
 
     it("falls back to the configured frontend login callback when no origin was stored", async () => {
@@ -161,7 +159,17 @@ describe("OIDC callback redirects", () => {
 
         const redirectLocation = new URL(callbackRes.headers.location);
         expect(`${redirectLocation.origin}${redirectLocation.pathname}`).toBe("http://localhost:3000/login");
-        expect(redirectLocation.searchParams.get("accessToken")).toBe("formbar-access-token");
-        expect(redirectLocation.searchParams.get("refreshToken")).toBe("formbar-refresh-token");
+        expect(redirectLocation.searchParams.get("oidc")).toBe("success");
+        expect(redirectLocation.searchParams.get("accessToken")).toBeNull();
+        expect(callbackRes.headers["set-cookie"].join(";")).toContain("formbar_refresh_token=formbar-refresh-token");
+    });
+
+    it("rejects an untrusted callback origin", async () => {
+        const agent = request.agent(app);
+
+        const startRes = await agent.get("/api/v1/auth/oidc/google").query({ origin: "https://evil.example/callback" });
+
+        expect(startRes.status).toBe(400);
+        expect(startRes.body.error.message).toMatch(/not allowed/i);
     });
 });

@@ -8,13 +8,13 @@ const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register approve controller routes.
+ * Register approve controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
     /**
-     * * Handle the approve break request.
+     * Handle the approve break request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}

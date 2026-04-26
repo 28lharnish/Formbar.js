@@ -7,6 +7,13 @@ const { getUserDataFromDb } = require("@services/user-service");
 const { dbGet } = require("@modules/database");
 const { getUserScopes } = require("@modules/scope-resolver");
 
+/**
+ * Resolve the socket user from cache, session state, or the database.
+ *
+ * @param {import("socket.io").Socket} socket - socket.
+ * @param {*} email - email.
+ * @returns {Promise<*>}
+ */
 async function getSocketUserData(socket, email) {
     const cachedUser = classStateStore.getUser(email);
     if (cachedUser) {

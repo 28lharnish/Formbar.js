@@ -3,7 +3,7 @@ const { isClassActive } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
 
 /**
- * * Register active controller routes.
+ * Register active controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

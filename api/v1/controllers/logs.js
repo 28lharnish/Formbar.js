@@ -2,9 +2,13 @@ const { getAllLogs, getLog } = require("@services/log-service");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { SCOPES } = require("@modules/permissions");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
+
+const DEFAULT_LOG_LIMIT = 20;
+const MAX_LOG_LIMIT = 100;
 
 /**
- * * Register logs controller routes.
+ * Register logs controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -16,10 +20,28 @@ module.exports = (router) => {
      *     summary: Get all available logs
      *     tags:
      *       - Logs
-     *     description: Returns a list of all available log files
+     *     description: Returns a paginated list of available log files
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 20
+     *           minimum: 1
+     *           maximum: 100
+     *         description: Number of logs to return per page
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 0
+     *           minimum: 0
+     *         description: Number of logs to skip before returning results
      *     responses:
      *       200:
      *         description: List of logs retrieved successfully
@@ -32,6 +54,17 @@ module.exports = (router) => {
      *                   type: array
      *                   items:
      *                     type: string
+     *                 pagination:
+     *                   type: object
+     *                   properties:
+     *                     total:
+     *                       type: integer
+     *                     limit:
+     *                       type: integer
+     *                     offset:
+     *                       type: integer
+     *                     hasMore:
+     *                       type: boolean
      *       500:
      *         description: Server error
      *         content:
@@ -39,14 +72,16 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    // Handle displaying all logs to the manager
     router.get("/logs", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         req.infoEvent("logs.view_all", "Viewing all logs");
-        const logs = await getAllLogs();
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT);
+        const allLogs = (await getAllLogs()).sort();
+        const logs = allLogs.slice(offset, offset + limit);
         res.json({
             success: true,
             data: {
                 logs,
+                pagination: buildPagination(allLogs.length, limit, offset, logs.length),
             },
         });
     });
@@ -87,7 +122,6 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    // Handle displaying a specific log to the manager
     router.get("/logs/:log", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const logFileName = req.params.log;
         req.infoEvent("logs.view_single", "Viewing log file", { logFileName });

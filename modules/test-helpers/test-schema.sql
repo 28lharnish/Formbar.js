@@ -28,6 +28,21 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_type ON refresh_tokens (token_type
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_type ON refresh_tokens (user_id, token_type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_token_hash_unique ON refresh_tokens (token_hash);
 
+-- Purpose-bound account tokens
+CREATE TABLE IF NOT EXISTS "user_tokens" (
+    "id"         INTEGER NOT NULL,
+    "user_id"    INTEGER NOT NULL,
+    "purpose"    TEXT    NOT NULL,
+    "token_hash" TEXT    NOT NULL UNIQUE,
+    "created_at" INTEGER NOT NULL,
+    "expires_at" INTEGER NOT NULL,
+    "used_at"    INTEGER,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+CREATE INDEX IF NOT EXISTS idx_user_tokens_user_purpose ON user_tokens (user_id, purpose);
+CREATE INDEX IF NOT EXISTS idx_user_tokens_purpose_hash ON user_tokens (purpose, token_hash);
+CREATE INDEX IF NOT EXISTS idx_user_tokens_expires ON user_tokens (expires_at);
+
 -- Classroom (final state: no permissions column, no settings column)
 CREATE TABLE IF NOT EXISTS "classroom" (
     "id"       INTEGER NOT NULL UNIQUE,
@@ -232,7 +247,7 @@ CREATE TABLE IF NOT EXISTS "inventory" (
 -- Item registry (migration 19)
 CREATE TABLE IF NOT EXISTS "item_registry" (
     "id"          INTEGER NOT NULL,
-    "name"        TEXT    NOT NULL UNIQUE,
+    "name"        TEXT    NOT NULL,
     "description" TEXT,
     "stack_size"  INTEGER NOT NULL DEFAULT 1 CHECK ("stack_size" >= 0),
     "image_url"   TEXT,
@@ -254,3 +269,23 @@ CREATE TABLE IF NOT EXISTS "trades" (
 CREATE INDEX IF NOT EXISTS idx_trades_from_user ON trades (from_user);
 CREATE INDEX IF NOT EXISTS idx_trades_to_user ON trades (to_user);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades (status);
+
+-- Apps and registered OAuth redirect URIs
+CREATE TABLE IF NOT EXISTS "apps" (
+    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "owner_user_id" INTEGER NOT NULL,
+    "share_item_id" INTEGER NOT NULL,
+    "pool_id" INTEGER NOT NULL,
+    "api_key_hash" TEXT NOT NULL UNIQUE,
+    "api_secret_hash" TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "app_redirect_uris" (
+    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "app_id" INTEGER NOT NULL,
+    "redirect_uri" TEXT NOT NULL,
+    UNIQUE ("app_id", "redirect_uri")
+);
+CREATE INDEX IF NOT EXISTS idx_app_redirect_uris_app ON app_redirect_uris (app_id);

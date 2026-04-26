@@ -2,83 +2,16 @@ const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet, dbRun } = require("@modules/database");
 const { SCOPES, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
-const { classStateStore } = require("@services/classroom-service");
 const { managerUpdate } = require("@services/socket-updates-service");
 const { findRoleByPermissionLevel } = require("@services/role-service");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * * Register ban controller routes.
+ * Register ban controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
-    /**
-     * * Handle the ban user request.
-     * @param {import("express").Request} req - req.
-     * @param {import("express").Response} res - res.
-     * @returns {Promise<void>}
-     */
-    const banUserHandler = async (req, res) => {
-        const userId = req.params.id;
-        req.infoEvent("user.ban.attempt", "Attempting to ban user");
-
-        const user = await dbGet(`SELECT * FROM users WHERE id = ?`, [userId]);
-        if (!user) {
-            throw new NotFoundError("User not found", { event: "user.ban.failed", reason: "user_not_found" });
-        }
-
-        // Remove all global roles and assign the Banned role
-        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
-        const bannedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, null);
-        if (bannedRole) {
-            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, bannedRole.id]);
-        }
-
-        await managerUpdate();
-
-        req.infoEvent("user.ban.success", "User banned successfully", {});
-        res.status(200).json({
-            success: true,
-            data: {
-                ok: true,
-            },
-        });
-    };
-
-    /**
-     * * Handle the unban user request.
-     * @param {import("express").Request} req - req.
-     * @param {import("express").Response} res - res.
-     * @returns {Promise<void>}
-     */
-    const unbanUserHandler = async (req, res) => {
-        const userId = req.params.id;
-        req.infoEvent("user.unban.attempt", "Attempting to unban user");
-
-        const user = await dbGet(`SELECT * FROM users WHERE id = ?`, [userId]);
-        if (!user) {
-            throw new NotFoundError("User not found", { event: "user.unban.failed", reason: "user_not_found" });
-        }
-
-        // Remove Banned role and assign Student role
-        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
-        const studentRole = await findRoleByPermissionLevel(STUDENT_PERMISSIONS, null);
-        if (studentRole) {
-            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, studentRole.id]);
-        }
-
-        await managerUpdate();
-
-        req.infoEvent("user.unban.success", "User unbanned successfully", {});
-        res.status(200).json({
-            success: true,
-            data: {
-                ok: true,
-            },
-        });
-    };
-
     /**
      * @swagger
      * /api/v1/user/{id}/ban:
@@ -121,16 +54,31 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.patch("/user/:id/ban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), banUserHandler);
+    router.patch("/user/:id/ban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
+        const userId = req.params.id;
+        req.infoEvent("user.ban.attempt", "Attempting to ban user");
 
-    // Deprecated endpoint - kept for backwards compatibility, use PATCH /api/v1/user/:id/ban instead
-    router.get("/user/:id/ban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use PATCH /api/v1/user/:id/ban instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use PATCH /api/v1/user/:id/ban instead. This endpoint will be removed in a future version."'
-        );
-        await banUserHandler(req, res);
+        const user = await dbGet(`SELECT * FROM users WHERE id = ?`, [userId]);
+        if (!user) {
+            throw new NotFoundError("User not found", { event: "user.ban.failed", reason: "user_not_found" });
+        }
+
+        // Remove all global roles and assign the Banned role
+        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
+        const bannedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, null);
+        if (bannedRole) {
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, bannedRole.id]);
+        }
+
+        await managerUpdate();
+
+        req.infoEvent("user.ban.success", "User banned successfully", {});
+        res.status(200).json({
+            success: true,
+            data: {
+                ok: true,
+            },
+        });
     });
 
     /**
@@ -175,15 +123,30 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.patch("/user/:id/unban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), unbanUserHandler);
+    router.patch("/user/:id/unban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
+        const userId = req.params.id;
+        req.infoEvent("user.unban.attempt", "Attempting to unban user");
 
-    // Deprecated endpoint - kept for backwards compatibility, use PATCH /api/v1/user/:id/unban instead
-    router.get("/user/:id/unban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use PATCH /api/v1/user/:id/unban instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use PATCH /api/v1/user/:id/unban instead. This endpoint will be removed in a future version."'
-        );
-        await unbanUserHandler(req, res);
+        const user = await dbGet(`SELECT * FROM users WHERE id = ?`, [userId]);
+        if (!user) {
+            throw new NotFoundError("User not found", { event: "user.unban.failed", reason: "user_not_found" });
+        }
+
+        // Remove Banned role and assign Student role
+        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
+        const studentRole = await findRoleByPermissionLevel(STUDENT_PERMISSIONS, null);
+        if (studentRole) {
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, studentRole.id]);
+        }
+
+        await managerUpdate();
+
+        req.infoEvent("user.unban.success", "User unbanned successfully", {});
+        res.status(200).json({
+            success: true,
+            data: {
+                ok: true,
+            },
+        });
     });
 };

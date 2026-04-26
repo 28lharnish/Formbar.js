@@ -9,7 +9,7 @@ const { findRoleByPermissionLevel } = require("@services/role-service");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register perm controller routes.
+ * Register perm controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

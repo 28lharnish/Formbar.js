@@ -31,7 +31,7 @@ jest.mock("@modules/scope-resolver", () => ({
     getUserScopes: jest.fn(() => ({ global: [], class: [] })),
 }));
 
-const { rateLimiter } = require("@middleware/rate-limiter");
+const { rateLimiter, getBucketKeyToEvict } = require("@middleware/rate-limiter");
 const { resolveAPIKey } = require("@services/api-key-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
@@ -89,5 +89,34 @@ describe("HTTP rate-limiter middleware", () => {
                 error: expect.stringContaining("Please try again"),
             })
         );
+    });
+
+    it("does not choose the current path or global bucket for path bucket eviction", () => {
+        const keyToEvict = getBucketKeyToEvict(
+            {
+                __global__: [1],
+                "/api/v1/current": [],
+                hasBeenMessaged: false,
+                "/api/v1/old": [1],
+            },
+            "/api/v1/current",
+            "__global__"
+        );
+
+        expect(keyToEvict).toBe("/api/v1/old");
+    });
+
+    it("skips eviction when only protected buckets are present", () => {
+        const keyToEvict = getBucketKeyToEvict(
+            {
+                __global__: [1],
+                "/api/v1/current": [],
+                hasBeenMessaged: false,
+            },
+            "/api/v1/current",
+            "__global__"
+        );
+
+        expect(keyToEvict).toBeUndefined();
     });
 });
