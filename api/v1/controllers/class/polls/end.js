@@ -5,7 +5,7 @@ const { SCOPES } = require("@modules/permissions");
 const { updatePoll } = require("@services/poll-service");
 
 /**
- * * Register end controller routes.
+ * Register end controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

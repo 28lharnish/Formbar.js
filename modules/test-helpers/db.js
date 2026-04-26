@@ -79,6 +79,7 @@ function makeDbGetAll(db) {
  */
 const CLEARABLE_TABLES = [
     "users",
+    "user_tokens",
     "refresh_tokens",
     "classroom",
     "classusers",
@@ -99,6 +100,8 @@ const CLEARABLE_TABLES = [
     "inventory",
     "item_registry",
     "trades",
+    "apps",
+    "app_redirect_uris",
 ];
 
 /**

@@ -389,17 +389,17 @@ describe("getPreviousPolls", () => {
         expect(total).toBe(3);
     });
 
-    it("respects pagination with index and limit", async () => {
+    it("respects pagination with limit and offset", async () => {
         for (let i = 0; i < 5; i++) {
             await seedPollHistory(1, `Poll ${i}`, []);
         }
 
-        const page = await getPreviousPolls(1, 2, 2);
+        const page = await getPreviousPolls(1, 2, 1);
 
         expect(page.polls).toHaveLength(2);
         expect(page.total).toBe(5);
-        expect(page.polls[0].prompt).toBe("Poll 2");
-        expect(page.polls[1].prompt).toBe("Poll 1");
+        expect(page.polls[0].prompt).toBe("Poll 3");
+        expect(page.polls[1].prompt).toBe("Poll 2");
     });
 
     it("only returns polls for the requested class", async () => {

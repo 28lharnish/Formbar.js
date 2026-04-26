@@ -3,7 +3,7 @@ const ValidationError = require("@errors/validation-error");
 const AuthError = require("@errors/auth-error");
 
 /**
- * * Register refresh controller routes.
+ * Register refresh controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

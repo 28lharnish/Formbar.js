@@ -1,26 +1,26 @@
 const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
-const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { compare } = require("@modules/crypto");
+const { dbGet, dbRun } = require("@modules/database");
 const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
+const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
-const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const AuthError = require("@errors/auth-error");
 
 const whitelistedIps = {};
 const blacklistedIps = {};
 
 // Removes expired refresh tokens and authorization codes from the database
+/**
+ * Clean Refresh Tokens.
+ *
+ * @returns {Promise<*>}
+ */
 async function cleanRefreshTokens() {
     try {
-        const refreshTokens = await dbGetAll("SELECT * FROM refresh_tokens");
-        for (const refreshToken of refreshTokens) {
-            if (Date.now() >= refreshToken.exp) {
-                await dbRun("DELETE FROM refresh_tokens WHERE token_hash = ?", [refreshToken.token_hash]);
-            }
-        }
+        const nowInSeconds = Math.floor(Date.now() / 1000);
+        await dbRun("DELETE FROM refresh_tokens WHERE exp <= ?", [nowInSeconds]);
         // Also clean up expired authorization codes
         await cleanupExpiredAuthorizationCodes();
     } catch (err) {
@@ -34,6 +34,12 @@ async function cleanRefreshTokens() {
     }
 }
 
+/**
+ * Load the persisted user record when in-memory session state is stale.
+ *
+ * @param {*} email - email.
+ * @returns {Promise<*>}
+ */
 async function loadComputedUserByEmail(email) {
     const userRow = await dbGet("SELECT id FROM users WHERE email = ?", [email]);
     if (!userRow) {
@@ -43,6 +49,12 @@ async function loadComputedUserByEmail(email) {
     return getUserDataFromDb(userRow.id);
 }
 
+/**
+ * Synchronize User Into Class State Store.
+ *
+ * @param {*} userData - userData.
+ * @returns {*}
+ */
 function syncUserIntoClassStateStore(userData) {
     let user = classStateStore.getUser(userData.email);
 
@@ -85,27 +97,8 @@ async function isAuthenticated(req, res, next) {
     const apiKeyHeader = req.headers.api || req.query.api || req.body.api;
     const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
     if (apiKey) {
-        let apiUser = null;
-
-        // Fast path: check the in-memory cache to avoid bcrypt comparisons on repeat requests.
-        const cachedEmail = apiKeyCacheStore.get(apiKey);
-        if (cachedEmail) {
-            apiUser = await loadComputedUserByEmail(cachedEmail);
-        }
-
-        // Slow path: cache miss — scan all users with an API key and bcrypt-compare each one.
-        if (!apiUser) {
-            const users = await dbGetAll("SELECT * FROM users WHERE API IS NOT NULL");
-            for (const user of users) {
-                if (!user.API) continue;
-                const matches = await compare(apiKey, user.API);
-                if (matches) {
-                    apiUser = await getUserDataFromDb(user.id);
-                    apiKeyCacheStore.set(apiKey, user.email);
-                    break;
-                }
-            }
-        }
+        const apiKeyUser = await resolveAPIKey(apiKey);
+        const apiUser = apiKeyUser ? await getUserDataFromDb(apiKeyUser.id) : null;
 
         if (!apiUser) {
             req.warnEvent("auth.invalid_api_key", "Invalid API key provided");
@@ -182,6 +175,14 @@ async function isAuthenticated(req, res, next) {
 }
 
 // Create a function to check if the user's email is verified
+/**
+ * Determine whether the current user can pass email verification checks.
+ *
+ * @param {import("express").Request} req - req.
+ * @param {import("express").Response} res - res.
+ * @param {import("express").NextFunction} next - next.
+ * @returns {Promise<*>}
+ */
 async function isVerified(req, res, next) {
     // Use req.user if available (set by isAuthenticated), otherwise decode from token
     let email = req.user?.email;

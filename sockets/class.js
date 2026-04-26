@@ -50,7 +50,7 @@ module.exports = {
          */
         socket.on("leaveClass", async () => {
             try {
-                leaveClass(socket.request.session);
+                await leaveClass(socket.request.session, socket.request.session.classId);
             } catch (err) {
                 handleSocketError(err, socket, "leaveClass", "There was a server error. Please try again");
             }
@@ -71,6 +71,9 @@ module.exports = {
         socket.on("getActiveClass", () => {
             try {
                 const api = socket.request.session.api;
+                if (!api) {
+                    return;
+                }
 
                 for (const email in classStateStore.getAllUsers()) {
                     const user = classStateStore.getAllUsers()[email];
@@ -172,7 +175,7 @@ module.exports = {
             try {
                 const classId = await socketContext.resolveClassId();
                 const userId = await getIdFromEmail(email);
-                classKickStudent(userId, classId);
+                await classKickStudent(userId, classId);
                 advancedEmitToClass("leaveSound", classId, {});
             } catch (err) {
                 handleSocketError(err, socket, "classKickStudent");
@@ -186,13 +189,11 @@ module.exports = {
          */
         onSocketEvent(socket, "classRemoveFromSession", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (socketContext, userId) => {
             try {
-                logger.log("info", `[classRemoveFromSession] ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`);
-                logger.log("info", `[classRemoveFromSession] userId=(${userId})`);
-
                 const classId = await socketContext.resolveClassId();
-                classKickStudent(userId, classId, { exitRoom: false, ban: false });
+                await classKickStudent(userId, classId, { exitRoom: false, ban: false });
+                socketUpdates.classUpdate(classId);
             } catch (err) {
-                logger.log("error", err.stack);
+                handleSocketError(err, socket, "classRemoveFromSession");
             }
         });
 

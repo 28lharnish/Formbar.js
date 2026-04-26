@@ -2,34 +2,15 @@ const { dbGet, dbGetAll } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const pools = require("@services/digipog-service");
-const ValidationError = require("@errors/validation-error");
 
 const DEFAULT_POOL_LIMIT = 20;
 const MAX_POOL_LIMIT = 100;
 
 /**
- * * Parse an integer query parameter.
- * @param {string|number|undefined} value - Query value.
- * @param {number} defaultValue - Default value.
- * @returns {number}
- */
-function parseIntegerQueryParam(value, defaultValue) {
-    if (value == null) {
-        return defaultValue;
-    }
-
-    const normalized = String(value).trim();
-    if (!/^-?\d+$/.test(normalized)) {
-        return NaN;
-    }
-
-    return Number.parseInt(normalized, 10);
-}
-
-/**
- * * Register pools controller routes.
+ * Register pools controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -160,16 +141,7 @@ module.exports = (router) => {
 
             req.infoEvent("user.pools.view.attempt", "Attempting to view user pools");
 
-            const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_POOL_LIMIT);
-            const offset = parseIntegerQueryParam(req.query.offset, 0);
-
-            if (!Number.isInteger(limit) || limit < 1 || limit > MAX_POOL_LIMIT) {
-                throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_POOL_LIMIT}.`);
-            }
-
-            if (!Number.isInteger(offset) || offset < 0) {
-                throw new ValidationError("Invalid offset. Expected a non-negative integer.");
-            }
+            const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_POOL_LIMIT, MAX_POOL_LIMIT);
 
             const { pools: userPools, total } = await pools.getPoolsForUserPaginated(userId, limit, offset);
             const poolObjs = await Promise.all(
@@ -204,7 +176,7 @@ module.exports = (router) => {
             );
 
             const filteredPools = poolObjs.filter((pool) => pool !== null);
-            const hasMore = offset + filteredPools.length < total;
+            const pagination = buildPagination(total, limit, offset, filteredPools.length);
 
             req.infoEvent("user.pools.view.success", "User pools returned", {
                 poolCount: filteredPools.length,
@@ -217,12 +189,7 @@ module.exports = (router) => {
                 success: true,
                 data: {
                     pools: filteredPools,
-                    pagination: {
-                        total,
-                        limit,
-                        offset,
-                        hasMore,
-                    },
+                    pagination,
                 },
             });
         }

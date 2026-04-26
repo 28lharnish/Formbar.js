@@ -10,7 +10,7 @@ const saltRounds = parseInt(process.env.SALT_ROUNDS, 10) || 10;
  * @param {string} text - The text to be hashed.
  * @returns {Promise<string>} A promise that resolves to the hashed text.
  */
-function hash(text) {
+function hashBcrypt(text) {
     return new Promise((resolve, reject) => {
         // Validate that text is a string
         if (typeof text !== "string") {
@@ -46,7 +46,7 @@ function hash(text) {
  * @param {string} hash - The hash to compare against.
  * @returns {Promise<boolean>} A promise that resolves to true if the text matches the hash, otherwise false.
  */
-function compare(text, hash) {
+function compareBcrypt(text, hash) {
     return new Promise((resolve, reject) => {
         // Validate that both text and hash are strings
         if (typeof text !== "string" || typeof hash !== "string") {
@@ -70,6 +70,16 @@ function compare(text, hash) {
 }
 
 /**
+ * Checks if the given hash is a bcrypt hash.
+ *
+ * @param {string} hash - The hash to check.
+ * @returns {boolean} True if the hash is a bcrypt hash, false otherwise.
+ */
+function isBcryptHash(hash) {
+    return typeof hash === "string" && /^\$2[aby]\$\d{2}\$/.test(hash);
+}
+
+/**
  * Generates a SHA-256 hex digest for the provided input string.
  *
  * @param {string} input - The input to hash.
@@ -88,7 +98,8 @@ function sha256(input) {
 }
 
 module.exports = {
-    hash,
-    compare,
+    hashBcrypt,
+    compareBcrypt,
+    isBcryptHash,
     sha256,
 };

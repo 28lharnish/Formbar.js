@@ -1,36 +1,17 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
 const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const { getUserDataFromDb } = require("@services/user-service");
 const { getUserTransactionsPaginated } = require("@services/digipog-service");
 const NotFoundError = require("@errors/not-found-error");
-const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 const DEFAULT_TRANSACTION_LIMIT = 25;
 const MAX_TRANSACTION_LIMIT = 100;
 
 /**
- * * Parse an integer query parameter.
- * @param {string|number|undefined} value - Query value.
- * @param {number} defaultValue - Default value.
- * @returns {number}
- */
-function parseIntegerQueryParam(value, defaultValue) {
-    if (value == null) {
-        return defaultValue;
-    }
-
-    const normalized = String(value).trim();
-    if (!/^-?\d+$/.test(normalized)) {
-        return NaN;
-    }
-
-    return Number.parseInt(normalized, 10);
-}
-
-/**
- * * Register transactions controller routes.
+ * Register transactions controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -140,20 +121,11 @@ module.exports = (router) => {
 
             req.infoEvent("user.transactions.view.attempt", "Attempting to view user transactions", { targetUserId: userId });
 
-            const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_TRANSACTION_LIMIT);
-            const offset = parseIntegerQueryParam(req.query.offset, 0);
-
-            if (!Number.isInteger(limit) || limit < 1 || limit > MAX_TRANSACTION_LIMIT) {
-                throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_TRANSACTION_LIMIT}.`);
-            }
-
-            if (!Number.isInteger(offset) || offset < 0) {
-                throw new ValidationError("Invalid offset. Expected a non-negative integer.");
-            }
+            const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_TRANSACTION_LIMIT, MAX_TRANSACTION_LIMIT);
 
             const userDisplayName = userData.displayName || "Unknown User";
             const { transactions, total } = await getUserTransactionsPaginated(userId, limit, offset);
-            const hasMore = offset + transactions.length < total;
+            const pagination = buildPagination(total, limit, offset, transactions.length);
 
             if (!transactions || transactions.length === 0) {
                 req.infoEvent("user.transactions.empty", "No transactions found for user");
@@ -163,12 +135,7 @@ module.exports = (router) => {
                         transactions: [],
                         displayName: userDisplayName,
                         currentUserId: req.user.id,
-                        pagination: {
-                            total,
-                            limit,
-                            offset,
-                            hasMore,
-                        },
+                        pagination,
                     },
                 });
                 return;
@@ -188,12 +155,7 @@ module.exports = (router) => {
                     transactions: transactions,
                     displayName: userDisplayName,
                     currentUserId: req.user.id,
-                    pagination: {
-                        total,
-                        limit,
-                        offset,
-                        hasMore,
-                    },
+                    pagination,
                 },
             });
         }

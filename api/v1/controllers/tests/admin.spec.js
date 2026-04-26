@@ -97,6 +97,29 @@ describe("GET /api/v1/ip/:type", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.data.ips).toEqual([]);
+        expect(res.body.data.pagination).toEqual({
+            total: 0,
+            limit: 20,
+            offset: 0,
+            hasMore: false,
+        });
+    });
+
+    it("returns paginated IP entries", async () => {
+        const { tokens } = await seedAdmin();
+        await request(app).post("/api/v1/ip/whitelist").set("Authorization", `Bearer ${tokens.accessToken}`).send({ ip: "10.0.0.1" });
+        await request(app).post("/api/v1/ip/whitelist").set("Authorization", `Bearer ${tokens.accessToken}`).send({ ip: "10.0.0.2" });
+
+        const res = await request(app).get("/api/v1/ip/whitelist?limit=1").set("Authorization", `Bearer ${tokens.accessToken}`);
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.ips).toHaveLength(1);
+        expect(res.body.data.pagination).toEqual({
+            total: 2,
+            limit: 1,
+            offset: 0,
+            hasMore: true,
+        });
     });
 
     it("returns 400 for invalid type", async () => {
@@ -245,10 +268,16 @@ describe("GET /api/v1/logs", () => {
 
     it("returns 200 with log file list for admin", async () => {
         const { tokens } = await seedAdmin();
-        const res = await request(app).get("/api/v1/logs").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get("/api/v1/logs?limit=1").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data.logs).toEqual(["app-2025-01-01.log", "error-2025-01-01.log"]);
+        expect(res.body.data.logs).toEqual(["app-2025-01-01.log"]);
+        expect(res.body.data.pagination).toEqual({
+            total: 2,
+            limit: 1,
+            offset: 0,
+            hasMore: true,
+        });
     });
 });
 

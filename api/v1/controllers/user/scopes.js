@@ -8,7 +8,7 @@ const { getUserRoles } = require("@services/role-service");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * * Register scopes controller routes.
+ * Register scopes controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

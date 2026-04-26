@@ -1,33 +1,14 @@
 const { SCOPES } = require("@modules/permissions");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const { getManagerDataPaginated } = require("@services/manager-service");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
-
 const DEFAULT_MANAGER_LIMIT = 24;
 const MAX_MANAGER_LIMIT = 200;
 
 /**
- * * Parse an integer query parameter.
- * @param {string|number|undefined} value - Query value.
- * @param {number} defaultValue - Default value.
- * @returns {number}
- */
-function parseIntegerQueryParam(value, defaultValue) {
-    if (value == null) {
-        return defaultValue;
-    }
-
-    const text = `${value}`.trim();
-    if (!/^-?\d+$/.test(text)) {
-        return NaN;
-    }
-
-    return Number.parseInt(text, 10);
-}
-
-/**
- * * Register manager controller routes.
+ * Register manager controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -40,7 +21,10 @@ module.exports = (router) => {
      *     tags:
      *       - Manager
      *     description: |
-     *       Retrieves all users and classrooms for manager view.
+     *       Retrieves paginated users and classrooms for manager view.
+     *
+     *       The `users` collection is paginated with `limit` and `offset`.
+     *       `classrooms` and `pendingUsers` are returned alongside that page.
      *
      *       **Required Permission:** Global Manager permission (level 5)
      *
@@ -139,18 +123,9 @@ module.exports = (router) => {
     router.get("/manager", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         req.infoEvent("manager.view", "Manager dashboard accessed");
 
-        const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_MANAGER_LIMIT);
-        const offset = parseIntegerQueryParam(req.query.offset, 0);
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_MANAGER_LIMIT, MAX_MANAGER_LIMIT);
         const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
         const sortBy = typeof req.query.sortBy === "string" ? req.query.sortBy.trim().toLowerCase() : "name";
-
-        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_MANAGER_LIMIT) {
-            throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_MANAGER_LIMIT}.`);
-        }
-
-        if (!Number.isInteger(offset) || offset < 0) {
-            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
-        }
 
         if (sortBy !== "name" && sortBy !== "permission") {
             throw new ValidationError("Invalid sortBy. Expected 'name' or 'permission'.");
@@ -163,7 +138,7 @@ module.exports = (router) => {
             search,
             sortBy,
         });
-        const hasMore = offset + users.length < totalUsers;
+        const pagination = buildPagination(totalUsers, limit, offset, users.length);
 
         req.infoEvent("manager.data.retrieved", "Manager data retrieved");
         res.status(200).json({
@@ -172,12 +147,7 @@ module.exports = (router) => {
                 users,
                 classrooms,
                 pendingUsers,
-                pagination: {
-                    total: totalUsers,
-                    limit,
-                    offset,
-                    hasMore,
-                },
+                pagination,
             },
         });
     });

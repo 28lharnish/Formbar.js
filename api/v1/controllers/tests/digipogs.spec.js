@@ -186,78 +186,34 @@ describe("POST /api/v1/digipogs/award", () => {
 });
 
 describe("POST /api/v1/digipogs/transfer", () => {
-    it("returns 401 without authentication", async () => {
-        const res = await request(app).post("/api/v1/digipogs/transfer").send({ to: "1", amount: 5, pin: "1234" });
-
-        expect(res.status).toBe(401);
-    });
-
-    it("returns 403 for a guest user (permissions=1) who lacks global.digipogs.transfer", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
-            email: "guest@example.com",
-            displayName: "Guest",
-            permissions: 1,
-        });
-
-        const res = await request(app)
-            .post("/api/v1/digipogs/transfer")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "1", amount: 5, pin: "1234" });
-
-        expect(res.status).toBe(403);
-    });
-
-    it("returns 403 for a banned user (permissions=0)", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
-            email: "banned@example.com",
-            displayName: "Banned",
-            permissions: 0,
-        });
-
-        const res = await request(app)
-            .post("/api/v1/digipogs/transfer")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "1", amount: 5, pin: "1234" });
-
-        expect(res.status).toBe(403);
-    });
-
     it("returns 400 when required fields (to, amount, pin) are missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app).post("/api/v1/digipogs/transfer").set("Authorization", `Bearer ${tokens.accessToken}`).send({});
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({});
 
         expect(res.status).toBe(400);
     });
 
     it("returns 400 when pin is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        const { user } = await seedAuthenticatedUser(mockDatabase);
 
-        const res = await request(app)
-            .post("/api/v1/digipogs/transfer")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "999", amount: 5 });
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: user.id, to: "999", amount: 5 });
 
         expect(res.status).toBe(400);
     });
 
     it("returns 400 when amount is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        const { user } = await seedAuthenticatedUser(mockDatabase);
 
-        const res = await request(app)
-            .post("/api/v1/digipogs/transfer")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "999", pin: "1234" });
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: user.id, to: "999", pin: "1234" });
 
         expect(res.status).toBe(400);
     });
 
     it("returns 200 on a valid transfer between two users", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
         // Seed sender with digipogs and a pin
-        const { tokens, user: sender } = await seedAuthenticatedUser(mockDatabase);
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
         await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
 
         // Seed recipient
@@ -267,10 +223,7 @@ describe("POST /api/v1/digipogs/transfer", () => {
             permissions: 2,
         });
 
-        const res = await request(app)
-            .post("/api/v1/digipogs/transfer")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: recipient.id, amount: 10, pin: "1234" });
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 10, pin: "1234" });
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
@@ -280,11 +233,49 @@ describe("POST /api/v1/digipogs/transfer", () => {
         expect(senderAfter.digipogs).toBe(90);
     });
 
-    it("returns 400 when the sender has insufficient funds", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+    it("authenticates a PIN-only transfer by looking up the requested sender", async () => {
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
-        const { tokens, user: sender } = await seedAuthenticatedUser(mockDatabase);
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
+        await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
+
+        const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
+            email: "pin-recipient@example.com",
+            displayName: "PIN Recipient",
+            permissions: 2,
+        });
+
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 10, pin: "1234" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
+    it("accepts fromUserId as a sender alias for PIN-only transfers", async () => {
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
+
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
+        await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
+
+        const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
+            email: "pin-alias-recipient@example.com",
+            displayName: "PIN Alias Recipient",
+            permissions: 2,
+        });
+
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ fromUserId: sender.id, to: recipient.id, amount: 10, pin: "1234" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
+    it("returns 400 when the sender has insufficient funds", async () => {
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
+
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
         await mockDatabase.dbRun("UPDATE users SET digipogs = 0, pin = ? WHERE id = ?", [pinHash, sender.id]);
 
         const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
@@ -293,19 +284,16 @@ describe("POST /api/v1/digipogs/transfer", () => {
             permissions: 2,
         });
 
-        const res = await request(app)
-            .post("/api/v1/digipogs/transfer")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: recipient.id, amount: 50, pin: "1234" });
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 50, pin: "1234" });
 
         expect(res.status).toBe(400);
     });
 
     it("returns 400 when the pin is incorrect", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
-        const { tokens, user: sender } = await seedAuthenticatedUser(mockDatabase);
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
         await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
 
         const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
@@ -314,10 +302,7 @@ describe("POST /api/v1/digipogs/transfer", () => {
             permissions: 2,
         });
 
-        const res = await request(app)
-            .post("/api/v1/digipogs/transfer")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: recipient.id, amount: 10, pin: "wrong" });
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 10, pin: "wrong" });
 
         expect(res.status).toBe(400);
     });
@@ -325,8 +310,8 @@ describe("POST /api/v1/digipogs/transfer", () => {
 
 describe("POST /api/v1/test-pin-scope", () => {
     it("does not allow pin-based auth outside digipog HTTP APIs", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
         const { user } = await seedAuthenticatedUser(mockDatabase, {
             email: "pinonly@example.com",

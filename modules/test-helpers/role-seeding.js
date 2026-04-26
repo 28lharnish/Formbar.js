@@ -1,5 +1,13 @@
 const { LEVEL_TO_ROLE, ROLE_NAMES } = require("@modules/roles");
 
+/**
+ * Look up the role row used to seed permissions consistently.
+ *
+ * @param {*} mockDatabase - mockDatabase.
+ * @param {*} roleName - roleName.
+ * @param {*} classId - classId.
+ * @returns {Promise<*>}
+ */
 async function getRoleRow(mockDatabase, roleName, classId = null) {
     if (classId == null) {
         return mockDatabase.dbGet(
@@ -19,6 +27,14 @@ async function getRoleRow(mockDatabase, roleName, classId = null) {
     );
 }
 
+/**
+ * Replace a user's global role assignment with the matching permission level.
+ *
+ * @param {*} mockDatabase - mockDatabase.
+ * @param {*} userId - userId.
+ * @param {*} permissionLevel - permissionLevel.
+ * @returns {Promise<*>}
+ */
 async function setGlobalPermissionLevel(mockDatabase, userId, permissionLevel) {
     const roleName = LEVEL_TO_ROLE[permissionLevel];
     await mockDatabase.dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
@@ -36,6 +52,16 @@ async function setGlobalPermissionLevel(mockDatabase, userId, permissionLevel) {
     return role.name;
 }
 
+/**
+ * Ensure a user belongs to the class and assign the requested class permission.
+ *
+ * @param {*} mockDatabase - mockDatabase.
+ * @param {*} userId - userId.
+ * @param {*} classId - classId.
+ * @param {*} permissionLevel - permissionLevel.
+ * @param {*} options - options.
+ * @returns {Promise<*>}
+ */
 async function addClassMemberWithPermission(mockDatabase, userId, classId, permissionLevel, options = {}) {
     const existing = await mockDatabase.dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [classId, userId]);
     if (!existing) {

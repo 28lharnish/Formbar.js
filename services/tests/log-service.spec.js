@@ -9,6 +9,7 @@ jest.mock("fs", () => ({
 const fs = require("fs");
 const { getAllLogs, getLog } = require("@services/log-service");
 const AppError = require("@errors/app-error");
+const NotFoundError = require("@errors/not-found-error");
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -69,10 +70,20 @@ describe("getLog()", () => {
         expect(fs.promises.readFile).toHaveBeenCalledWith("logs/app.log", "utf8");
     });
 
-    it("throws AppError when file doesn't exist", async () => {
-        fs.promises.readFile.mockRejectedValue(new Error("ENOENT"));
+    it("throws NotFoundError when file doesn't exist", async () => {
+        const error = new Error("ENOENT");
+        error.code = "ENOENT";
+        fs.promises.readFile.mockRejectedValue(error);
 
-        await expect(getLog("missing.log")).rejects.toThrow(AppError);
-        await expect(getLog("missing.log")).rejects.toThrow(/Failed to read log file/);
+        await expect(getLog("missing.log")).rejects.toThrow(NotFoundError);
+        await expect(getLog("missing.log")).rejects.toThrow(/Log file not found/);
+    });
+
+    it("throws NotFoundError when a path segment resolves through a non-directory", async () => {
+        const error = new Error("ENOTDIR");
+        error.code = "ENOTDIR";
+        fs.promises.readFile.mockRejectedValue(error);
+
+        await expect(getLog("missing.log")).rejects.toThrow(NotFoundError);
     });
 });

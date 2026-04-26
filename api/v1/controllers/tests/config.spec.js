@@ -105,13 +105,15 @@ describe("GET /api/v1/certs", () => {
 
         // Ensure the logger mock includes close() so the error handler doesn't crash
         const { getLogger } = require("@modules/logger");
-        getLogger.mockResolvedValue({
+        const logger = {
             log: jest.fn(),
             info: jest.fn(),
             error: jest.fn(),
             warn: jest.fn(),
             close: jest.fn(),
-        });
+        };
+        logger.child = jest.fn(() => logger);
+        getLogger.mockResolvedValue(logger);
 
         jest.spyOn(fs, "readFileSync").mockImplementation(() => {
             throw new Error("ENOENT: no such file or directory");

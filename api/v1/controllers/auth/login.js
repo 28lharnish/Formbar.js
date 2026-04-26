@@ -4,7 +4,7 @@ const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register login controller routes.
+ * Register login controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

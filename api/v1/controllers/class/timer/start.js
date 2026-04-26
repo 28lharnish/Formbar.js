@@ -8,7 +8,7 @@ const classService = require("@services/class-service");
 const { classStateStore } = require("@services/classroom-service");
 
 /**
- * * Register start controller routes.
+ * Register start controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

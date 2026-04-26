@@ -4,10 +4,14 @@ const { classStateStore } = require("@services/classroom-service");
 const { SCOPES, computeClassPermissionLevel } = require("@modules/permissions");
 const { getUserScopes } = require("@modules/scope-resolver");
 const { dbGetAll } = require("@modules/database");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const NotFoundError = require("@errors/not-found-error");
 
+const DEFAULT_STUDENT_LIMIT = 20;
+const MAX_STUDENT_LIMIT = 100;
+
 /**
- * * Register students controller routes.
+ * Register students controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -20,7 +24,7 @@ module.exports = (router) => {
      *     tags:
      *       - Class
      *     description: |
-     *       Returns a list of students enrolled in a class.
+     *       Returns a paginated list of students enrolled in a class.
      *
      *       **Required Permission:** Class-specific `manageClass` permission (default: Teacher)
      *
@@ -40,15 +44,46 @@ module.exports = (router) => {
      *         schema:
      *           type: string
      *         description: Class ID
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 20
+     *           minimum: 1
+     *           maximum: 100
+     *         description: Number of students to return per page
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 0
+     *           minimum: 0
+     *         description: Number of students to skip before returning results
      *     responses:
      *       200:
      *         description: Students retrieved successfully
      *         content:
      *           application/json:
      *             schema:
-     *               type: array
-     *               items:
-     *                 $ref: '#/components/schemas/Student'
+     *               type: object
+     *               properties:
+     *                 students:
+     *                   type: array
+     *                   items:
+     *                     $ref: '#/components/schemas/Student'
+     *                 pagination:
+     *                   type: object
+     *                   properties:
+     *                     total:
+     *                       type: integer
+     *                     limit:
+     *                       type: integer
+     *                     offset:
+     *                       type: integer
+     *                     hasMore:
+     *                       type: boolean
      *       401:
      *         description: Not authenticated
      *         content:
@@ -109,10 +144,16 @@ module.exports = (router) => {
             }
         }
 
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_STUDENT_LIMIT, MAX_STUDENT_LIMIT);
+        const students = classUsers.slice(offset, offset + limit);
+
         // Send the students of the class as a JSON response
         res.status(200).json({
             success: true,
-            data: classUsers,
+            data: {
+                students,
+                pagination: buildPagination(classUsers.length, limit, offset, students.length),
+            },
         });
     });
 };

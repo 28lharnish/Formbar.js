@@ -6,7 +6,7 @@ const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
 
 /**
- * * Register resume controller routes.
+ * Register resume controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

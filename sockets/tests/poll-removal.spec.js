@@ -3,10 +3,15 @@ const { createTestClass, createTestUser, testData, createSocket, createSocketUpd
 const { classStateStore } = require("@services/classroom-service");
 
 jest.mock("@modules/database");
-jest.mock("@modules/logger", () => ({
-    getLogger: jest.fn().mockResolvedValue({ log: jest.fn() }),
-    logEvent: jest.fn(),
-}));
+jest.mock("@modules/logger", () => {
+    const logger = { log: jest.fn() };
+    logger.child = jest.fn(() => logger);
+
+    return {
+        getLogger: jest.fn().mockResolvedValue(logger),
+        logEvent: jest.fn(),
+    };
+});
 
 describe("deletePoll", () => {
     let socket;

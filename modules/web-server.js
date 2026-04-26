@@ -4,6 +4,11 @@ const swaggerJsdoc = require("swagger-jsdoc");
 const cors = require("cors");
 
 // Create the express server and attach socket.io to it
+/**
+ * Create the Express app, HTTP server, Socket.IO server, and Swagger docs wiring.
+ *
+ * @returns {*}
+ */
 function createServer() {
     const app = express();
     const http = require("http").createServer(app);

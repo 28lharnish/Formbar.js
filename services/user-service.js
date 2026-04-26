@@ -1,6 +1,5 @@
 const handlebars = require("handlebars");
 const fs = require("fs");
-const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
@@ -18,7 +17,8 @@ const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-se
 const { endClass } = require("@services/class-service");
 const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
-const { hash } = require("@modules/crypto");
+const { hashBcrypt, compareBcrypt, sha256 } = require("@modules/crypto");
+const { hashAPIKey, getEmailFromAPIKey: resolveEmailFromAPIKey } = require("@services/api-key-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
@@ -27,8 +27,96 @@ let passwordResetTemplate;
 let verifyEmailTemplate;
 let pinResetTemplate;
 
+const TOKEN_PURPOSES = {
+    PASSWORD_RESET: "password_reset",
+    PIN_RESET: "pin_reset",
+    EMAIL_VERIFY: "email_verify",
+};
+
+const TOKEN_TTL_SECONDS = {
+    [TOKEN_PURPOSES.PASSWORD_RESET]: 60 * 60,
+    [TOKEN_PURPOSES.PIN_RESET]: 60 * 60,
+    [TOKEN_PURPOSES.EMAIL_VERIFY]: 24 * 60 * 60,
+};
+
 /**
- * * Load the password reset email template.
+ * Db Run Changes.
+ *
+ * @param {*} query - query.
+ * @param {*} params - params.
+ * @returns {*}
+ */
+function dbRunChanges(query, params = []) {
+    return new Promise((resolve, reject) => {
+        database.run(query, params, function (err) {
+            if (err) return reject(err);
+            resolve(this.changes || 0);
+        });
+    });
+}
+
+/**
+ * Issue Account Token.
+ *
+ * @param {*} userId - userId.
+ * @param {*} purpose - purpose.
+ * @returns {Promise<*>}
+ */
+async function issueAccountToken(userId, purpose) {
+    requireInternalParam(userId, "userId");
+    requireInternalParam(purpose, "purpose");
+
+    const now = Math.floor(Date.now() / 1000);
+    const token = crypto.randomBytes(64).toString("hex");
+    const tokenHash = sha256(token);
+    const expiresAt = now + (TOKEN_TTL_SECONDS[purpose] || 60 * 60);
+
+    await dbRun("UPDATE user_tokens SET used_at = ? WHERE user_id = ? AND purpose = ? AND used_at IS NULL", [now, userId, purpose]);
+    await dbRun("INSERT INTO user_tokens (user_id, purpose, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", [
+        userId,
+        purpose,
+        tokenHash,
+        now,
+        expiresAt,
+    ]);
+
+    return token;
+}
+
+/**
+ * Consume Account Token.
+ *
+ * @param {*} token - token.
+ * @param {*} purpose - purpose.
+ * @returns {Promise<*>}
+ */
+async function consumeAccountToken(token, purpose) {
+    requireInternalParam(token, "token");
+    requireInternalParam(purpose, "purpose");
+
+    const tokenHash = sha256(String(token));
+    const now = Math.floor(Date.now() / 1000);
+    const markedUsed = await dbRunChanges(
+        "UPDATE user_tokens SET used_at = ? WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > ?",
+        [now, tokenHash, purpose, now]
+    );
+
+    if (!markedUsed) {
+        return null;
+    }
+
+    return dbGet(
+        `SELECT users.*
+         FROM user_tokens
+         JOIN users ON users.id = user_tokens.user_id
+         WHERE user_tokens.token_hash = ?
+           AND user_tokens.purpose = ?`,
+        [tokenHash, purpose]
+    );
+}
+
+/**
+ * Load the password reset email template.
  * @returns {string}
  */
 function loadPasswordResetTemplate() {
@@ -52,7 +140,7 @@ function loadPasswordResetTemplate() {
 }
 
 /**
- * * Load the PIN reset email template.
+ * Load the PIN reset email template.
  * @returns {string}
  */
 function loadPinResetTemplate() {
@@ -75,7 +163,7 @@ function loadPinResetTemplate() {
 }
 
 /**
- * * Send a PIN reset email.
+ * Send a PIN reset email.
  * @param {number} userId - userId.
  * @returns {Promise<void>}
  */
@@ -91,14 +179,13 @@ async function requestPinReset(userId) {
     }
 
     const template = loadPinResetTemplate();
-    const token = crypto.randomBytes(64).toString("hex");
-    await dbRun("UPDATE users SET secret = ? WHERE id = ?", [token, userId]);
+    const token = await issueAccountToken(userId, TOKEN_PURPOSES.PIN_RESET);
 
     sendMail(user.email, "Formbar PIN Reset", template({ resetUrl: `${frontendUrl}/user/me/pin?code=${token}` }));
 }
 
 /**
- * * Reset a PIN using a token.
+ * Reset a PIN using a token.
  * @param {string} newPin - newPin.
  * @param {string} token - token.
  * @returns {Promise<void>}
@@ -107,7 +194,7 @@ async function resetPin(newPin, token) {
     requireInternalParam(newPin, "newPin");
     requireInternalParam(token, "token");
 
-    const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
+    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PIN_RESET);
     if (!user) {
         throw new NotFoundError("PIN reset token is invalid or has expired.", {
             event: "user.pin.reset.failed",
@@ -115,12 +202,12 @@ async function resetPin(newPin, token) {
         });
     }
 
-    const hashedPin = await hash(String(newPin));
+    const hashedPin = await hashBcrypt(String(newPin));
     await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, user.id]);
 }
 
 /**
- * * Update a user PIN after verifying the old PIN.
+ * Update a user PIN after verifying the old PIN.
  * @param {number} userId - userId.
  * @param {string} oldPin - oldPin.
  * @param {string} newPin - newPin.
@@ -141,7 +228,7 @@ async function updatePin(userId, oldPin, newPin) {
     // If user already has a PIN, verify the old one matches
     if (user.pin) {
         requireInternalParam(oldPin, "oldPin");
-        const oldPinMatches = await bcrypt.compare(String(oldPin), user.pin);
+        const oldPinMatches = await compareBcrypt(String(oldPin), user.pin);
         if (!oldPinMatches) {
             const AuthError = require("@errors/auth-error");
             throw new AuthError("Current PIN is incorrect.", {
@@ -151,12 +238,12 @@ async function updatePin(userId, oldPin, newPin) {
         }
     }
 
-    const hashedPin = await hash(String(newPin));
+    const hashedPin = await hashBcrypt(String(newPin));
     await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, userId]);
 }
 
 /**
- * * Verify a user PIN.
+ * Verify a user PIN.
  * @param {number} userId - userId.
  * @param {string} pin - pin.
  * @returns {Promise<boolean>}
@@ -181,7 +268,7 @@ async function verifyPin(userId, pin) {
         });
     }
 
-    const pinMatches = await bcrypt.compare(String(pin), user.pin);
+    const pinMatches = await compareBcrypt(String(pin), user.pin);
     if (!pinMatches) {
         const AuthError = require("@errors/auth-error");
         throw new AuthError("PIN is incorrect.", {
@@ -194,7 +281,7 @@ async function verifyPin(userId, pin) {
 }
 
 /**
- * * Load the verification email template.
+ * Load the verification email template.
  * @returns {string}
  */
 function loadVerifyEmailTemplate() {
@@ -217,7 +304,7 @@ function loadVerifyEmailTemplate() {
 }
 
 /**
- * * Get user data from the database.
+ * Get user data from the database.
  * @param {number} userId - userId.
  * @returns {Promise<Object|null>}
  */
@@ -241,7 +328,7 @@ async function getUserDataFromDb(userId) {
 }
 
 /**
- * * Send a password reset email.
+ * Send a password reset email.
  * @param {string} email - email.
  * @returns {Promise<void>}
  */
@@ -255,15 +342,14 @@ async function requestPasswordReset(email) {
     }
 
     const template = loadPasswordResetTemplate();
-    const secret = crypto.randomBytes(256).toString("hex");
-    await dbRun("UPDATE users SET secret = ? WHERE email = ?", [secret, normalizedEmail]);
+    const secret = await issueAccountToken(user.id, TOKEN_PURPOSES.PASSWORD_RESET);
 
     sendMail(normalizedEmail, "Formbar Password Change", template({ resetUrl: `${frontendUrl}/user/me/password?code=${secret}` }));
     return true;
 }
 
 /**
- * * Send a verification email.
+ * Send a verification email.
  * @param {number} userId - userId.
  * @param {string} apiBaseUrl - apiBaseUrl.
  * @returns {Promise<void>}
@@ -284,24 +370,23 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
     }
 
     const template = loadVerifyEmailTemplate();
-    const secret = crypto.randomBytes(256).toString("hex");
+    const secret = await issueAccountToken(user.id, TOKEN_PURPOSES.EMAIL_VERIFY);
     const verifyUrl = frontendUrl ? `${frontendUrl}/user/verify/email?code=${secret}` : `${apiBaseUrl}/api/v1/user/verify/email?code=${secret}`;
 
-    await dbRun("UPDATE users SET secret = ? WHERE id = ?", [secret, user.id]);
     sendMail(user.email, "Formbar Email Verification", template({ verifyUrl }));
 
     return { alreadyVerified: false };
 }
 
 /**
- * * Verify an email address from a code.
+ * Verify an email address from a code.
  * @param {string} code - code.
  * @returns {Promise<void>}
  */
 async function verifyEmailFromCode(code) {
     requireInternalParam(code, "code");
 
-    const user = await dbGet("SELECT id, email, verified FROM users WHERE secret = ?", [code]);
+    const user = await consumeAccountToken(code, TOKEN_PURPOSES.EMAIL_VERIFY);
     if (!user) {
         throw new NotFoundError("Verification token is invalid or has expired.", {
             event: "user.verify.email.failed",
@@ -320,7 +405,7 @@ async function verifyEmailFromCode(code) {
 }
 
 /**
- * * Reset a password using a token.
+ * Reset a password using a token.
  * @param {string} password - password.
  * @param {string} token - token.
  * @returns {Promise<void>}
@@ -330,7 +415,7 @@ async function resetPassword(password, token) {
     requireInternalParam(token, "token");
     assertValidPassword(password, { event: "user.password.reset.failed", reason: "invalid_password" });
 
-    const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
+    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PASSWORD_RESET);
     if (!user) {
         throw new NotFoundError("Password reset token is invalid or has expired.", {
             event: "user.password.reset.failed",
@@ -338,13 +423,13 @@ async function resetPassword(password, token) {
         });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashBcrypt(password);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, user.id]);
     return true;
 }
 
 /**
- * * Update a password after verifying the old password.
+ * Update a password after verifying the old password.
  * @param {number} userId - userId.
  * @param {string} oldPassword - oldPassword.
  * @param {string} newPassword - newPassword.
@@ -366,7 +451,7 @@ async function updatePassword(userId, oldPassword, newPassword) {
     if (user.password) {
         requireInternalParam(oldPassword, "oldPassword");
 
-        const oldPasswordMatches = await bcrypt.compare(oldPassword, user.password);
+        const oldPasswordMatches = await compareBcrypt(oldPassword, user.password);
         if (!oldPasswordMatches) {
             const AuthError = require("@errors/auth-error");
             throw new AuthError("Current password is incorrect.", {
@@ -376,13 +461,13 @@ async function updatePassword(userId, oldPassword, newPassword) {
         }
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await hashBcrypt(newPassword);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, userId]);
     return true;
 }
 
 /**
- * * Create and save a new API key for a user.
+ * Create and save a new API key for a user.
  * @param {number} userId - userId.
  * @returns {Promise<string>}
  */
@@ -397,15 +482,13 @@ async function regenerateAPIKey(userId) {
         });
     }
 
-    // Generate a new API key for the user
     const apiKey = crypto.randomBytes(32).toString("hex");
-    const hashedAPIKey = await hash(apiKey);
+    const hashedAPIKey = hashAPIKey(apiKey);
     await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
 
     // Invalidate the cache for the user's email
-    const email = await getEmailFromId(userId);
-    if (email) {
-        apiKeyCacheStore.invalidateByEmail(email);
+    if (user.email) {
+        apiKeyCacheStore.invalidateByEmail(user.email);
     } else {
         apiKeyCacheStore.clear();
     }
@@ -416,7 +499,7 @@ async function regenerateAPIKey(userId) {
 // User lookup
 
 /**
- * * Gets the class id for the given user by checking in-memory classrooms.
+ * Gets the class id for the given user by checking in-memory classrooms.
  * @param {string} email - User email.
  * @returns {number|null|Error}
  */
@@ -436,7 +519,7 @@ function getUserClass(email) {
 }
 
 /**
- * * Gets the email associated with an API key, with caching.
+ * Gets the email associated with an API key, with caching.
  * @param {string} api - API key.
  * @returns {Promise<string|Object|Error>}
  */
@@ -444,41 +527,15 @@ async function getEmailFromAPIKey(api) {
     try {
         if (!api) return { error: "Missing API key" };
 
-        const cachedEmail = apiKeyCacheStore.get(api);
-        if (cachedEmail) return cachedEmail;
-
-        let user = await new Promise((resolve, reject) => {
-            database.all("SELECT * FROM users", [], async (err, users) => {
-                try {
-                    if (err) throw err;
-                    let userData = null;
-                    for (const user of users) {
-                        if (user.API && (await bcrypt.compare(api, user.API))) {
-                            userData = user;
-                            break;
-                        }
-                    }
-                    if (!userData) {
-                        resolve({ error: "Not a valid API key" });
-                        return;
-                    }
-                    resolve(userData);
-                } catch (err) {
-                    reject(err);
-                }
-            });
-        });
-
-        if (user.error) return user;
-        apiKeyCacheStore.set(api, user.email);
-        return user.email;
+        const email = await resolveEmailFromAPIKey(api);
+        return email || { error: "Not a valid API key" };
     } catch (err) {
         return err;
     }
 }
 
 /**
- * * Gets the current user's data including class/session info.
+ * Gets the current user's data including class/session info.
  * @param {Object} userIdentifier - User lookup data.
  * @returns {Promise<Object|Error>}
  */
@@ -553,7 +610,7 @@ async function getUser(userIdentifier) {
 }
 
 /**
- * * Gets the classes owned by a user from their email.
+ * Gets the classes owned by a user from their email.
  * @param {string} email - User email.
  * @returns {Promise<Object[]>}
  */
@@ -565,7 +622,7 @@ async function getUserOwnedClasses(email) {
 // Session Management
 
 /**
- * * Logs a user out from a specific socket, cleaning up session state.
+ * Logs a user out from a specific socket, cleaning up session state.
  * @param {Object} socket - Socket connection.
  * @returns {void}
  */
@@ -634,7 +691,7 @@ function logout(socket) {
 }
 
 /**
- * * Deletes a user account and all associated data.
+ * Deletes a user account and all associated data.
  * @param {number|string} userId - User ID or pending user secret.
  * @param {Object} userSession - Session user data.
  * @returns {Promise<string|void>}

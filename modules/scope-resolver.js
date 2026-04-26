@@ -24,6 +24,12 @@ function dedupeScopes(scopes) {
     return [...new Set(scopes.filter((scope) => typeof scope === "string"))];
 }
 
+/**
+ * Extract the user's global role assignments from the supported data shapes.
+ *
+ * @param {*} user - user.
+ * @returns {*}
+ */
 function getGlobalRoleEntries(user) {
     if (!user) {
         return [];
@@ -50,6 +56,12 @@ function getGlobalRoleEntries(user) {
     return [];
 }
 
+/**
+ * Extract the user's class role assignments from the supported data shapes.
+ *
+ * @param {*} classUser - classUser.
+ * @returns {*}
+ */
 function getClassRoleEntries(classUser) {
     if (!classUser) {
         return [];
@@ -68,6 +80,13 @@ function getClassRoleEntries(classUser) {
     return [];
 }
 
+/**
+ * Determine whether the class user should be treated as the owner.
+ *
+ * @param {*} classUser - classUser.
+ * @param {*} classroom - classroom.
+ * @returns {boolean}
+ */
 function isClassOwner(classUser, classroom) {
     if (!classUser || !classroom) {
         return Boolean(classUser && classUser.isClassOwner);
@@ -80,10 +99,23 @@ function isClassOwner(classUser, classroom) {
     );
 }
 
+/**
+ * Expand one role into the global scopes it grants.
+ *
+ * @param {*} role - role.
+ * @returns {*}
+ */
 function getGlobalScopesForRole(role) {
     return getScopesFromRoleLike(role, "global");
 }
 
+/**
+ * Expand one role into class scopes, honoring classroom overrides when present.
+ *
+ * @param {*} role - role.
+ * @param {*} classroom - classroom.
+ * @returns {*}
+ */
 function getClassScopesForRole(role, classroom) {
     const roleId = role && typeof role === "object" ? role.id : null;
     const roleName = getRoleName(role);
@@ -108,6 +140,13 @@ function getClassScopesForRole(role, classroom) {
     return scopes;
 }
 
+/**
+ * Resolve the user's effective global and class scopes.
+ *
+ * @param {*} user - user.
+ * @param {*} classroom - classroom.
+ * @returns {*}
+ */
 function getUserScopes(user, classroom) {
     if (!user) {
         throw new AppError("No user defined");
@@ -152,6 +191,13 @@ function getUserScopes(user, classroom) {
     return scopes;
 }
 
+/**
+ * Resolve the raw class scopes assigned to a user before owner or admin overrides.
+ *
+ * @param {*} user - user.
+ * @param {*} classroom - classroom.
+ * @returns {*}
+ */
 function getAssignedClassScopes(user, classroom) {
     if (!user) {
         return [];
@@ -168,6 +214,14 @@ function getAssignedClassScopes(user, classroom) {
     return dedupeScopes(rawClassScopes);
 }
 
+/**
+ * Check whether the user satisfies at least one requested scope.
+ *
+ * @param {*} user - user.
+ * @param {*} scopes - scopes.
+ * @param {*} classroom - classroom.
+ * @returns {*}
+ */
 function userHasAnyScope(user, scopes, classroom = null) {
     if (!user || !Array.isArray(scopes) || scopes.length === 0) {
         return false;
@@ -176,6 +230,13 @@ function userHasAnyScope(user, scopes, classroom = null) {
     return scopes.some((scope) => userHasScope(user, scope, classroom));
 }
 
+/**
+ * Classify a user for class access checks and UI behavior.
+ *
+ * @param {*} classUser - classUser.
+ * @param {*} classroom - classroom.
+ * @returns {*}
+ */
 function getClassAccessProfile(classUser, classroom) {
     const assignedClassScopes = getAssignedClassScopes(classUser, classroom);
     const isOwner = isClassOwner(classUser, classroom);
@@ -210,6 +271,12 @@ function getClassAccessProfile(classUser, classroom) {
     };
 }
 
+/**
+ * Compute the user's effective global permission level.
+ *
+ * @param {*} user - user.
+ * @returns {*}
+ */
 function getGlobalPermissionLevelForUser(user) {
     if (!user) {
         return computeGlobalPermissionLevel([]);
@@ -218,6 +285,13 @@ function getGlobalPermissionLevelForUser(user) {
     return computeGlobalPermissionLevel(getUserScopes(user).global);
 }
 
+/**
+ * Compute the user's effective class permission level.
+ *
+ * @param {*} classUser - classUser.
+ * @param {*} classroom - classroom.
+ * @returns {*}
+ */
 function getClassPermissionLevelForUser(classUser, classroom) {
     const profile = getClassAccessProfile(classUser, classroom);
     switch (profile.category) {
@@ -236,6 +310,14 @@ function getClassPermissionLevelForUser(classUser, classroom) {
     }
 }
 
+/**
+ * Check whether the user has one specific scope.
+ *
+ * @param {*} user - user.
+ * @param {*} scope - scope.
+ * @param {*} classroom - classroom.
+ * @returns {*}
+ */
 function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
 
@@ -251,6 +333,14 @@ function userHasScope(user, scope, classroom = null) {
     return scopes.includes(scope);
 }
 
+/**
+ * Choose the highest-privilege role name from a set of roles.
+ *
+ * @param {*} roles - roles.
+ * @param {*} domain - domain.
+ * @param {*} options - options.
+ * @returns {*}
+ */
 function selectHighestRoleName(roles, domain, options = {}) {
     let highestName = null;
     let highestLevel = -1;
@@ -282,6 +372,12 @@ function selectHighestRoleName(roles, domain, options = {}) {
     return highestName;
 }
 
+/**
+ * Resolve the user's effective role name from roles or permission data.
+ *
+ * @param {*} user - user.
+ * @returns {*}
+ */
 function getUserRoleName(user) {
     if (!user) {
         return ROLE_NAMES.GUEST;
@@ -304,12 +400,22 @@ function getUserRoleName(user) {
     return LEVEL_TO_ROLE[permissionLevel] || ROLE_NAMES.GUEST;
 }
 
+/**
+ * Collect every global scope except the blocked marker.
+ *
+ * @returns {*}
+ */
 function getAllGlobalScopes() {
     let scopes = flattenObject(SCOPES.GLOBAL);
     scopes = scopes.filter((scope) => scope !== SCOPES.GLOBAL.SYSTEM.BLOCKED);
     return scopes;
 }
 
+/**
+ * Collect every class scope except the blocked marker.
+ *
+ * @returns {*}
+ */
 function getAllClassScopes() {
     let scopes = flattenObject(SCOPES.CLASS);
     scopes = scopes.filter((scopes) => scopes !== SCOPES.CLASS.SYSTEM.BLOCKED);

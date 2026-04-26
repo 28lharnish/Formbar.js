@@ -34,6 +34,12 @@ function convertHSLToHex(hue, saturation, lightness) {
         const chroma = (saturation * Math.min(lightness, 1 - lightness)) / 100;
 
         // Function to get color component
+        /**
+         * Convert one HSL channel into its hexadecimal color component.
+         *
+         * @param {*} colorIndex - colorIndex.
+         * @returns {*}
+         */
         function getColorComponent(colorIndex) {
             try {
                 const colorPosition = (colorIndex + hue / 30) % 12;
@@ -96,6 +102,12 @@ function generateColors(amount) {
     }
 }
 
+/**
+ * Generate a short random key for temporary codes and other lightweight identifiers.
+ *
+ * @param {*} size - size.
+ * @returns {*}
+ */
 function generateKey(size) {
     let key = "";
     for (let i = 0; i < size; i++) {
@@ -107,6 +119,12 @@ function generateKey(size) {
     return key;
 }
 
+/**
+ * Camel Case To Normal.
+ *
+ * @param {*} str - str.
+ * @returns {*}
+ */
 function camelCaseToNormal(str) {
     let result = str.replace(/([A-Z])/g, " $1");
     result = result.charAt(0).toUpperCase() + result.slice(1);

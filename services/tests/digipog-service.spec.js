@@ -708,7 +708,8 @@ describe("transferDigipogs()", () => {
     let hashedPin;
 
     beforeAll(async () => {
-        hashedPin = await bcrypt.hash("1234", 10);
+        const { hashBcrypt } = require("@modules/crypto");
+        hashedPin = await hashBcrypt("1234");
     });
 
     it("transfers between users with 10% tax", async () => {

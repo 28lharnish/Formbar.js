@@ -1,6 +1,7 @@
 const request = require("supertest");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
+const { sha256 } = require("@modules/crypto");
 
 let mockDatabase;
 
@@ -38,17 +39,22 @@ jest.mock("@modules/config", () => {
     };
 });
 
-jest.mock("@services/app-service", () => ({
-    createApp: jest.fn(),
-}));
-
 const authorizeController = require("../oauth/authorize");
 const tokenController = require("../oauth/token");
 const revokeController = require("../oauth/revoke");
-const registerAppController = require("../apps/register-app");
-const appService = require("@services/app-service");
 
-const app = createTestApp(authorizeController, tokenController, revokeController, registerAppController);
+const app = createTestApp(authorizeController, tokenController, revokeController);
+const OAUTH_CLIENT_ID = "1";
+const OAUTH_CLIENT_SECRET = "oauth-secret";
+const OAUTH_REDIRECT_URI = "http://localhost:4000/cb";
+
+async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
+    await mockDatabase.dbRun(
+        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id, api_key_hash, api_secret_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1, sha256("api-key"), sha256(OAUTH_CLIENT_SECRET)]
+    );
+    await mockDatabase.dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [Number(OAUTH_CLIENT_ID), redirectUri]);
+}
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -91,7 +97,7 @@ describe("GET /api/v1/oauth/authorize", () => {
         const res = await request(app)
             .get("/api/v1/oauth/authorize")
             .set("Authorization", tokens.accessToken)
-            .query({ client_id: "app123", scope: "read", state: "xyz" });
+            .query({ client_id: "1", scope: "read", state: "xyz" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -104,7 +110,7 @@ describe("GET /api/v1/oauth/authorize", () => {
         const res = await request(app)
             .get("/api/v1/oauth/authorize")
             .set("Authorization", tokens.accessToken)
-            .query({ client_id: "app123", redirect_uri: "http://localhost:4000/cb", state: "xyz" });
+            .query({ client_id: "1", redirect_uri: "http://localhost:4000/cb", state: "xyz" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -117,7 +123,7 @@ describe("GET /api/v1/oauth/authorize", () => {
         const res = await request(app)
             .get("/api/v1/oauth/authorize")
             .set("Authorization", tokens.accessToken)
-            .query({ client_id: "app123", redirect_uri: "http://localhost:4000/cb", scope: "read" });
+            .query({ client_id: "1", redirect_uri: "http://localhost:4000/cb", scope: "read" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -129,7 +135,7 @@ describe("GET /api/v1/oauth/authorize", () => {
 
         const res = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
             response_type: "token",
-            client_id: "app123",
+            client_id: "1",
             redirect_uri: "http://localhost:4000/cb",
             scope: "read",
             state: "xyz",
@@ -142,10 +148,11 @@ describe("GET /api/v1/oauth/authorize", () => {
 
     it("redirects (302) with a valid authorization code when all params are present", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        await seedOAuthClient();
 
         const res = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
-            client_id: "app123",
-            redirect_uri: "http://localhost:4000/cb",
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "read",
             state: "xyz",
         });
@@ -178,7 +185,7 @@ describe("POST /api/v1/oauth/token", () => {
     it("returns 400 when code is missing for authorization_code grant", async () => {
         const res = await request(app)
             .post("/api/v1/oauth/token")
-            .send({ grant_type: "authorization_code", redirect_uri: "http://localhost:4000/cb", client_id: "app123" });
+            .send({ grant_type: "authorization_code", redirect_uri: "http://localhost:4000/cb", client_id: "1" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -186,7 +193,7 @@ describe("POST /api/v1/oauth/token", () => {
     });
 
     it("returns 400 when redirect_uri is missing for authorization_code grant", async () => {
-        const res = await request(app).post("/api/v1/oauth/token").send({ grant_type: "authorization_code", code: "bad-code", client_id: "app123" });
+        const res = await request(app).post("/api/v1/oauth/token").send({ grant_type: "authorization_code", code: "bad-code", client_id: "1" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -207,8 +214,9 @@ describe("POST /api/v1/oauth/token", () => {
         const res = await request(app).post("/api/v1/oauth/token").send({
             grant_type: "authorization_code",
             code: "invalid-code",
-            redirect_uri: "http://localhost:4000/cb",
-            client_id: "app123",
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
         });
 
         expect(res.status).toBe(400);
@@ -217,11 +225,12 @@ describe("POST /api/v1/oauth/token", () => {
 
     it("exchanges a valid authorization code for tokens", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        await seedOAuthClient();
 
         // Step 1: obtain an authorization code via the authorize endpoint
         const authRes = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
-            client_id: "app123",
-            redirect_uri: "http://localhost:4000/cb",
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "read",
             state: "xyz",
         });
@@ -232,8 +241,9 @@ describe("POST /api/v1/oauth/token", () => {
         const res = await request(app).post("/api/v1/oauth/token").send({
             grant_type: "authorization_code",
             code,
-            redirect_uri: "http://localhost:4000/cb",
-            client_id: "app123",
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
         });
 
         expect(res.status).toBe(200);
@@ -246,10 +256,11 @@ describe("POST /api/v1/oauth/token", () => {
 
     it("returns 400 when the same authorization code is reused", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        await seedOAuthClient();
 
         const authRes = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
-            client_id: "app123",
-            redirect_uri: "http://localhost:4000/cb",
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "read",
             state: "xyz",
         });
@@ -257,14 +268,22 @@ describe("POST /api/v1/oauth/token", () => {
         const code = new URL(authRes.headers.location).searchParams.get("code");
 
         // First exchange — should succeed
-        await request(app)
-            .post("/api/v1/oauth/token")
-            .send({ grant_type: "authorization_code", code, redirect_uri: "http://localhost:4000/cb", client_id: "app123" });
+        await request(app).post("/api/v1/oauth/token").send({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
+        });
 
         // Second exchange — should fail
-        const res = await request(app)
-            .post("/api/v1/oauth/token")
-            .send({ grant_type: "authorization_code", code, redirect_uri: "http://localhost:4000/cb", client_id: "app123" });
+        const res = await request(app).post("/api/v1/oauth/token").send({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
+        });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -296,11 +315,12 @@ describe("POST /api/v1/oauth/revoke", () => {
 
     it("successfully revokes a valid OAuth refresh token", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        await seedOAuthClient();
 
         // Obtain an OAuth refresh token via the full authorize → token flow
         const authRes = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
-            client_id: "app123",
-            redirect_uri: "http://localhost:4000/cb",
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "read",
             state: "xyz",
         });
@@ -310,8 +330,9 @@ describe("POST /api/v1/oauth/revoke", () => {
         const tokenRes = await request(app).post("/api/v1/oauth/token").send({
             grant_type: "authorization_code",
             code,
-            redirect_uri: "http://localhost:4000/cb",
-            client_id: "app123",
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
         });
 
         const oauthRefreshToken = tokenRes.body.data.refresh_token;
@@ -327,82 +348,5 @@ describe("POST /api/v1/oauth/revoke", () => {
 
         expect(refreshRes.status).toBeGreaterThanOrEqual(400);
         expect(refreshRes.body.success).toBe(false);
-    });
-});
-
-describe("POST /api/v1/apps/register", () => {
-    it("returns 401 without an authorization header", async () => {
-        const res = await request(app).post("/api/v1/apps/register").send({ name: "My App", description: "A test app" });
-
-        expect(res.status).toBe(401);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when name is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ description: "A test app" });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when description is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app).post("/api/v1/apps/register").set("Authorization", `Bearer ${tokens.accessToken}`).send({ name: "My App" });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when name exceeds 100 characters", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ name: "A".repeat(101), description: "A test app" });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when description exceeds 500 characters", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ name: "My App", description: "A".repeat(501) });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 200 with appId, apiKey, and apiSecret on success", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        appService.createApp.mockResolvedValue({
-            appId: 42,
-            apiKey: "generated-api-key",
-            apiSecret: "generated-api-secret",
-        });
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ name: "My App", description: "A test app" });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data).toEqual({
-            appId: 42,
-            apiKey: "generated-api-key",
-            apiSecret: "generated-api-secret",
-        });
     });
 });

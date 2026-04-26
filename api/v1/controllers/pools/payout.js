@@ -7,7 +7,7 @@ const AppError = require("@errors/app-error");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register payout controller routes.
+ * Register payout controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

@@ -6,7 +6,7 @@ const digipogService = require("@services/digipog-service");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register delete controller routes.
+ * Register delete controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

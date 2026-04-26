@@ -2,6 +2,11 @@ const NotFoundError = require("@errors/not-found-error");
 const { logEvent, getLogger } = require("@modules/logger");
 
 let openIdClientPromise;
+/**
+ * Load the OIDC client library once so provider discovery can reuse the same import.
+ *
+ * @returns {*}
+ */
 function getOpenIdClient() {
     if (!openIdClientPromise) {
         openIdClientPromise = import("openid-client");
@@ -12,6 +17,12 @@ function getOpenIdClient() {
 
 const clients = new Map();
 
+/**
+ * Return the cached discovery client for a configured provider.
+ *
+ * @param {*} provider - provider.
+ * @returns {*}
+ */
 function getClient(provider) {
     if (!clients.has(provider)) {
         throw new NotFoundError(`Client for provider ${provider} not found`);
@@ -20,6 +31,11 @@ function getClient(provider) {
 }
 
 const possibleProviders = ["google", "microsoft"];
+/**
+ * List the OIDC providers that have enough environment config to be used for login.
+ *
+ * @returns {*}
+ */
 function getAvailableProviders() {
     const availableProviders = [];
     for (const provider of possibleProviders) {
@@ -38,6 +54,11 @@ function getAvailableProviders() {
     return availableProviders;
 }
 
+/**
+ * Discover and cache the configured OIDC providers at startup.
+ *
+ * @returns {Promise<*>}
+ */
 async function initializeAvailableProviders() {
     const client = await getOpenIdClient();
     const providers = getAvailableProviders();

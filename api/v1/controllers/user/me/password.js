@@ -4,7 +4,7 @@ const ValidationError = require("@errors/validation-error");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register password controller routes.
+ * Register password controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

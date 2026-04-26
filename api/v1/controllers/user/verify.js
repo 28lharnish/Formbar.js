@@ -13,7 +13,7 @@ const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register verify controller routes.
+ * Register verify controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -186,7 +186,7 @@ module.exports = (router) => {
     });
 
     /**
-     * * Handle the verify user request.
+     * Handle the verify user request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}
@@ -307,7 +307,7 @@ module.exports = (router) => {
      */
     router.patch("/user/:id/verify", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), verifyUserHandler);
 
-    // Deprecated endpoint - kept for backwards compatibility, use PATCH /api/v1/user/:id/verify instead
+    // Deprecated endpoint - kept for backwards compatibility, use "PATCH /api/v1/user/:id/verify" instead
     router.post("/user/:id/verify", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
         res.setHeader("X-Deprecated", "Use PATCH /api/v1/user/:id/verify instead");
         res.setHeader(

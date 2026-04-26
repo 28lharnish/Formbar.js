@@ -5,7 +5,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register add controller routes.
+ * Register add controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

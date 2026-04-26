@@ -2,10 +2,14 @@ jest.mock("@services/class-service");
 jest.mock("@services/class-membership-service");
 jest.mock("@services/student-service");
 jest.mock("@services/socket-updates-service");
+jest.mock("@modules/socket-error-handler", () => ({
+    handleSocketError: jest.fn(),
+}));
 
 const { run: classRun } = require("../class");
 const { classStateStore } = require("@services/classroom-service");
 const { SCOPES } = require("@modules/permissions");
+const { handleSocketError } = require("@modules/socket-error-handler");
 const {
     startClass,
     endClass,
@@ -17,6 +21,7 @@ const {
     updateClassSetting,
 } = require("@services/class-service");
 const { enrollInClass, unenrollFromClass, deleteClassroom, setClassroomBanStatus } = require("@services/class-membership-service");
+const { getIdFromEmail } = require("@services/student-service");
 const { createSocket, createSocketUpdates, createTestClass, createTestUser, testData } = require("@modules/tests/tests");
 
 function seedTeacherSession() {
@@ -96,11 +101,20 @@ describe("class socket", () => {
     });
 
     describe("leaveClass event", () => {
-        it("should call leaveClass with the session", () => {
+        it("should call leaveClass with the session", async () => {
             const handler = socket.on.mock.calls.find((call) => call[0] === "leaveClass")[1];
-            handler();
+            await handler();
 
-            expect(leaveClass).toHaveBeenCalledWith(socket.request.session);
+            expect(leaveClass).toHaveBeenCalledWith(socket.request.session, testData.classId);
+        });
+
+        it("should route rejections through the socket error handler", async () => {
+            leaveClass.mockRejectedValueOnce(new Error("boom"));
+
+            const handler = socket.on.mock.calls.find((call) => call[0] === "leaveClass")[1];
+            await handler();
+
+            expect(handleSocketError).toHaveBeenCalledWith(expect.any(Error), socket, "leaveClass", "There was a server error. Please try again");
         });
     });
 
@@ -169,6 +183,40 @@ describe("class socket", () => {
 
             expect(deleteClassroom).toHaveBeenCalledWith(testData.classId);
             expect(socketUpdates.getOwnedClasses).toHaveBeenCalledWith(testData.email);
+        });
+    });
+
+    describe("classKickStudent event", () => {
+        it("should call classKickStudent with the resolved class and user email", async () => {
+            seedTeacherSession();
+            getIdFromEmail.mockResolvedValueOnce(2);
+
+            const handler = socket.on.mock.calls.find((call) => call[0] === "classKickStudent")[1];
+            await handler("student@test.com");
+
+            expect(classKickStudent).toHaveBeenCalledWith(2, testData.classId);
+        });
+
+        it("should surface classKickStudent errors through the socket error handler", async () => {
+            seedTeacherSession();
+            classKickStudent.mockRejectedValueOnce(new Error("missing"));
+
+            const handler = socket.on.mock.calls.find((call) => call[0] === "classKickStudent")[1];
+            await handler("student@test.com");
+
+            expect(handleSocketError).toHaveBeenCalledWith(expect.any(Error), socket, "classKickStudent");
+        });
+    });
+
+    describe("classRemoveFromSession event", () => {
+        it("should surface classRemoveFromSession errors through the socket error handler", async () => {
+            seedTeacherSession();
+            classKickStudent.mockRejectedValueOnce(new Error("missing"));
+
+            const handler = socket.on.mock.calls.find((call) => call[0] === "classRemoveFromSession")[1];
+            await handler(2);
+
+            expect(handleSocketError).toHaveBeenCalledWith(expect.any(Error), socket, "classRemoveFromSession");
         });
     });
 

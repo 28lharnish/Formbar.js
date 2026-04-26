@@ -79,6 +79,16 @@ async function seedAuthenticatedUser(mockDatabase, overrides = {}) {
     };
 }
 
+/**
+ * Seed Class Membership.
+ *
+ * @param {*} mockDatabase - mockDatabase.
+ * @param {*} userId - userId.
+ * @param {*} classId - classId.
+ * @param {*} permissionLevel - permissionLevel.
+ * @param {*} options - options.
+ * @returns {Promise<*>}
+ */
 async function seedClassMembership(mockDatabase, userId, classId, permissionLevel, options = {}) {
     return addClassMemberWithPermission(mockDatabase, userId, classId, permissionLevel, options);
 }

@@ -1,5 +1,4 @@
-const { database } = require("@modules/database");
-const { compare } = require("@modules/crypto");
+const { resolveAPIKey } = require("@services/api-key-service");
 const { classStateStore } = require("@services/classroom-service");
 const authService = require("@services/auth-service");
 
@@ -58,20 +57,8 @@ module.exports = {
 
                     next();
                 } else if (api) {
-                    // Get all users and compare the API key hash
-                    database.all("SELECT id, email, API FROM users", [], async (err, users) => {
-                        try {
-                            if (err) throw err;
-
-                            // Compare the provided API key with each user's hashed API key
-                            let matchedUser = null;
-                            for (const user of users) {
-                                if (user.API && (await compare(api, user.API))) {
-                                    matchedUser = user;
-                                    break;
-                                }
-                            }
-
+                    resolveAPIKey(api)
+                        .then((matchedUser) => {
                             if (!matchedUser) {
                                 next(new Error("Not a valid API key"));
                                 return;
@@ -83,11 +70,11 @@ module.exports = {
                             socket.request.session.classId = null;
 
                             next();
-                        } catch (err) {
+                        })
+                        .catch((err) => {
                             handleSocketError(err, socket, "authentication:api");
                             next(err);
-                        }
-                    });
+                        });
                 } else {
                     next(new Error("Missing authentication credentials"));
                 }

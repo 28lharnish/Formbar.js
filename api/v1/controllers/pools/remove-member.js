@@ -7,7 +7,7 @@ const AppError = require("@errors/app-error");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register remove-member controller routes.
+ * Register remove-member controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

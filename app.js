@@ -26,6 +26,7 @@ const NotFoundError = require("@errors/not-found-error");
 const { logout } = require("@services/user-service");
 const { rateLimiter } = require("@middleware/rate-limiter");
 const { ensureFormbarDeveloperPool } = require("@services/bootstrap-service");
+const { parseTrustProxySetting } = require("@modules/proxy-trust");
 
 // Create session for user information to be transferred from page to page
 const sessionMiddleware = session({
@@ -48,7 +49,7 @@ initializeAvailableProviders().catch((error) => {
 // from the X-Forwarded-For header instead of nginx's loopback address.
 // Without this, all requests appear to come from the same IP and rate limiting
 // is applied globally rather than per-user.
-app.set("trust proxy", Number(process.env.TRUST_PROXY) ?? 1);
+app.set("trust proxy", parseTrustProxySetting(process.env.TRUST_PROXY));
 
 // Apply logger middleware
 // This should always be applied first so that we can log when anything goes wrong

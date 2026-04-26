@@ -34,6 +34,11 @@ function removeUserSocketUpdate(email, socketId) {
 }
 
 // Initializes all the websocket routes
+/**
+ * Init Socket Routes.
+ *
+ * @returns {*}
+ */
 function initSocketRoutes() {
     io.on("connection", async (socket) => {
         const socketUpdates = new SocketUpdates(socket);
@@ -48,6 +53,11 @@ function initSocketRoutes() {
         }
 
         const skippedFiles = ["init.js", "middleware", "tests"];
+        /**
+         * Recursively load socket route handlers from a directory.
+         * @param {string} directory - directory.
+         * @returns {void}
+         */
         const loadSockets = (directory) => {
             // If the directory is marked to be skipped, skip it
             if (skippedFiles.includes(directory)) return;
