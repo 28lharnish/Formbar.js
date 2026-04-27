@@ -132,7 +132,6 @@ function isSelfOrHasScopes(scopes, message) {
 
         req.warnEvent("auth.self_or_scope.forbidden", `User ${req.user.email} is not target and lacks required scopes`, {
             email: req.user.email,
-            targetId,
             requiredScopes,
         });
 
@@ -148,11 +147,12 @@ function isSelfOrHasScopes(scopes, message) {
  * Middleware: allows access if the user owns the resource or has the specified scope.
  * The ownerCheck function receives (req) and must return a boolean (or promise of boolean).
  * @param {Function} ownerCheck - Async function (req) => boolean indicating ownership.
- * @param {string[]|string} scopes - Required scope(s) if the user is not the owner.
+ * @param {string | string[]} scope - The scope(s) required if the user is not the owner.
  * @param {string} [message] - Optional custom error message.
  * @returns {Function} Express middleware function.
  */
-function isOwnerOrHasScopes(ownerCheck, scopes, message) {
+
+function isOwnerOrHasScopes(ownerCheck, scope, message) {
     return async function (req, res, next) {
         if (!req.user || !req.user.email) {
             throw new AuthError("User is not authenticated");
@@ -163,20 +163,43 @@ function isOwnerOrHasScopes(ownerCheck, scopes, message) {
             return next();
         }
 
+        const requiredScopes = Array.isArray(scope) ? scope : [scope];
         const user = classStateStore.getUser(req.user.email) || req.user;
-        const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
 
-        // check if user has all required scopes
-        let userHasRequiredScopes = true;
-        for (const scope of requiredScopes) {
-            if (!userHasScope(user, scope)) userHasRequiredScopes = false;
+        let classroom = null;
+        let classUser = null;
+        const needsClassContext = requiredScopes.some((s) => typeof s === "string" && s.startsWith("class."));
+
+        if (needsClassContext) {
+            const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
+            if (classId !== undefined && classId !== null && classId !== "") {
+                classroom = classStateStore.getClassroom(classId);
+                if (classroom) {
+                    classUser = classroom.students[req.user.email] || null;
+                }
+            }
         }
 
-        if (userHasRequiredScopes) {
+        const hasRequiredScope = requiredScopes.some((requiredScope) => {
+            if (typeof requiredScope !== "string") {
+                return false;
+            }
+
+            if (requiredScope.startsWith("class.")) {
+                if (!classroom || !classUser) {
+                    return false;
+                }
+                return userHasScope(classUser, requiredScope, classroom);
+            }
+
+            return userHasScope(user, requiredScope);
+        });
+
+        if (hasRequiredScope) {
             return next();
         }
 
-        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks required scopes`, {
+        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks required scope(s)`, {
             email: req.user.email,
             requiredScopes,
         });
@@ -184,57 +207,63 @@ function isOwnerOrHasScopes(ownerCheck, scopes, message) {
         throw new ForbiddenError(message || "You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "not_owner_and_insufficient_scope",
-            scopes: requiredScopes,
+            scope: requiredScopes,
         });
     };
 }
 
-/**
- * Middleware: checks if the user is a member of the class (enrolled in classusers or the class owner).
- * Resolves class ID from req.params.id, req.user.classId, or req.user.activeClass.
- * Does NOT require the class to be active in memory — checks the database.
- * @returns {Function} Express middleware function.
- */
-function isClassMember() {
+
+function isAppAndHasScopes(scopes, message) {
     return async function (req, res, next) {
-        if (!req.user || !req.user.id) {
-            throw new AuthError("User is not authenticated");
+
+
+        /**
+         * Middleware: checks if the user is a member of the class (enrolled in classusers or the class owner).
+         * Resolves class ID from req.params.id, req.user.classId, or req.user.activeClass.
+         * Does NOT require the class to be active in memory — checks the database.
+         * @returns {Function} Express middleware function.
+         */
+        function isClassMember() {
+            return async function (req, res, next) {
+                if (!req.user || !req.user.id) {
+                    throw new AuthError("User is not authenticated");
+                }
+
+                const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
+                if (classId === undefined || classId === null || classId === "") {
+                    throw new NotFoundError("Class ID is required.", { event: "permission.check.failed", reason: "class_not_found" });
+                }
+
+                // Check in-memory first (fast path)
+                const classroom = classStateStore.getClassroom(classId);
+                if (classroom && classroom.students[req.user.email]) {
+                    return next();
+                }
+
+                // Fall back to database check
+                const membership = await dbGet("SELECT 1 FROM classusers WHERE studentId=? AND classId=?", [req.user.id, classId]);
+                if (membership) {
+                    return next();
+                }
+
+                const ownership = await dbGet("SELECT 1 FROM classroom WHERE id=? AND owner=?", [classId, req.user.id]);
+                if (ownership) {
+                    return next();
+                }
+
+                throw new ForbiddenError("You are not a member of this class.", {
+                    event: "permission.check.failed",
+                    reason: "not_class_member",
+                });
+            };
         }
 
-        const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
-        if (classId === undefined || classId === null || classId === "") {
-            throw new NotFoundError("Class ID is required.", { event: "permission.check.failed", reason: "class_not_found" });
+        module.exports = {
+            hasScope,
+            hasClassScope,
+            isSelfOrHasScopes,
+            isOwnerOrHasScopes,
+            isAppAndHasScopes,
+            isClassMember,
+            normalizeClassId,
         }
-
-        // Check in-memory first (fast path)
-        const classroom = classStateStore.getClassroom(classId);
-        if (classroom && classroom.students[req.user.email]) {
-            return next();
-        }
-
-        // Fall back to database check
-        const membership = await dbGet("SELECT 1 FROM classusers WHERE studentId=? AND classId=?", [req.user.id, classId]);
-        if (membership) {
-            return next();
-        }
-
-        const ownership = await dbGet("SELECT 1 FROM classroom WHERE id=? AND owner=?", [classId, req.user.id]);
-        if (ownership) {
-            return next();
-        }
-
-        throw new ForbiddenError("You are not a member of this class.", {
-            event: "permission.check.failed",
-            reason: "not_class_member",
-        });
-    };
-}
-
-module.exports = {
-    hasScope,
-    hasClassScope,
-    isSelfOrHasScopes,
-    isOwnerOrHasScopes,
-    isClassMember,
-    normalizeClassId,
-};

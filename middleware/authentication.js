@@ -174,6 +174,31 @@ async function isAuthenticated(req, res, next) {
     next();
 }
 
+// make it do
+// async function authenticateApp(req, res, next) {
+//     const auth = req.headers.authorization;
+//     if (!auth) throw new AuthError("No authentication provided", { event: "auth.missing_token", reason: "no_token" });
+
+//     const [scheme, credentials] = auth.split(' ');
+//     if (scheme !== 'ApiKey' || !credentials) {
+//         throw new AuthError("Invalid authentication format", { event: "auth.invalid_auth_format", reason: "invalid_format" });
+//     }
+
+//     const [key, secret] = credentials.split(':');
+//     if (!key || !secret) {
+//         throw new AuthError("Invalid authentication credentials", { event: "auth.invalid_auth_credentials", reason: "invalid_credentials" });
+//     }
+
+//     const app = await // not done yet
+//     if (!app) throw new AuthError("Invalid application key", { event: "auth.invalid_app_key", reason: "invalid_key" });
+
+//     const valid = await bcrypt.compare(secret, app.secretHash);
+//     if (!valid) return res.status(401).end();
+
+//     req.app = app;
+//     next();
+// }
+
 // Create a function to check if the user's email is verified
 /**
  * Determine whether the current user can pass email verification checks.
