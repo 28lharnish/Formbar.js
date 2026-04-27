@@ -83,6 +83,7 @@ const {
     unenrollFromClass,
     isUserEnrolled,
     getClassLinks,
+    getClassLinksPaginated,
 } = require("@services/class-membership-service");
 const { emitToUser, advancedEmitToClass } = require("@services/socket-updates-service");
 const { classStateStore } = require("@services/classroom-service");
@@ -280,6 +281,28 @@ describe("getClassLinks", () => {
 
     it("throws AppError when classId is null", () => {
         expect(() => getClassLinks(null)).toThrow(AppError);
+    });
+});
+
+describe("getClassLinksPaginated", () => {
+    it("returns links ordered by id with pagination metadata", async () => {
+        const room = await seedClassroom();
+        await seedLink(room.id, "Alpha", "https://alpha.example");
+        await seedLink(room.id, "Beta", "https://beta.example");
+        await seedLink(room.id, "Gamma", "https://gamma.example");
+
+        const result = await getClassLinksPaginated(room.id, 2, 1);
+
+        expect(result.total).toBe(3);
+        expect(result.links).toHaveLength(2);
+        expect(result.links[0]).toMatchObject({ name: "Beta" });
+        expect(result.links[1]).toMatchObject({ name: "Gamma" });
+    });
+
+    it("returns an empty page when the class has no links", async () => {
+        const room = await seedClassroom();
+        const result = await getClassLinksPaginated(room.id, 10, 0);
+        expect(result).toEqual({ links: [], total: 0 });
     });
 });
 

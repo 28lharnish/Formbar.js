@@ -1,5 +1,5 @@
 /**
- * * Register controller-template controller routes.
+ * Register controller-template controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

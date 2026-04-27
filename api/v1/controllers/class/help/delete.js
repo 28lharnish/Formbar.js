@@ -5,34 +5,11 @@ const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register delete controller routes.
+ * Register delete controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
-    /**
-     * * Handle the delete help request.
-     * @param {import("express").Request} req - req.
-     * @param {import("express").Response} res - res.
-     * @returns {Promise<void>}
-     */
-    const deleteHelpHandler = async (req, res) => {
-        const classId = req.params.id;
-        const targetUserId = req.params.userId;
-        req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
-        const userData = { ...req.user, classId: req.params.id };
-        const result = await deleteHelpTicket(targetUserId, userData);
-        if (result === true) {
-            req.infoEvent("class.help.delete.success", "Class help request deleted", { classId, targetUserId });
-            res.status(200).json({
-                success: true,
-                data: {},
-            });
-        } else {
-            throw new AppError(result, { statusCode: 500 });
-        }
-    };
-
     /**
      * @swagger
      * /api/v1/class/{id}/students/{userId}/help:
@@ -93,15 +70,21 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.delete("/class/:id/students/:userId/help", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.APPROVE), deleteHelpHandler);
+    router.delete("/class/:id/students/:userId/help", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.APPROVE), async (req, res) => {
+        const classId = req.params.id;
+        const targetUserId = req.params.userId;
 
-    // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/class/:id/students/:userId/help instead
-    router.get("/class/:id/students/:userId/help/delete", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.APPROVE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use DELETE /api/v1/class/:id/students/:userId/help instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use DELETE /api/v1/class/:id/students/:userId/help instead. This endpoint will be removed in a future version."'
-        );
-        await deleteHelpHandler(req, res);
+        req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
+        const userData = { ...req.user, classId: req.params.id };
+        const result = await deleteHelpTicket(targetUserId, userData);
+        if (result === true) {
+            req.infoEvent("class.help.delete.success", "Class help request deleted", { classId, targetUserId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        } else {
+            throw new AppError(result, { statusCode: 500 });
+        }
     });
 };

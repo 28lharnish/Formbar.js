@@ -53,6 +53,7 @@ const {
     clearTimer,
     pauseTimer,
     resumeTimer,
+    classKickStudent,
 } = require("@services/class-service");
 
 const { classStateStore } = require("@services/classroom-service");
@@ -266,6 +267,16 @@ describe("getTimer()", () => {
         const timer = { startTime: 1000, endTime: 2000, active: true, sound: false };
         classStateStore.setClassroom(1, { className: "Test", timer });
         expect(getTimer(1)).toEqual(timer);
+    });
+});
+
+describe("classKickStudent()", () => {
+    it("throws when the target is no longer in the class", async () => {
+        const teacher = await seedUser("teacher-kick@example.com", "Teacher Kick");
+        const student = await seedUser("student-kick@example.com", "Student Kick");
+        const { id: classId } = await seedClassroom({ ownerId: teacher.id, name: "Kick Guard Class" });
+
+        await expect(classKickStudent(student.id, classId)).rejects.toThrow(/not in the specified class/i);
     });
 });
 

@@ -5,33 +5,11 @@ const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register delete controller routes.
+ * Register delete controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
-    /**
-     * * Handle the delete user request.
-     * @param {import("express").Request} req - req.
-     * @param {import("express").Response} res - res.
-     * @returns {Promise<void>}
-     */
-    const deleteUserHandler = async (req, res) => {
-        const userId = req.params.id;
-        req.infoEvent("user.delete.attempt", "Attempting to delete user");
-
-        const result = await deleteUser(userId);
-        if (result === true) {
-            req.infoEvent("user.delete.success", "User deleted successfully");
-            res.status(200).json({
-                success: true,
-                data: {},
-            });
-        } else {
-            throw new AppError(result, { event: "user.delete.failed", reason: "deletion_error" });
-        }
-    };
-
     /**
      * @swagger
      * /api/v1/user/{id}:
@@ -70,12 +48,19 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.delete("/user/:id", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), deleteUserHandler);
+    router.delete("/user/:id", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
+        const userId = req.params.id;
+        req.infoEvent("user.delete.attempt", "Attempting to delete user");
 
-    // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/user/:id instead
-    router.get("/user/:id/delete", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use DELETE /api/v1/user/:id instead");
-        res.setHeader("Warning", '299 - "Deprecated API: Use DELETE /api/v1/user/:id instead. This endpoint will be removed in a future version."');
-        await deleteUserHandler(req, res);
+        const result = await deleteUser(userId);
+        if (result === true) {
+            req.infoEvent("user.delete.success", "User deleted successfully");
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        } else {
+            throw new AppError(result, { event: "user.delete.failed", reason: "deletion_error" });
+        }
     });
 };

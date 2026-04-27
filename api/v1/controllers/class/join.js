@@ -3,7 +3,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 /**
- * * Register join controller routes.
+ * Register join controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

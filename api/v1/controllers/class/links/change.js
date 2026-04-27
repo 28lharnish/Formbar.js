@@ -5,13 +5,13 @@ const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register change controller routes.
+ * Register change controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
     /**
-     * * Handle the change link request.
+     * Handle the change link request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}

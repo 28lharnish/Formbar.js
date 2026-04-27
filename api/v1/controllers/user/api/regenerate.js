@@ -5,7 +5,7 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const userService = require("@services/user-service");
 
 /**
- * * Register regenerate controller routes.
+ * Register regenerate controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

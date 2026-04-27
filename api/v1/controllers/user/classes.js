@@ -4,10 +4,14 @@ const { getUserJoinedClasses } = require("@services/class-service");
 const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES, computeClassPermissionLevel, MANAGER_PERMISSIONS, parseScopesField } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const NotFoundError = require("@errors/not-found-error");
 
+const DEFAULT_CLASS_LIMIT = 20;
+const MAX_CLASS_LIMIT = 100;
+
 /**
- * * Register classes controller routes.
+ * Register classes controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -31,6 +35,23 @@ module.exports = (router) => {
      *         schema:
      *           type: string
      *           example: "1"
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 20
+     *           minimum: 1
+     *           maximum: 100
+     *         description: Number of classes to return per page
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 0
+     *           minimum: 0
+     *         description: Number of classes to skip before returning results
      *     responses:
      *       200:
      *         description: List of classes retrieved successfully
@@ -42,24 +63,38 @@ module.exports = (router) => {
      *                 success:
      *                   type: boolean
      *                 data:
-     *                   type: array
-     *                   items:
-     *                     type: object
-     *                     properties:
-     *                       id:
-     *                         type: number
-     *                       name:
-     *                         type: string
-     *                       key:
-     *                         type: string
-     *                       owner:
-     *                         type: number
-     *                       isOwner:
-     *                         type: boolean
-     *                       permissions:
-     *                         type: number
-     *                       classPermissions:
-     *                         type: number
+     *                   type: object
+     *                   properties:
+     *                     classes:
+     *                       type: array
+     *                       items:
+     *                         type: object
+     *                         properties:
+     *                           id:
+     *                             type: number
+     *                           name:
+     *                             type: string
+     *                           key:
+     *                             type: string
+     *                           owner:
+     *                             type: number
+     *                           isOwner:
+     *                             type: boolean
+     *                           permissions:
+     *                             type: number
+     *                           classPermissions:
+     *                             type: number
+     *                     pagination:
+     *                       type: object
+     *                       properties:
+     *                         total:
+     *                           type: integer
+     *                         limit:
+     *                           type: integer
+     *                         offset:
+     *                           type: integer
+     *                         hasMore:
+     *                           type: boolean
      *       404:
      *         description: User not found
      *         content:
@@ -141,13 +176,18 @@ module.exports = (router) => {
                 }
             }
 
-            // Convert map to array
-            const allClasses = Array.from(classesMap.values());
+            // Convert map to array and use a stable order for pagination.
+            const allClasses = Array.from(classesMap.values()).sort((a, b) => Number(a.id) - Number(b.id));
+            const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_CLASS_LIMIT, MAX_CLASS_LIMIT);
+            const classes = allClasses.slice(offset, offset + limit);
 
-            req.infoEvent("user.classes.view.success", "User classes returned", { targetUserId: userId, classCount: allClasses.length });
+            req.infoEvent("user.classes.view.success", "User classes returned", { targetUserId: userId, classCount: classes.length });
             res.status(200).json({
                 success: true,
-                data: allClasses,
+                data: {
+                    classes,
+                    pagination: buildPagination(allClasses.length, limit, offset, classes.length),
+                },
             });
         }
     );

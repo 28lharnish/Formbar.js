@@ -1,7 +1,7 @@
 // 09_hash_api_keys_and_pins.js
 // This migration hashes all existing API keys and PINs in the users table
 
-const { hash } = require("@modules/crypto");
+const { hashBcrypt } = require("@modules/crypto");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 
 module.exports = {
@@ -38,12 +38,12 @@ module.exports = {
         // Hash and migrate each user's data
         for (const user of users) {
             // Hash the API key
-            const hashedAPI = await hash(user.API);
+            const hashedAPI = await hashBcrypt(user.API);
 
             // Hash the PIN if it exists
             let hashedPin = null;
             if (user.pin) {
-                hashedPin = await hash(user.pin.toString());
+                hashedPin = await hashBcrypt(user.pin.toString());
             }
 
             // Insert the user into the new table with hashed values

@@ -2,7 +2,7 @@ const { settings } = require("@modules/config");
 const { getAvailableProviders } = require("@modules/oidc");
 
 /**
- * * Register config controller routes.
+ * Register config controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

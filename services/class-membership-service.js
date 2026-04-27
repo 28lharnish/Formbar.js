@@ -1,13 +1,13 @@
 /**
  * @module class-membership-service
  *
- * * Manages persistent classroom membership — enrollment, unenrollment, and
- * * classroom-level data (links, bans). Operations here survive across sessions
- * * and are backed by the database.
+ * Manages persistent classroom membership — enrollment, unenrollment, and
+ * classroom-level data (links, bans). Operations here survive across sessions
+ * and are backed by the database.
  *
- * * For active session management (start/end, timers, polls, breaks, help),
- * * see `class-service`. For the shared Classroom model and state store,
- * * see `classroom-service`.
+ * For active session management (start/end, timers, polls, breaks, help),
+ * see `class-service`. For the shared Classroom model and state store,
+ * see `classroom-service`.
  */
 const { classStateStore, getClassIDFromCode } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
@@ -23,7 +23,7 @@ const NotFoundError = require("@errors/not-found-error");
 // Lazy-load class-service to avoid circular dependency
 let classService;
 /**
- * * Load class-service after startup to avoid a circular dependency.
+ * Load class-service after startup to avoid a circular dependency.
  * @returns {Object}
  */
 function getClassService() {
@@ -34,7 +34,7 @@ function getClassService() {
 }
 
 /**
- * * Delete a classroom and its related persistent data.
+ * Delete a classroom and its related persistent data.
  * @param {number} classroomId - classroomId.
  * @returns {Promise<void>}
  */
@@ -95,7 +95,7 @@ async function deleteClassroom(classroomId) {
 }
 
 /**
- * * Fetch a classroom row by ID.
+ * Fetch a classroom row by ID.
  * @param {number} classroomId - classroomId.
  * @returns {Promise<Object|null>}
  */
@@ -106,7 +106,7 @@ function getClassroomById(classroomId) {
 }
 
 /**
- * * Apply or remove a classroom ban for a user.
+ * Apply or remove a classroom ban for a user.
  * @param {number} classroomId - classroomId.
  * @param {string} email - email.
  * @param {boolean} isBanned - isBanned.
@@ -158,12 +158,12 @@ async function setClassroomBanStatus(classroomId, email, isBanned) {
 }
 
 /**
- * * Enroll a user in a classroom for the first time using a class code.
+ * Enroll a user in a classroom for the first time using a class code.
  *
- * * Use this function when a user is joining with a code they received. For rejoining a class
- * * the user is already a member of, use `joinClass` from `class-service` instead.
+ * Use this function when a user is joining with a code they received. For rejoining a class
+ * the user is already a member of, use `joinClass` from `class-service` instead.
  *
- * * This function will:
+ * This function will:
  * *  - Look up the classroom by the provided code.
  * *  - Initialize the classroom in memory if it's not already loaded.
  * *  - Delegate the actual joining logic to `class-service.addUserToClassroomSession`.
@@ -202,12 +202,12 @@ async function enrollByCode(code, sessionUser) {
 }
 
 /**
- * * Enroll in a class by code and emit the result back to the user's sockets.
+ * Enroll in a class by code and emit the result back to the user's sockets.
  *
- * * This wraps `enrollByCode` and forwards the resulting payload to the user's
- * * connected clients via the `joinClass` socket event. The event is intentionally
- * * named `joinClass` (not `enroll`) because the client treats both first-time
- * * enrollment and session re-joins identically once the server responds.
+ * This wraps `enrollByCode` and forwards the resulting payload to the user's
+ * connected clients via the `joinClass` socket event. The event is intentionally
+ * named `joinClass` (not `enroll`) because the client treats both first-time
+ * enrollment and session re-joins identically once the server responds.
  *
  * @param {Object} userSession - The session object of the user attempting to enroll. Must include `email`.
  * @param {string} classCode - The code of the class to enroll in.
@@ -222,9 +222,9 @@ async function enrollInClass(userSession, classCode) {
 }
 
 /**
- * * Permanently removes a user from a classroom.
- * * Deletes the user from the class in memory and the database, updates the user's session,
- * * emits leave events, and reloads the user's page.
+ * Permanently removes a user from a classroom.
+ * Deletes the user from the class in memory and the database, updates the user's session,
+ * emits leave events, and reloads the user's page.
  * @param {Object} userData - The session object of the user being unenrolled.
  * @returns {Promise<void>}
  */
@@ -262,7 +262,7 @@ async function unenrollFromClass(userData) {
 }
 
 /**
- * * Check whether a user is enrolled in a class.
+ * Check whether a user is enrolled in a class.
  * @param {number} userId - userId.
  * @param {number} classId - classId.
  * @returns {Promise<boolean>}
@@ -273,7 +273,7 @@ async function isUserEnrolled(userId, classId) {
 }
 
 /**
- * * Get saved links for a class.
+ * Get saved links for a class.
  * @param {number} classId - classId.
  * @returns {Promise<Object[]>}
  */
@@ -283,9 +283,28 @@ function getClassLinks(classId) {
 }
 
 /**
- * * Middleware-compatible ownership check for classrooms.
- * * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
- * * Also caches the classroom on req._room for use by the handler.
+ * Get saved links for a class with pagination.
+ * @param {number} classId - classId.
+ * @param {number} limit - limit.
+ * @param {number} offset - offset.
+ * @returns {Promise<Object>}
+ */
+async function getClassLinksPaginated(classId, limit = 20, offset = 0) {
+    requireInternalParam(classId, "classId");
+
+    const totalRow = await dbGet("SELECT COUNT(*) AS count FROM links WHERE classId = ?", [classId]);
+    const links = await dbGetAll("SELECT name, url FROM links WHERE classId = ? ORDER BY id ASC LIMIT ? OFFSET ?", [classId, limit, offset]);
+
+    return {
+        links,
+        total: totalRow ? totalRow.count : 0,
+    };
+}
+
+/**
+ * Middleware-compatible ownership check for classrooms.
+ * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
+ * Also caches the classroom on req._room for use by the handler.
  * @param {import("express").Request} req - Request object.
  * @returns {Promise<boolean>}
  */
@@ -308,4 +327,5 @@ module.exports = {
     unenrollFromClass,
     isUserEnrolled,
     getClassLinks,
+    getClassLinksPaginated,
 };

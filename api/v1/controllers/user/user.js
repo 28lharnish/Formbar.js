@@ -8,7 +8,7 @@ const NotFoundError = require("@errors/not-found-error");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register user controller routes.
+ * Register user controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

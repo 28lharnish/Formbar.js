@@ -27,7 +27,7 @@ const GLOBAL_PERMISSION_LEVEL_SQL = `
 `;
 
 /**
- * * Normalize the manager user sort option.
+ * Normalize the manager user sort option.
  * @param {string} sortBy - sortBy.
  * @returns {string}
  */
@@ -39,7 +39,7 @@ function normalizeManagerSort(sortBy) {
 }
 
 /**
- * * Build SQL filters for manager user search.
+ * Build SQL filters for manager user search.
  * @param {string} search - search.
  * @returns {Object}
  */
@@ -62,7 +62,7 @@ function buildManagerUserSearch(search) {
 }
 
 /**
- * * Build a pending user object from token data.
+ * Build a pending user object from token data.
  * @param {string} decodedData - decodedData.
  * @returns {Object}
  */
@@ -82,7 +82,7 @@ function buildPendingUser(decodedData) {
 }
 
 /**
- * * Get pending users from verification tokens.
+ * Get pending users from verification tokens.
  * @param {string} search - search.
  * @param {string} sortBy - sortBy.
  * @returns {Promise<Object[]>}
@@ -161,7 +161,7 @@ async function getPendingUsers(search = "", sortBy = "name") {
 }
 
 /**
- * * Get manager users with pagination.
+ * Get manager users with pagination.
  * @param {number} limit - limit.
  * @param {number} offset - offset.
  * @param {string} search - search.
@@ -198,7 +198,7 @@ async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sor
 }
 
 /**
- * * Get all manager dashboard data.
+ * Get all manager dashboard data.
  * @returns {Promise<Object>}
  */
 async function getManagerData() {
@@ -243,7 +243,7 @@ async function getManagerData() {
 }
 
 /**
- * * Get manager dashboard data with pagination.
+ * Get manager dashboard data with pagination.
  * @param {number} limit - limit.
  * @returns {Promise<Object>}
  */

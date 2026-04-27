@@ -6,7 +6,7 @@ const ForbiddenError = require("@errors/forbidden-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 /**
- * * Register pin controller routes.
+ * Register pin controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

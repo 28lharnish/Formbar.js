@@ -6,7 +6,7 @@ const { getUserRoles } = require("@services/role-service");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel } = require("@modules/permissions");
 
 /**
- * * Register me controller routes.
+ * Register me controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

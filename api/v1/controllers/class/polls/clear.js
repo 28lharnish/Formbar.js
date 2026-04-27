@@ -4,7 +4,7 @@ const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 
 /**
- * * Register clear controller routes.
+ * Register clear controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

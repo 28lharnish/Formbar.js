@@ -2,7 +2,7 @@ const { enrollInClass } = require("@services/class-membership-service");
 const { isAuthenticated } = require("@middleware/authentication");
 
 /**
- * * Register enroll controller routes.
+ * Register enroll controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

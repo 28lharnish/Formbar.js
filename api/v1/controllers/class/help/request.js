@@ -7,39 +7,11 @@ const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register request controller routes.
+ * Register request controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
-    /**
-     * * Handle the request help request.
-     * @param {import("express").Request} req - req.
-     * @param {import("express").Response} res - res.
-     * @returns {Promise<void>}
-     */
-    const requestHelpHandler = async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.help.request.attempt", "Attempting to request class help", { classId });
-        const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
-            throw new ForbiddenError("You do not have permission to request help in this class.");
-        }
-
-        const reason = req.body.reason || "General help request";
-        const userData = { ...req.user, classId };
-        const result = await sendHelpTicket(reason, userData);
-        if (result === true) {
-            req.infoEvent("class.help.request.success", "Class help requested", { classId });
-            res.status(200).json({
-                success: true,
-                data: {},
-            });
-        } else {
-            throw new AppError(result, { statusCode: 500 });
-        }
-    };
-
     /**
      * @swagger
      * /api/v1/class/{id}/help/request:
@@ -94,15 +66,25 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/help/request", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.REQUEST), requestHelpHandler);
+    router.post("/class/:id/help/request", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.REQUEST), async (req, res) => {
+        const classId = req.params.id;
+        req.infoEvent("class.help.request.attempt", "Attempting to request class help", { classId });
+        const classroom = classStateStore.getClassroom(classId);
+        if (classroom && !classroom.students[req.user.email]) {
+            throw new ForbiddenError("You do not have permission to request help in this class.");
+        }
 
-    // Deprecated endpoint - kept for backwards compatibility, use POST /api/v1/class/:id/help/request instead
-    router.get("/class/:id/help/request", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.REQUEST), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use POST /api/v1/class/:id/help/request instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use POST /api/v1/class/:id/help/request instead. This endpoint will be removed in a future version."'
-        );
-        await requestHelpHandler(req, res);
+        const reason = req.body.reason || "General help request";
+        const userData = { ...req.user, classId };
+        const result = await sendHelpTicket(reason, userData);
+        if (result === true) {
+            req.infoEvent("class.help.request.success", "Class help requested", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        } else {
+            throw new AppError(result, { statusCode: 500 });
+        }
     });
 };

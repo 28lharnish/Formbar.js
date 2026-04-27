@@ -20,15 +20,15 @@ jest.mock("@modules/socket-error-handler", () => ({
     handleSocketError: jest.fn(),
 }));
 
-const rateLimitsByEmail = {};
+const rateLimitsByIdentifier = {};
 
 jest.mock("@stores/socket-state-store", () => ({
     socketStateStore: {
-        getUserRateLimits: jest.fn((email) => {
-            if (!rateLimitsByEmail[email]) {
-                rateLimitsByEmail[email] = {};
+        getUserRateLimits: jest.fn((identifier) => {
+            if (!rateLimitsByIdentifier[identifier]) {
+                rateLimitsByIdentifier[identifier] = {};
             }
-            return rateLimitsByEmail[email];
+            return rateLimitsByIdentifier[identifier];
         }),
     },
 }));
@@ -75,8 +75,8 @@ describe("socket rate-limiter middleware", () => {
 
     afterEach(() => {
         jest.clearAllMocks();
-        for (const key of Object.keys(rateLimitsByEmail)) {
-            delete rateLimitsByEmail[key];
+        for (const key of Object.keys(rateLimitsByIdentifier)) {
+            delete rateLimitsByIdentifier[key];
         }
     });
 
@@ -90,5 +90,7 @@ describe("socket rate-limiter middleware", () => {
         expect(getUserDataFromDb).toHaveBeenCalledWith(42);
         expect(next).toHaveBeenCalledTimes(31);
         expect(socket.emit).not.toHaveBeenCalled();
+        expect(rateLimitsByIdentifier).toHaveProperty("42");
+        expect(rateLimitsByIdentifier).not.toHaveProperty("teacher@test.com");
     });
 });

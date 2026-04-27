@@ -1,42 +1,54 @@
 // Use low salt rounds so bcrypt tests finish quickly
 process.env.SALT_ROUNDS = "4";
 
-const { hash, compare, sha256 } = require("@modules/crypto");
+const { hashBcrypt, compareBcrypt, isBcryptHash, sha256 } = require("@modules/crypto");
 
-describe("hash()", () => {
+describe("hashBcrypt()", () => {
     it("returns a bcrypt hash starting with $2b$", async () => {
-        const result = await hash("password");
+        const result = await hashBcrypt("password");
         expect(result).toMatch(/^\$2b\$/);
     });
 
     it("rejects when given a non-string", async () => {
-        await expect(hash(123)).rejects.toThrow("Text to hash must be a string");
+        await expect(hashBcrypt(123)).rejects.toThrow("Text to hash must be a string");
     });
 
     it("rejects when given an empty string", async () => {
-        await expect(hash("")).rejects.toThrow("Text to hash must be provided");
+        await expect(hashBcrypt("")).rejects.toThrow("Text to hash must be provided");
     });
 });
 
-describe("compare()", () => {
+describe("compareBcrypt()", () => {
     it("returns true for matching text and hash", async () => {
-        const hashed = await hash("secret");
-        const result = await compare("secret", hashed);
+        const hashed = await hashBcrypt("secret");
+        const result = await compareBcrypt("secret", hashed);
         expect(result).toBe(true);
     });
 
     it("returns false for non-matching text and hash", async () => {
-        const hashed = await hash("secret");
-        const result = await compare("wrong", hashed);
+        const hashed = await hashBcrypt("secret");
+        const result = await compareBcrypt("wrong", hashed);
         expect(result).toBe(false);
     });
 
     it("rejects when text is not a string", async () => {
-        await expect(compare(123, "hash")).rejects.toThrow("Both text and hash must be strings");
+        await expect(compareBcrypt(123, "hash")).rejects.toThrow("Both text and hash must be strings");
     });
 
     it("rejects when hash is not a string", async () => {
-        await expect(compare("text", 456)).rejects.toThrow("Both text and hash must be strings");
+        await expect(compareBcrypt("text", 456)).rejects.toThrow("Both text and hash must be strings");
+    });
+});
+
+describe("isBcryptHash()", () => {
+    it("recognizes supported bcrypt prefixes", () => {
+        expect(isBcryptHash("$2a$10$abcdefghijklmnopqrstuuKdJ1tEFr1L1mZGhLeNYM8xA0xk1zYuG")).toBe(true);
+        expect(isBcryptHash("$2b$10$abcdefghijklmnopqrstuuKdJ1tEFr1L1mZGhLeNYM8xA0xk1zYuG")).toBe(true);
+        expect(isBcryptHash("$2y$10$abcdefghijklmnopqrstuuKdJ1tEFr1L1mZGhLeNYM8xA0xk1zYuG")).toBe(true);
+    });
+
+    it("rejects sha256-looking hashes", () => {
+        expect(isBcryptHash(sha256("api-key"))).toBe(false);
     });
 });
 

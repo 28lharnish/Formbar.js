@@ -5,7 +5,7 @@ const ForbiddenError = require("@errors/forbidden-error");
 const classService = require("@services/class-service");
 
 /**
- * * Register timer controller routes.
+ * Register timer controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

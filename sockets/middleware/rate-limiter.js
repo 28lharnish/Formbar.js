@@ -7,6 +7,13 @@ const { getUserDataFromDb } = require("@services/user-service");
 const { dbGet } = require("@modules/database");
 const { getUserScopes } = require("@modules/scope-resolver");
 
+/**
+ * Resolve the socket user from cache, session state, or the database.
+ *
+ * @param {import("socket.io").Socket} socket - socket.
+ * @param {*} email - email.
+ * @returns {Promise<*>}
+ */
 async function getSocketUserData(socket, email) {
     const cachedUser = classStateStore.getUser(email);
     if (cachedUser) {
@@ -46,7 +53,8 @@ module.exports = {
                 const timeFrame = 1000; // 1 Second
                 const limit =
                     computeGlobalPermissionLevel(getUserScopes(userData || socket.request.session).global) >= TEACHER_PERMISSIONS ? 100 : 30;
-                const userRequests = socketStateStore.getUserRateLimits(email, true);
+                const identifier = String(userData?.id ?? socket.request.session.userId ?? email ?? socket.id);
+                const userRequests = socketStateStore.getUserRateLimits(identifier, true);
                 userRequests[event] = userRequests[event] || [];
                 while (userRequests[event].length && currentTime - userRequests[event][0] > timeFrame) {
                     userRequests[event].shift();

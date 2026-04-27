@@ -3,7 +3,7 @@ const ValidationError = require("@errors/validation-error");
 const { isAuthenticated } = require("@middleware/authentication");
 
 /**
- * * Register leave controller routes.
+ * Register leave controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

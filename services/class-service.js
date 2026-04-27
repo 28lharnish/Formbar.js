@@ -25,7 +25,7 @@ const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
 /**
- * * Get classes joined by a user.
+ * Get classes joined by a user.
  * @param {number} userId - userId.
  * @returns {Promise<Object[]>}
  */
@@ -37,7 +37,7 @@ function getUserJoinedClasses(userId) {
 }
 
 /**
- * * Get the join code for a class.
+ * Get the join code for a class.
  * @param {number} classId - classId.
  * @returns {Promise<string|null>}
  */
@@ -47,7 +47,7 @@ async function getClassCode(classId) {
 }
 
 /**
- * * Find the first available class role containing a scope.
+ * Find the first available class role containing a scope.
  * @param {Object} classroom - classroom.
  * @param {string} scope - scope.
  * @returns {Object|null}
@@ -61,7 +61,7 @@ function findAvailableRoleByScope(classroom, scope) {
 }
 
 /**
- * * Validates a classroom name
+ * Validates a classroom name
  * @param {string} className - The classroom name to validate
  * @returns {{valid: boolean, error?: string}} Returns validation result with error message if invalid
  */
@@ -95,8 +95,8 @@ function validateClassroomName(className) {
 }
 
 /**
- * * Normalizes classroom data fetched from database
- * * Parses JSON fields and normalizes tags and poll history
+ * Normalizes classroom data fetched from database
+ * Parses JSON fields and normalizes tags and poll history
  * @param {Object} classroom - The classroom object from database
  * @returns {Object} The normalized classroom object (mutates in place)
  */
@@ -112,7 +112,7 @@ function normalizeClassroomData(classroom) {
 }
 
 /**
- * * Creates a new classroom with the given name and owner
+ * Creates a new classroom with the given name and owner
  * @async
  * @param {string} className - The name of the class to create
  * @param {number} ownerId - The ID of the user creating the class
@@ -159,8 +159,8 @@ async function createClass(className, ownerId, ownerEmail) {
 }
 
 /**
- * * Initializes a classroom in memory
- * * Fetches all necessary data from the database and creates/updates the classroom in memory
+ * Initializes a classroom in memory
+ * Fetches all necessary data from the database and creates/updates the classroom in memory
  * @private
  * @param {number} id - The class ID to initialize
  * @returns {Promise<void>}
@@ -230,8 +230,8 @@ async function initializeClassroom(id) {
 }
 
 /**
- * * Starts a class session by activating the class, emitting the start class event,
- * * and updating the class state in memory and to connected clients.
+ * Starts a class session by activating the class, emitting the start class event,
+ * and updating the class state in memory and to connected clients.
  * @param {string|number} classId - The ID of the class to start.
  * @returns {Promise<void>}
  */
@@ -244,8 +244,8 @@ async function startClass(classId) {
 }
 
 /**
- * * Ends a class session by deactivating the class, emitting the end class event,
- * * and updating the class state in memory and to connected clients.
+ * Ends a class session by deactivating the class, emitting the end class event,
+ * and updating the class state in memory and to connected clients.
  * @param {string|number} classId - The ID of the class to end.
  * @param {Object} [userSession] - The session object of the user ending the class.
  * @returns {Promise<void>}
@@ -261,8 +261,8 @@ async function endClass(classId, userSession) {
 }
 
 /**
- * * Internal function to add a user to a classroom session in memory.
- * * Does not perform authorization checks - caller must validate permissions.
+ * Internal function to add a user to a classroom session in memory.
+ * Does not perform authorization checks - caller must validate permissions.
  * @private
  * @param {number} classId - The class ID
  * @param {string} email - User's email
@@ -373,7 +373,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 }
 
 /**
- * * Allows a user to join a class by classId or class key.
+ * Allows a user to join a class by classId or class key.
  * @param {Object} userData - The session object of the user attempting to join.
  * @param {string|number} classId - The ID or key of the class to join.
  * @returns {Promise<boolean>} Returns true if joined successfully.
@@ -396,14 +396,18 @@ async function joinClass(userData, classId) {
         throw new ValidationError("You are already in that class");
     }
 
+    const isGuest = !!classStateStore.getUser(email)?.isGuest;
+    if (isGuest) {
+        throw new ForbiddenError("Guests must enroll in classes with a class code");
+    }
+
     // Check if the user is in the class to prevent people from joining classes just from the class ID
     const studentId = await getIdFromEmail(email);
     const classUsers = await dbGet("SELECT * FROM classusers WHERE studentId=? AND classId=?", [studentId, classId]);
     const classroomOwner = await dbGet("SELECT owner FROM classroom WHERE id=?", [classId]);
-    const isGuest = !!classStateStore.getUser(email)?.isGuest;
 
-    // User must either be in classusers table or be the owner of the classroom (global guests bypass enrollment)
-    if (!isGuest && !classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
+    // User must either be in classusers table or be the owner of the classroom.
+    if (!classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
         throw new ForbiddenError("You are not in that class");
     }
 
@@ -427,9 +431,9 @@ async function joinClass(userData, classId) {
 }
 
 /**
- * * Removes a user from a class session.
- * * Kicks the user from the classroom if they are a guest, or from the session otherwise.
- * * Emits leave sound and updates the class state.
+ * Removes a user from a class session.
+ * Kicks the user from the classroom if they are a guest, or from the session otherwise.
+ * Emits leave sound and updates the class state.
  * @param {Object} userData - The session object of the user leaving the class.
  * @param {number} [classId] - The ID of the class to leave. If not provided, uses the user's active class.
  * @returns {boolean} True if the user was removed successfully, false otherwise.
@@ -454,7 +458,7 @@ async function leaveClass(userData, classId) {
 }
 
 /**
- * * Checks if the class with the given classId is currently active.
+ * Checks if the class with the given classId is currently active.
  * @param {number} classId - The ID of the class to check.
  * @returns {boolean} True if the class is active, false otherwise.
  */
@@ -468,7 +472,7 @@ function isClassActive(classId) {
 }
 
 /**
- * * Deletes all classrooms owned by the specified user, along with related data
+ * Deletes all classrooms owned by the specified user, along with related data
  * * (class users, polls, links) and in-memory session state.
  * @param {number|string} userId - The ID of the user whose classrooms should be deleted.
  * @returns {Promise<void>}
@@ -496,79 +500,84 @@ async function deleteClassrooms(userId) {
 // Kick
 
 /**
- * * Kicks a student from a class.
- * * If exitRoom is true, fully removes them; otherwise just removes from session.
+ * Kicks a student from a class.
+ * If exitRoom is true, fully removes them; otherwise just removes from session.
  * @param {number} userId - User ID.
  * @param {number} classId - Class ID.
  * @param {Object} options - Kick options.
  * @returns {Promise<void>}
  */
 async function classKickStudent(userId, classId, options = { exitRoom: true, ban: false }) {
-    try {
-        const email = await getEmailFromId(userId);
-        const classroom = classStateStore.getClassroom(classId);
+    const email = await getEmailFromId(userId);
+    if (!email) {
+        throw new NotFoundError("User is not in the specified class");
+    }
 
-        const existingUser = classStateStore.getUser(email);
-        if (existingUser) {
-            const user = existingUser;
-            user.activeClass = null;
-            user.break = false;
-            user.help = false;
+    const classroom = classStateStore.getClassroom(classId);
+    const classroomStudent = classroom ? classroom.students[email] : null;
+    const classMembership = await dbGet("SELECT 1 FROM classusers WHERE classId=? AND studentId=?", [classId, userId]);
+    if (!classroomStudent && !classMembership) {
+        throw new NotFoundError("User is not in the specified class");
+    }
 
-            if (options.ban) {
-                const blockedRole = findAvailableRoleByScope(classroom, SCOPES.CLASS.SYSTEM.BLOCKED);
-                user.roles = {
-                    global: user.roles?.global || [],
-                    class: blockedRole ? buildRoleReferences([blockedRole]) : [],
-                };
-            }
-            setClassOfApiSockets(existingUser.API, null);
+    const existingUser = classStateStore.getUser(email);
+    if (existingUser) {
+        const user = existingUser;
+        user.activeClass = null;
+        user.break = false;
+        user.help = false;
+
+        if (options.ban) {
+            const blockedRole = findAvailableRoleByScope(classroom, SCOPES.CLASS.SYSTEM.BLOCKED);
+            user.roles = {
+                global: user.roles?.global || [],
+                class: blockedRole ? buildRoleReferences([blockedRole]) : [],
+            };
+        }
+        setClassOfApiSockets(existingUser.API, null);
+    }
+
+    if (classroom && classroomStudent) {
+        const student = classroomStudent;
+        student.activeClass = null;
+        student.break = false;
+        student.help = false;
+        student.tags = ["Offline"];
+        if (classStateStore.getUser(email)) {
+            classStateStore.setUser(email, student);
         }
 
-        const classroomStudent = classroom ? classroom.students[email] : null;
-        if (classroom && classroomStudent) {
-            const student = classroomStudent;
-            student.activeClass = null;
-            student.break = false;
-            student.help = false;
-            student.tags = ["Offline"];
-            if (classStateStore.getUser(email)) {
-                classStateStore.setUser(email, student);
-            }
-
-            if (student.isGuest) {
-                classStateStore.removeClassroomStudent(classId, email);
-            }
+        if (student.isGuest) {
+            classStateStore.removeClassroomStudent(classId, email);
         }
+    }
 
-        if (options.exitRoom && classroom) {
-            const userObj = classStateStore.getUser(email);
-            if (userObj && !userObj.isGuest && !options.ban) {
-                await dbRun("DELETE FROM classusers WHERE studentId=? AND classId=?", [userObj.id, classId]);
-                classStateStore.removeClassroomStudent(classId, email);
-            }
+    if (options.exitRoom && !options.ban) {
+        await dbRun("DELETE FROM classusers WHERE studentId=? AND classId=?", [userId, classId]);
+        if (classroom) {
+            classStateStore.removeClassroomStudent(classId, email);
         }
+    }
 
-        const classOwner = await dbGet("SELECT owner FROM classroom WHERE id=?", [classId]);
-        if (classOwner) {
-            const ownerEmail = await getEmailFromId(classOwner.owner);
-            userUpdateSocket(ownerEmail, "classUpdate", classId);
-        }
+    const classOwner = await dbGet("SELECT owner FROM classroom WHERE id=?", [classId]);
+    if (classOwner) {
+        const ownerEmail = await getEmailFromId(classOwner.owner);
+        userUpdateSocket(ownerEmail, "classUpdate", classId);
+    }
 
-        const usersSockets = socketStateStore.getUserSocketsByEmail(email);
-        if (usersSockets) {
-            for (const userSocket of Object.values(usersSockets)) {
-                userSocket.leave(`class-${classId}`);
-                userSocket.request.session.classId = null;
-                userSocket.request.session.save();
-                userSocket.emit("reload");
-            }
+    const usersSockets = socketStateStore.getUserSocketsByEmail(email);
+    if (usersSockets) {
+        for (const userSocket of Object.values(usersSockets)) {
+            userSocket.leave(`class-${classId}`);
+            userSocket.request.session.classId = null;
+            userSocket.request.session.save();
+            userSocket.emit("reload");
         }
-    } catch (err) {}
+    }
 }
 
 /**
- * * Kicks all non-teacher students from a class.
+ * Kicks all non-teacher students from a class.
  * @param {number} classId - Class ID.
  * @returns {Promise<void>}
  */
@@ -593,7 +602,7 @@ async function classKickStudents(classId) {
 }
 
 /**
- * * Regenerates the classroom join code and updates cache/state.
+ * Regenerates the classroom join code and updates cache/state.
  * @param {number|string} classId
  * @returns {Promise<string>} The new classroom code.
  */
@@ -622,8 +631,8 @@ async function regenerateClassCode(classId) {
 }
 
 /**
- * * Broadcasts a class update using any connected socket in the class.
- * * Prefers a specific user's sockets first when provided.
+ * Broadcasts a class update using any connected socket in the class.
+ * Prefers a specific user's sockets first when provided.
  * @param {number} classId - Class ID.
  * @param {string} preferredEmail - Email to update first.
  * @returns {void}
@@ -653,7 +662,7 @@ function broadcastClassUpdate(classId, preferredEmail) {
 // Break
 
 /**
- * * Requests a break for a student.
+ * Requests a break for a student.
  * @param {string} reason - Break reason.
  * @param {Object} userData - Session user data.
  * @returns {void}
@@ -675,7 +684,7 @@ function requestBreak(reason, userData) {
 }
 
 /**
- * * Approves or denies a break for a student.
+ * Approves or denies a break for a student.
  * @param {boolean} breakApproval - Whether the break is approved.
  * @param {number} userId - Student user ID.
  * @param {Object} userData - Session user data.
@@ -697,7 +706,7 @@ async function approveBreak(breakApproval, userId, userData) {
 }
 
 /**
- * * Ends a student's active break.
+ * Ends a student's active break.
  * @param {Object} userData - Session user data.
  * @returns {void}
  */
@@ -717,7 +726,7 @@ function endBreak(userData) {
 // Help
 
 /**
- * * Sends a help ticket for a student.
+ * Sends a help ticket for a student.
  * @param {string} reason - Help reason.
  * @param {Object} userSession - Session user data.
  * @returns {void}
@@ -745,7 +754,7 @@ function sendHelpTicket(reason, userSession) {
 }
 
 /**
- * * Deletes a help ticket for a student.
+ * Deletes a help ticket for a student.
  * @param {number} studentId - Student user ID.
  * @param {Object} userData - Session user data.
  * @returns {Promise<void>}
@@ -764,9 +773,22 @@ async function deleteHelpTicket(studentId, userData) {
 // Tags
 
 /**
- * * Sets the allowed tags for a class and normalizes existing student tags.
+ * Sets the allowed tags for a class and normalizes existing student tags.
  * @param {Object} userSession - Session user data.
  * @returns {Promise<void>}
+ */
+function resolveClassIdFromSession(userSession) {
+    const classId = userSession?.classId ?? userSession?.activeClass;
+    const normalizedClassId = Number(classId);
+    return Number.isFinite(normalizedClassId) && normalizedClassId > 0 ? normalizedClassId : null;
+}
+
+/**
+ * Replace the class tag list and prune student tags that are no longer allowed.
+ *
+ * @param {*} tags - tags.
+ * @param {*} userSession - userSession.
+ * @returns {Promise<*>}
  */
 async function setTags(tags, userSession) {
     if (!Array.isArray(tags)) return;
@@ -779,7 +801,7 @@ async function setTags(tags, userSession) {
         .sort();
     if (!tags.includes("Offline")) tags.push("Offline");
 
-    const classId = userSession.classId;
+    const classId = resolveClassIdFromSession(userSession);
     const classroom = classStateStore.getClassroom(classId);
     if (!classId || !classroom) return;
     classStateStore.updateClassroom(classId, { tags });
@@ -803,7 +825,7 @@ async function setTags(tags, userSession) {
 }
 
 /**
- * * Saves the tags for a specific student in the class.
+ * Saves the tags for a specific student in the class.
  * @param {number} studentId - Student user ID.
  * @param {Object} userSession - Session user data.
  * @returns {Promise<void>}
@@ -812,7 +834,10 @@ async function saveTags(studentId, tags, userSession) {
     const email = await getEmailFromId(studentId);
     if (!Array.isArray(tags)) return;
 
-    const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === userSession.classId;
+    const classId = resolveClassIdFromSession(userSession);
+    if (!classId) return;
+
+    const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === classId;
     let normalized = tags
         .filter((tag) => typeof tag === "string")
         .map((tag) => tag.trim())
@@ -827,11 +852,11 @@ async function saveTags(studentId, tags, userSession) {
 
     normalized = normalized.filter((tag) => tag !== "Offline");
 
-    const student = classStateStore.getClassroom(userSession.classId)?.students[email];
+    const student = classStateStore.getClassroom(classId)?.students[email];
     if (!student) return;
     const oldTags = student.tags || [];
 
-    classStateStore.updateClassroomStudent(userSession.classId, email, { tags: normalized });
+    classStateStore.updateClassroomStudent(classId, email, { tags: normalized });
 
     const wasExcluded = oldTags.includes("Excluded");
     const isNowExcluded = normalized.includes("Excluded");
@@ -842,13 +867,13 @@ async function saveTags(studentId, tags, userSession) {
         student.pollRes.date = null;
     }
 
-    await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, userSession.classId]);
+    await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, classId]);
 }
 
 // Class Users
 
 /**
- * * Gets the users of a class, merging in-memory session data with DB data.
+ * Gets the users of a class, merging in-memory session data with DB data.
  * @param {Object} user - The requesting user (used for permission-based filtering).
  * @param {string} key - The class key/code.
  * @returns {Promise<Object[]>}
@@ -926,7 +951,7 @@ async function getClassUsers(user, key) {
 // Timer
 
 /**
- * * Get the active timer for a class.
+ * Get the active timer for a class.
  * @param {number} classId - classId.
  * @returns {Object|null}
  */
@@ -938,10 +963,10 @@ function getTimer(classId) {
 }
 
 /**
- * * Start a class timer.
+ * Start a class timer.
  * @param {Object} timerData - Timer data.
  * @param {number} timerData.classId - Class ID.
- * @param {number} timerData.duration - Timer duration in seconds.
+ * @param {number} timerData.duration - Timer duration in milliseconds.
  * @param {string} [timerData.sound] - Completion sound.
  * @returns {Object}
  */
@@ -965,7 +990,7 @@ function startTimer({ classId, duration, sound }) {
 }
 
 /**
- * * Resume a paused class timer.
+ * Resume a paused class timer.
  * @param {number} classId - classId.
  * @returns {Object|null}
  */
@@ -1007,7 +1032,7 @@ function resumeTimer(classId) {
 }
 
 /**
- * * Pause a class timer.
+ * Pause a class timer.
  * @param {number} classId - classId.
  * @returns {Object|null}
  */
@@ -1038,7 +1063,7 @@ function pauseTimer(classId) {
 }
 
 /**
- * * End a class timer.
+ * End a class timer.
  * @param {number} classId - classId.
  * @returns {Object|null}
  */
@@ -1057,7 +1082,7 @@ function endTimer(classId) {
 }
 
 /**
- * * Clear a class timer.
+ * Clear a class timer.
  * @param {number} classId - classId.
  * @returns {Object|null}
  */
@@ -1078,8 +1103,8 @@ function clearTimer(classId) {
 }
 
 /**
- * * Clears poll votes from students who should be excluded based on class settings,
- * * tags, permission levels, break status, and offline status.
+ * Clears poll votes from students who should be excluded based on class settings,
+ * tags, permission levels, break status, and offline status.
  * @param {string|number} classId
  * @returns {void}
  */
@@ -1137,7 +1162,7 @@ function clearVotesFromExcludedStudents(classId) {
 }
 
 /**
- * * Updates one or more class settings in memory and broadcasts the changes via socket.
+ * Updates one or more class settings in memory and broadcasts the changes via socket.
  *
  * @param {string|number} classId - The unique identifier of the class.
  * @param {Object} classSettings - Partial object of class settings to update.

@@ -1,7 +1,7 @@
 const fs = require("fs");
 
 /**
- * * Register certs controller routes.
+ * Register certs controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

@@ -7,7 +7,7 @@ const { classStateStore } = require("@services/classroom-service");
 const { createStudentFromUserData } = require("@services/student-service");
 
 /**
- * * Get a configured OIDC client or throw when unsupported.
+ * Get a configured OIDC client or throw when unsupported.
  * @param {string} provider - Provider name.
  * @returns {Object}
  */
@@ -23,7 +23,7 @@ function assertProviderSupported(provider) {
 }
 
 /**
- * * Build the OIDC callback URL for a provider.
+ * Build the OIDC callback URL for a provider.
  * @param {import("express").Request} req - Request object.
  * @param {string} provider - Provider name.
  * @returns {string}
@@ -33,35 +33,87 @@ function buildCallbackUrl(req, provider) {
 }
 
 /**
- * * Build the frontend redirect URL after OIDC login.
+ * Build the frontend redirect URL after OIDC login.
  * @param {import("express").Request} req - Request object.
  * @param {Object} tokens - Issued auth tokens.
  * @param {Object} userData - User data.
  * @returns {string|null}
  */
-function getRedirectTarget(req, tokens, userData) {
-    const clientOrigin = req.session?.oauthOrigin || (frontendUrl ? new URL("/login", frontendUrl).toString() : null);
-    if (!clientOrigin) {
+function getSafeFrontendRedirect(origin) {
+    if (!frontendUrl) {
         return null;
     }
 
-    delete req.session.oauthOrigin;
-
-    const redirect = new URL(clientOrigin);
-    redirect.searchParams.set("accessToken", tokens.accessToken);
-    redirect.searchParams.set("refreshToken", tokens.refreshToken);
-    if (tokens.legacyToken) {
-        redirect.searchParams.set("legacyToken", tokens.legacyToken);
+    const frontend = new URL(frontendUrl);
+    const fallback = new URL("/login", frontend.origin);
+    if (!origin) {
+        return fallback.toString();
     }
 
-    redirect.searchParams.set("userId", String(userData.id));
-    redirect.searchParams.set("email", userData.email);
-    redirect.searchParams.set("displayName", userData.displayName);
+    let redirect;
+    try {
+        const rawOrigin = String(origin);
+        if (rawOrigin.startsWith("//")) {
+            throw new Error("Protocol-relative URL is not allowed");
+        }
+        redirect = rawOrigin.startsWith("/") ? new URL(rawOrigin, frontend.origin) : new URL(rawOrigin);
+    } catch {
+        throw new ValidationError("Invalid OAuth return origin.", {
+            event: "auth.oidc.origin.invalid",
+            reason: "invalid_origin",
+        });
+    }
+
+    if (redirect.origin !== frontend.origin) {
+        throw new ValidationError("OAuth return origin is not allowed.", {
+            event: "auth.oidc.origin.invalid",
+            reason: "untrusted_origin",
+        });
+    }
+
     return redirect.toString();
 }
 
 /**
- * * Get an email address from OIDC claims.
+ * Build the frontend redirect URL after OIDC login so the SPA can finish the sign-in flow.
+ *
+ * @param {import("express").Request} req - req.
+ * @returns {*}
+ */
+function getRedirectTarget(req) {
+    const clientOrigin = req.session?.oauthOrigin || getSafeFrontendRedirect();
+    if (!clientOrigin) {
+        return null;
+    }
+
+    const redirect = new URL(clientOrigin);
+    redirect.searchParams.set("oidc", "success");
+    return redirect.toString();
+}
+
+/**
+ * Store the issued OIDC tokens in secure cookies so the browser can stay signed in.
+ *
+ * @param {import("express").Request} req - req.
+ * @param {import("express").Response} res - res.
+ * @param {*} tokens - tokens.
+ * @returns {*}
+ */
+function setOidcTokenCookies(req, res, tokens) {
+    const secure = req.secure || process.env.NODE_ENV === "production";
+    const common = {
+        httpOnly: true,
+        sameSite: "lax",
+        secure,
+        path: "/",
+    };
+
+    res.cookie("formbar_access_token", tokens.accessToken, { ...common, maxAge: 15 * 60 * 1000 });
+    res.cookie("formbar_refresh_token", tokens.refreshToken, { ...common, maxAge: 30 * 24 * 60 * 60 * 1000 });
+}
+
+/**
+ * Get an email address from OIDC claims.
  * @param {string} provider - Provider name.
  * @param {Object} claims - Provider claims.
  * @returns {string|null}
@@ -83,7 +135,7 @@ function getEmailFromClaims(provider, claims) {
 }
 
 /**
- * * Get a display name from OIDC claims.
+ * Get a display name from OIDC claims.
  * @param {Object} claims - Provider claims.
  * @param {string} email - User email.
  * @returns {string}
@@ -101,7 +153,7 @@ function getDisplayNameFromClaims(claims, email) {
 }
 
 /**
- * * Register providers controller routes.
+ * Register providers controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -204,7 +256,7 @@ module.exports = (router) => {
         };
 
         if (req.query.origin) {
-            req.session.oauthOrigin = String(req.query.origin);
+            req.session.oauthOrigin = getSafeFrontendRedirect(req.query.origin);
         }
 
         const authUrl = client.buildAuthorizationUrl(providerClient, {
@@ -354,8 +406,10 @@ module.exports = (router) => {
             classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
         }
 
-        const redirectTarget = getRedirectTarget(req, result.tokens, userData);
+        const redirectTarget = getRedirectTarget(req);
         if (redirectTarget) {
+            delete req.session.oauthOrigin;
+            setOidcTokenCookies(req, res, result.tokens);
             req.infoEvent("auth.oidc.callback.redirect", "Redirecting to SPA after OIDC OAuth", { provider });
             return res.redirect(redirectTarget);
         }

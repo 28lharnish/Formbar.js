@@ -1,11 +1,15 @@
-const { getNotificationsForUser, getNotificationById } = require("@services/notification-service");
+const { getNotificationsForUserPaginated, getNotificationById } = require("@services/notification-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
+const DEFAULT_NOTIFICATION_LIMIT = 20;
+const MAX_NOTIFICATION_LIMIT = 100;
+
 /**
- * * Register get-notifications controller routes.
+ * Register get-notifications controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -18,12 +22,30 @@ module.exports = (router) => {
      *     tags:
      *       - Notifications
      *     description: |
-     *       Returns all notifications belonging to the currently authenticated user.
+     *       Returns paginated notifications belonging to the currently authenticated user.
      *
      *       **Required Permission:** Authenticated user
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 20
+     *           minimum: 1
+     *           maximum: 100
+     *         description: Number of notifications to return per page
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 0
+     *           minimum: 0
+     *         description: Number of notifications to skip before returning results
      *     responses:
      *       200:
      *         description: Notifications retrieved successfully
@@ -42,6 +64,17 @@ module.exports = (router) => {
      *                       type: array
      *                       items:
      *                         $ref: '#/components/schemas/Notification'
+     *                     pagination:
+     *                       type: object
+     *                       properties:
+     *                         total:
+     *                           type: integer
+     *                         limit:
+     *                           type: integer
+     *                         offset:
+     *                           type: integer
+     *                         hasMore:
+     *                           type: boolean
      *       401:
      *         description: Unauthorized – user is not authenticated
      *         content:
@@ -58,7 +91,8 @@ module.exports = (router) => {
     router.get("/notifications", isAuthenticated, async (req, res) => {
         req.infoEvent("notifications.get_user_notifications.attempt", "User is attempting to fetch all their notifications");
 
-        const notifications = await getNotificationsForUser(req.user.id);
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_NOTIFICATION_LIMIT, MAX_NOTIFICATION_LIMIT);
+        const { notifications, total } = await getNotificationsForUserPaginated(req.user.id, limit, offset);
 
         if (!notifications) {
             throw new AppError("Failed to fetch notifications", { event: "notifications.get_user_notifications.failed" });
@@ -66,7 +100,10 @@ module.exports = (router) => {
 
         res.json({
             success: true,
-            data: { notifications },
+            data: {
+                notifications,
+                pagination: buildPagination(total, limit, offset, notifications.length),
+            },
         });
     });
 

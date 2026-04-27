@@ -4,7 +4,7 @@ require("module-alias/register");
 const sqlite3 = require("sqlite3").verbose();
 const fs = require("fs");
 const { decrypt } = require("./modules/crypto"); // Old crypto module
-const { hash } = require("@modules/crypto"); // New crypto module
+const { hashBcrypt } = require("@modules/crypto");
 
 // Get all migration files and sort them by filename
 const sqlMigrations = fs
@@ -114,7 +114,7 @@ async function executeSQLMigration(migration) {
                                 for (const user of users) {
                                     if (user.email !== undefined) continue;
                                     const decryptedPassword = decrypt(JSON.parse(user.password));
-                                    const hashedPassword = await hash(decryptedPassword);
+                                    const hashedPassword = await hashBcrypt(decryptedPassword);
                                     database.run("UPDATE users SET password=? WHERE id=?", [hashedPassword, user.id]);
                                 }
                             });

@@ -82,9 +82,20 @@ afterAll(async () => {
 const VALID_EMAIL = "test@example.com";
 const VALID_PASSWORD = "Pass1234!";
 const VALID_DISPLAY = "TestUser";
+const OAUTH_CLIENT_ID = "1";
+const OAUTH_CLIENT_SECRET = "oauth-secret";
+const OAUTH_REDIRECT_URI = "http://localhost/callback";
 
 async function seedUser(overrides = {}) {
     return register(overrides.email ?? VALID_EMAIL, overrides.password ?? VALID_PASSWORD, overrides.displayName ?? VALID_DISPLAY);
+}
+
+async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
+    await mockDatabase.dbRun(
+        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id, api_key_hash, api_secret_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1, sha256("api-key"), sha256(OAUTH_CLIENT_SECRET)]
+    );
+    await mockDatabase.dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [Number(OAUTH_CLIENT_ID), redirectUri]);
 }
 
 describe("sha256()", () => {
@@ -147,6 +158,12 @@ describe("register()", () => {
         const row = await mockDatabase.dbGet("SELECT password FROM users WHERE email = ?", [VALID_EMAIL]);
         expect(row.password).not.toBe(VALID_PASSWORD);
         expect(row.password.startsWith("$2b$")).toBe(true);
+    });
+
+    it("does not create a legacy user API key during registration", async () => {
+        await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE email = ?", [VALID_EMAIL]);
+        expect(row.API).toBeNull();
     });
 
     it("persists a refresh token in the refresh_tokens table", async () => {
@@ -335,10 +352,11 @@ describe("refreshLogin()", () => {
 describe("OAuth authorization code flow", () => {
     it("generates and exchanges an authorization code successfully", async () => {
         const { tokens, user } = await seedUser();
+        await seedOAuthClient();
 
-        const code = generateAuthorizationCode({
-            client_id: "test-app",
-            redirect_uri: "http://localhost/callback",
+        const code = await generateAuthorizationCode({
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "openid",
             authorization: tokens.accessToken,
         });
@@ -347,8 +365,9 @@ describe("OAuth authorization code flow", () => {
 
         const tokenResponse = await exchangeAuthorizationCodeForToken({
             code,
-            redirect_uri: "http://localhost/callback",
-            client_id: "test-app",
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
         });
 
         expect(tokenResponse).toHaveProperty("access_token");
@@ -359,6 +378,7 @@ describe("OAuth authorization code flow", () => {
 
     it("returns classPermissions in OAuth token responses for users in an active class", async () => {
         const { tokens, user } = await seedUser();
+        await seedOAuthClient();
         const classId = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["OAuth Class", user.id + 1000, 2468]);
         await addClassMemberWithPermission(mockDatabase, user.id, classId, 4);
 
@@ -378,17 +398,18 @@ describe("OAuth authorization code flow", () => {
             },
         });
 
-        const code = generateAuthorizationCode({
-            client_id: "test-app",
-            redirect_uri: "http://localhost/callback",
+        const code = await generateAuthorizationCode({
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "openid",
             authorization: tokens.accessToken,
         });
 
         const tokenResponse = await exchangeAuthorizationCodeForToken({
             code,
-            redirect_uri: "http://localhost/callback",
-            client_id: "test-app",
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
         });
         expect(tokenResponse.classPermissions).toBe(4);
 
@@ -400,35 +421,39 @@ describe("OAuth authorization code flow", () => {
 
     it("rejects a code that has already been used (single-use enforcement)", async () => {
         const { tokens } = await seedUser();
+        await seedOAuthClient();
 
-        const code = generateAuthorizationCode({
-            client_id: "test-app",
-            redirect_uri: "http://localhost/callback",
+        const code = await generateAuthorizationCode({
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "openid",
             authorization: tokens.accessToken,
         });
 
         await exchangeAuthorizationCodeForToken({
             code,
-            redirect_uri: "http://localhost/callback",
-            client_id: "test-app",
+            redirect_uri: OAUTH_REDIRECT_URI,
+            client_id: OAUTH_CLIENT_ID,
+            client_secret: OAUTH_CLIENT_SECRET,
         });
 
         await expect(
             exchangeAuthorizationCodeForToken({
                 code,
-                redirect_uri: "http://localhost/callback",
-                client_id: "test-app",
+                redirect_uri: OAUTH_REDIRECT_URI,
+                client_id: OAUTH_CLIENT_ID,
+                client_secret: OAUTH_CLIENT_SECRET,
             })
         ).rejects.toThrow(/already been used/i);
     });
 
     it("rejects a code with a mismatched redirect_uri", async () => {
         const { tokens } = await seedUser();
+        await seedOAuthClient();
 
-        const code = generateAuthorizationCode({
-            client_id: "test-app",
-            redirect_uri: "http://localhost/callback",
+        const code = await generateAuthorizationCode({
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "openid",
             authorization: tokens.accessToken,
         });
@@ -437,17 +462,19 @@ describe("OAuth authorization code flow", () => {
             exchangeAuthorizationCodeForToken({
                 code,
                 redirect_uri: "http://localhost/different",
-                client_id: "test-app",
+                client_id: OAUTH_CLIENT_ID,
+                client_secret: OAUTH_CLIENT_SECRET,
             })
         ).rejects.toThrow(/redirect_uri/i);
     });
 
     it("rejects a code with a mismatched client_id", async () => {
         const { tokens } = await seedUser();
+        await seedOAuthClient();
 
-        const code = generateAuthorizationCode({
-            client_id: "test-app",
-            redirect_uri: "http://localhost/callback",
+        const code = await generateAuthorizationCode({
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
             scope: "openid",
             authorization: tokens.accessToken,
         });
@@ -455,21 +482,23 @@ describe("OAuth authorization code flow", () => {
         await expect(
             exchangeAuthorizationCodeForToken({
                 code,
-                redirect_uri: "http://localhost/callback",
+                redirect_uri: OAUTH_REDIRECT_URI,
                 client_id: "other-app",
+                client_secret: OAUTH_CLIENT_SECRET,
             })
         ).rejects.toThrow(/client_id/i);
     });
 
-    it("throws when authorization token is invalid", () => {
-        expect(() =>
+    it("throws when authorization token is invalid", async () => {
+        await seedOAuthClient();
+        await expect(
             generateAuthorizationCode({
-                client_id: "test-app",
-                redirect_uri: "http://localhost/callback",
+                client_id: OAUTH_CLIENT_ID,
+                redirect_uri: OAUTH_REDIRECT_URI,
                 scope: "openid",
                 authorization: "invalid-token",
             })
-        ).toThrow();
+        ).rejects.toThrow();
     });
 });
 

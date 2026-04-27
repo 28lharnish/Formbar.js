@@ -1,10 +1,12 @@
 jest.mock("@services/auth-service");
 jest.mock("@modules/crypto");
 jest.mock("@modules/database");
+jest.mock("@services/api-key-service");
 
 const { run: backwardsCompatRun } = require("../backwards-compat");
 const { verifyToken } = require("@services/auth-service");
-const { dbGetAll, dbGet } = require("@modules/database");
+const { dbGet } = require("@modules/database");
+const { resolveAPIKey } = require("@services/api-key-service");
 const { classStateStore } = require("@services/classroom-service");
 const { createSocket, createSocketUpdates, testData } = require("@modules/tests/tests");
 
@@ -52,9 +54,7 @@ describe("backwards-compat", () => {
 
         it("should emit an error when no user matches the API key", async () => {
             socket.request.session.email = null;
-            const { compare } = require("@modules/crypto");
-            dbGetAll.mockResolvedValueOnce([{ id: 1, email: "other@test.com", API: "hashed" }]);
-            compare.mockResolvedValue(false);
+            resolveAPIKey.mockResolvedValueOnce(null);
 
             await getActiveClassHandler("invalidKey");
             expect(socket.emit).toHaveBeenCalledWith("error", "Invalid API key.");

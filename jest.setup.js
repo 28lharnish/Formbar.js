@@ -1,16 +1,20 @@
 // Prevent the tests from using the logger as it can cause tests to fail
-jest.mock("./modules/logger.js", () => ({
-    logger: {
-        log: jest.fn(),
-    },
-    getLogger: jest.fn().mockResolvedValue({
+jest.mock("./modules/logger.js", () => {
+    const logger = {
         log: jest.fn(),
         info: jest.fn(),
         error: jest.fn(),
         warn: jest.fn(),
-    }),
-    logEvent: jest.fn(),
-}));
+        close: jest.fn(),
+    };
+    logger.child = jest.fn(() => logger);
+
+    return {
+        logger,
+        getLogger: jest.fn().mockResolvedValue(logger),
+        logEvent: jest.fn(),
+    };
+});
 
 // Prevent tests from using the actual database
 jest.mock("./modules/database", () => ({

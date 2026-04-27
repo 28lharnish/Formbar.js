@@ -6,7 +6,7 @@ const AppError = require("@errors/app-error");
 const { requireBodyParam } = require("@modules/error-wrapper");
 
 /**
- * * Register award controller routes.
+ * Register award controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

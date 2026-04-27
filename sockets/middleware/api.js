@@ -3,10 +3,9 @@ const { database } = require("@modules/database");
 const { createStudentFromUserData, getIdFromEmail } = require("@services/student-service");
 const { getUserClass, getUserDataFromDb } = require("@services/user-service");
 const { classKickStudent } = require("@services/class-service");
-const { compare } = require("@modules/crypto");
+const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken } = require("@services/auth-service");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { addUserSocketUpdate, removeUserSocketUpdate } = require("../init");
 
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -151,64 +150,13 @@ module.exports = {
 
             // Try API key authentication first
             if (api) {
-                // Fast-fail: API keys are 64-char hex strings. Reject anything
-                // that doesn't match the format before running any bcrypt comparisons.
-                if (!/^[0-9a-f]{64}$/.test(api)) {
+                const apiKeyUser = await resolveAPIKey(api);
+                if (!apiKeyUser) {
                     throw "Not a valid API key";
                 }
 
-                // Check the in-memory cache first to avoid bcrypt comparisons on repeat connections.
-                const cachedEmail = apiKeyCacheStore.get(api);
-                if (cachedEmail) {
-                    const userData = await new Promise((resolve, reject) => {
-                        database.get("SELECT id FROM users WHERE email = ?", [cachedEmail], async (err, row) => {
-                            try {
-                                if (err) return reject(err);
-                                if (!row) return reject("User not found");
-                                resolve(await getUserDataFromDb(row.id));
-                            } catch (error) {
-                                reject(error);
-                            }
-                        });
-                    });
-                    finalizeAuthentication(socket, userData, socketUpdates, true);
-                } else {
-                    await new Promise((resolve, reject) => {
-                        // Look up the user by comparing API key hash.
-                        // Only fetch users that actually have an API key set to avoid
-                        // pulling sensitive columns (password hash, secret) for every user.
-                        database.all("SELECT id, email, API, displayName FROM users WHERE API IS NOT NULL", [], async (err, users) => {
-                            try {
-                                if (err) throw err;
-
-                                // Compare the provided API key with each user's hashed API key
-                                let userData = null;
-                                for (const user of users) {
-                                    if (user.API && (await compare(api, user.API))) {
-                                        userData = user;
-                                        break;
-                                    }
-                                }
-
-                                if (!userData) {
-                                    throw "Not a valid API key";
-                                }
-
-                                userData = await getUserDataFromDb(userData.id);
-
-                                // Cache the result for future connections
-                                apiKeyCacheStore.set(api, userData.email);
-
-                                finalizeAuthentication(socket, userData, socketUpdates, true);
-                                resolve();
-                            } catch (err) {
-                                reject(err);
-                            }
-                        });
-                    }).catch((err) => {
-                        throw err;
-                    });
-                }
+                const userData = await getUserDataFromDb(apiKeyUser.id);
+                finalizeAuthentication(socket, userData, socketUpdates, true);
             } else if (authorization) {
                 // Try JWT access token authentication
                 await new Promise((resolve, reject) => {

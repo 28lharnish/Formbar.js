@@ -78,17 +78,46 @@ describe("GET /api/v1/notifications", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.data.notifications).toEqual([]);
+        expect(res.body.data.pagination).toEqual({
+            total: 0,
+            limit: 20,
+            offset: 0,
+            hasMore: false,
+        });
     });
 
-    it("returns all notifications for the authenticated user", async () => {
+    it("returns paginated notifications for the authenticated user", async () => {
         await seedNotification(user.id, "info", '{"msg":"first"}');
         await seedNotification(user.id, "alert", '{"msg":"second"}');
 
-        const res = await request(app).get("/api/v1/notifications").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get("/api/v1/notifications?limit=1").set("Authorization", `Bearer ${tokens.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data.notifications).toHaveLength(2);
+        expect(res.body.data.notifications).toHaveLength(1);
+        expect(res.body.data.pagination).toEqual({
+            total: 2,
+            limit: 1,
+            offset: 0,
+            hasMore: true,
+        });
+    });
+
+    it("supports offset pagination", async () => {
+        await seedNotification(user.id, "info", '{"msg":"first"}');
+        await seedNotification(user.id, "alert", '{"msg":"second"}');
+
+        const res = await request(app).get("/api/v1/notifications?limit=1&offset=1").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.notifications).toHaveLength(1);
+        expect(res.body.data.pagination).toEqual({
+            total: 2,
+            limit: 1,
+            offset: 1,
+            hasMore: false,
+        });
     });
 
     it("returns 401 without authentication", async () => {

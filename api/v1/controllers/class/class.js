@@ -8,7 +8,7 @@ const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
 /**
- * * Register class controller routes.
+ * Register class controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

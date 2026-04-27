@@ -5,7 +5,7 @@ const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 
 /**
- * * Register response controller routes.
+ * Register response controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

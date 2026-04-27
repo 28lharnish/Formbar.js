@@ -1,17 +1,21 @@
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { settings } = require("@modules/config");
 const { SCOPES } = require("@modules/permissions");
-const { getIpAccess } = require("@services/ip-service");
+const { getIpAccess, getIpAccessPaginated } = require("@services/ip-service");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const authentication = require("@middleware/authentication");
 const fs = require("fs");
 const net = require("net");
+const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
 
+const DEFAULT_IP_LIMIT = 20;
+const MAX_IP_LIMIT = 100;
+
 /**
- * * Validate an IP address or CIDR range.
+ * Validate an IP address or CIDR range.
  * @param {string} ip - IP address or CIDR range.
  * @returns {boolean}
  */
@@ -29,7 +33,7 @@ function validateIp(ip) {
 }
 
 /**
- * * Register ip controller routes.
+ * Register ip controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -42,7 +46,7 @@ module.exports = (router) => {
      *     tags:
      *       - IP Management
      *     description: |
-     *       Retrieves the IP whitelist or blacklist.
+     *       Retrieves the IP whitelist or blacklist with pagination.
      *
      *       **Required Permission:** Global Manager permission (level 5)
      *
@@ -63,13 +67,53 @@ module.exports = (router) => {
      *           type: string
      *           enum: [whitelist, blacklist]
      *         description: Type of IP list
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 20
+     *           minimum: 1
+     *           maximum: 100
+     *         description: Number of IPs to return per page
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         schema:
+     *           type: integer
+     *           default: 0
+     *           minimum: 0
+     *         description: Number of IPs to skip before returning results
      *     responses:
      *       200:
      *         description: IP list retrieved successfully
      *         content:
      *           application/json:
      *             schema:
-     *               $ref: '#/components/schemas/IPList'
+     *               type: object
+     *               properties:
+     *                 active:
+     *                   type: boolean
+     *                 ips:
+     *                   type: array
+     *                   items:
+     *                     type: object
+     *                     properties:
+     *                       id:
+     *                         type: integer
+     *                       ip:
+     *                         type: string
+     *                 pagination:
+     *                   type: object
+     *                   properties:
+     *                     total:
+     *                       type: integer
+     *                     limit:
+     *                       type: integer
+     *                     offset:
+     *                       type: integer
+     *                     hasMore:
+     *                       type: boolean
      *       400:
      *         description: Invalid type
      *         content:
@@ -97,14 +141,15 @@ module.exports = (router) => {
             throw new ValidationError("Invalid type");
         }
 
-        const isWhitelist = ipMode === "whitelist" ? 1 : 0;
-        const rows = await dbGetAll(`SELECT id, ip FROM ip_access_list WHERE is_whitelist = ?`, [isWhitelist]);
-        req.infoEvent("ip.list.view.success", "IP access list returned", { listType: ipMode, count: (rows || []).length });
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_IP_LIMIT, MAX_IP_LIMIT);
+        const { ips, total } = await getIpAccessPaginated(ipMode, limit, offset);
+        req.infoEvent("ip.list.view.success", "IP access list returned", { listType: ipMode, count: (ips || []).length });
         res.status(200).json({
             success: true,
             data: {
                 active: settings[`${ipMode}Active`],
-                ips: rows || [],
+                ips: ips || [],
+                pagination: buildPagination(total, limit, offset, (ips || []).length),
             },
         });
     });

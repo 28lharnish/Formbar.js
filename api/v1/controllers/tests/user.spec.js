@@ -141,6 +141,18 @@ describe("GET /api/v1/user/:id", () => {
         });
     });
 
+    it("still returns 200 when the stored API key is null", async () => {
+        const { tokens, user } = await seedStudent();
+        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [user.id]);
+
+        expect(row.API).toBeNull();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
     it("returns 403 when a non-manager requests another user id that does not belong to them", async () => {
         const { tokens } = await seedStudent();
         const res = await request(app).get("/api/v1/user/99999").set("Authorization", `Bearer ${tokens.accessToken}`);
@@ -468,53 +480,6 @@ describe("PATCH /api/v1/user/:id/perm", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// Deprecated endpoints
-// ---------------------------------------------------------------------------
-describe("GET /api/v1/user/:id/ban (deprecated)", () => {
-    it("returns 200 with deprecation headers when a manager bans a user", async () => {
-        const { tokens: managerTokens } = await seedManager();
-        const { user: target } = await seedStudent();
-
-        const res = await request(app).get(`/api/v1/user/${target.id}/ban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
-
-describe("GET /api/v1/user/:id/unban (deprecated)", () => {
-    it("returns 200 with deprecation headers when a manager unbans a user", async () => {
-        const { tokens: managerTokens } = await seedManager();
-        const { user: target } = await seedStudent();
-
-        await setGlobalPermissionLevel(mockDatabase, target.id, 0);
-
-        const res = await request(app).get(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
-
-describe("GET /api/v1/user/:id/delete (deprecated)", () => {
-    it("returns 200 with deprecation headers when a manager deletes a user", async () => {
-        const { tokens: managerTokens } = await seedManager();
-        const { user: target } = await seedStudent();
-
-        const res = await request(app).get(`/api/v1/user/${target.id}/delete`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
-
 describe("GET /api/v1/user/:id/classes", () => {
     it("returns 200 when a user views their own classes", async () => {
         const { tokens, user } = await seedStudent();
@@ -523,7 +488,13 @@ describe("GET /api/v1/user/:id/classes", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
+        expect(Array.isArray(res.body.data.classes)).toBe(true);
+        expect(res.body.data.pagination).toEqual({
+            total: 0,
+            limit: 20,
+            offset: 0,
+            hasMore: false,
+        });
     });
 
     it("returns classPermissions on joined class entries", async () => {
@@ -537,7 +508,7 @@ describe("GET /api/v1/user/:id/classes", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data).toEqual(
+        expect(res.body.data.classes).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     id: classroom.id,
@@ -546,6 +517,29 @@ describe("GET /api/v1/user/:id/classes", () => {
                 }),
             ])
         );
+        expect(res.body.data.pagination.total).toBeGreaterThanOrEqual(1);
+    });
+
+    it("paginates classes in stable id order across owned and joined classes", async () => {
+        const { tokens, user } = await seedStudent();
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["Joined First", user.id + 1000, "joined-key"]);
+        const joinedClass = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = ?", ["Joined First"]);
+        await seedClassMembership(mockDatabase, user.id, joinedClass.id, 3);
+
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["Owned Second", user.id, "owned-key"]);
+        const ownedClass = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = ?", ["Owned Second"]);
+
+        const firstPage = await request(app)
+            .get(`/api/v1/user/${user.id}/classes?limit=1&offset=0`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`);
+        const secondPage = await request(app)
+            .get(`/api/v1/user/${user.id}/classes?limit=1&offset=1`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(firstPage.status).toBe(200);
+        expect(secondPage.status).toBe(200);
+        expect(firstPage.body.data.classes.map((classroom) => classroom.id)).toEqual([joinedClass.id]);
+        expect(secondPage.body.data.classes.map((classroom) => classroom.id)).toEqual([ownedClass.id]);
     });
 
     it("returns 200 when a manager views another user's classes", async () => {

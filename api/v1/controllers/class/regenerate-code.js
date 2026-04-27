@@ -5,7 +5,7 @@ const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 /**
- * * Register regenerate-code controller routes.
+ * Register regenerate-code controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
