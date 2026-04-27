@@ -274,7 +274,7 @@ describe("POST /api/v1/pools/:id/add-member", () => {
             .set("Authorization", `Bearer ${adminTokens.accessToken}`)
             .send({ userId: member.id });
 
-        // Manager passes middleware (isOwnerOrHasScope) but the service's own
+        // Manager passes middleware (isOwnerOrHasScopes) but the service's own
         // ownership check inside addMemberToPool rejects non-owners with 400.
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);

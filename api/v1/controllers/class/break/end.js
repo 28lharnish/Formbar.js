@@ -1,11 +1,10 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const classService = require("@services/class-service");
+const { endBreak } = require("@services/class-service");
 const ForbiddenError = require("@errors/forbidden-error");
-const AppError = require("@errors/app-error");
 
 /**
  * Register end controller routes.
@@ -67,21 +66,21 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/break/end", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.REQUEST), async (req, res) => {
+    router.post("/class/:id/break/end", isAuthenticated, isSelfOrHasScopes(SCOPES.CLASS.BREAK.APPROVE, "You do not have permission to end this user's break."), async (req, res) => {
         const classId = Number(req.params.id);
+
         requireQueryParam(classId, "id");
 
-        req.infoEvent("class.break.end.attempt", "Attempting to end class break", { classId });
+        req.infoEvent("class.break.end.attempt", "Attempting to end user's break", { classId });
 
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && !classroom.students[req.user.email]) {
             throw new ForbiddenError("You do not have permission to end this user's break.");
         }
 
-        const userData = { ...req.user, classId };
-        classService.endBreak(userData);
+        endBreak(req.user, classId);
 
-        req.infoEvent("class.break.end.success", "Class break ended", { classId });
+        req.infoEvent("class.break.end.success", "User's break ended", { classId });
         res.status(200).json({
             success: true,
             data: {},

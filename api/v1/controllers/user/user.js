@@ -3,7 +3,7 @@ const { SCOPES } = require("@modules/permissions");
 const { userHasScope } = require("@modules/scope-resolver");
 const { getUserDataFromDb } = require("@services/user-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const NotFoundError = require("@errors/not-found-error");
 const AppError = require("@errors/app-error");
 
@@ -50,7 +50,7 @@ module.exports = (router) => {
     router.get(
         "/user/:id",
         isAuthenticated,
-        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user."),
         async (req, res) => {
             const userId = req.params.id;
             req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });

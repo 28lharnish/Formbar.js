@@ -72,18 +72,20 @@ module.exports = (router) => {
     router.post("/class/:id/students/:userId/break/deny", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), async (req, res) => {
         const classId = Number(req.params.id);
         const targetUserId = Number(req.params.userId);
+
         requireQueryParam(classId, "id");
         requireQueryParam(targetUserId, "userId");
 
-        req.infoEvent("class.break.deny.attempt", "Attempting to deny class break", { classId, targetUserId });
+        req.infoEvent("class.break.deny.attempt", "Attempting to deny user's break", { classId, targetUserId });
+		
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && !classroom.students[req.user.email]) {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }
 
-        const result = await approveBreak(false, targetUserId, { ...req.user, classId });
+        const result = await approveBreak(false, targetUserId, req.user, classId);
         if (result === true) {
-            req.infoEvent("class.break.deny.success", "Class break denied", { classId, targetUserId });
+            req.infoEvent("class.break.deny.success", "User's break denied", { classId, targetUserId });
             res.status(200).json({
                 success: true,
                 data: {},

@@ -25,16 +25,20 @@ module.exports = (router) => {
         requireQueryParam(classId, "id");
         requireQueryParam(targetUserId, "userId");
 
-        req.infoEvent("class.break.approve.attempt", "Attempting to approve class break", { classId, targetUserId });
+        req.infoEvent("class.break.approve.attempt", "Attempting to approve user's break", { classId, targetUserId });
+		
         const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
+        if (classroom && !classroom.students[req.user.email] || !req.user.activeClass === classId) {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }
 
-        const userData = { ...req.user, classId };
-        const result = await approveBreak(true, targetUserId, userData);
+		if(!classroom.isActive) {
+			throw new ForbiddenError("This class is not active, you are restricted to ending or denying breaks.")
+		}
+
+        const result = await approveBreak(true, targetUserId, req.user, classId);
         if (result === true) {
-            req.infoEvent("class.break.approve.success", "Class break approved", { classId, targetUserId });
+            req.infoEvent("class.break.approve.success", "User's break approved", { classId, targetUserId });
             res.status(200).json({
                 success: true,
                 data: {},

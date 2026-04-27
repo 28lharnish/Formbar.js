@@ -55,7 +55,6 @@ const SCOPES = {
             READ: "class.students.read",
             KICK: "class.students.kick",
             BAN: "class.students.ban",
-            PERM_CHANGE: "class.students.perm_change",
         },
 
         SESSION: {
@@ -77,6 +76,7 @@ const SCOPES = {
         },
 
         TIMER: {
+            READ: "class.timer.read",
             CONTROL: "class.timer.control",
         },
 

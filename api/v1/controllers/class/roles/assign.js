@@ -109,7 +109,7 @@ module.exports = (router) => {
      *       simultaneously. Effective scopes are the union of all assigned roles.
      *       Guest is implicit and cannot be added.
      *
-     *       **Required scope:** `class.students.perm_change`
+     *       **Required scope:** `class.roles.assign`
      *     security:
      *       - bearerAuth: []
      *     parameters:
@@ -166,7 +166,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.post("/class/:id/students/:userId/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE), async (req, res) => {
+    router.post("/class/:id/students/:userId/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.ASSIGN), async (req, res) => {
         const { id: classIdRaw, userId, roleId } = req.params;
         requireQueryParam(classIdRaw, "id");
         requireQueryParam(userId, "userId");
@@ -194,7 +194,7 @@ module.exports = (router) => {
      *       and cannot be removed. If all roles are removed, the student
      *       effectively has only Guest permissions.
      *
-     *       **Required scope:** `class.students.perm_change`
+     *       **Required scope:** `class.roles.remove`
      *     security:
      *       - bearerAuth: []
      *     parameters:
@@ -254,7 +254,7 @@ module.exports = (router) => {
     router.delete(
         "/class/:id/students/:userId/roles/:roleId",
         isAuthenticated,
-        hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE),
+        hasClassScope(SCOPES.CLASS.ROLES.REMOVE),
         async (req, res) => {
             const { id: classIdRaw, userId, roleId } = req.params;
             requireQueryParam(classIdRaw, "id");

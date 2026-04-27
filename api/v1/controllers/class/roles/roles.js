@@ -168,7 +168,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+    router.post("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.MANAGE), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
 
@@ -198,7 +198,7 @@ module.exports = (router) => {
      *       Updates the name and/or scopes of a role.
      *       You can only grant scopes you possess yourself.
      *
-     *       **Required scope:** `class.session.settings`
+     *       **Required scope:** `class.roles.manage`
      *     security:
      *       - bearerAuth: []
      *     parameters:
@@ -276,7 +276,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.patch("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+    router.patch("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.MANAGE), async (req, res) => {
         const { id: classId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(roleId, "roleId");
@@ -310,7 +310,7 @@ module.exports = (router) => {
      *       Deletes a role. Students assigned to this role are
      *       reassigned to the Guest role.
      *
-     *       **Required scope:** `class.session.settings`
+     *       **Required scope:** `class.roles.manage`
      *     security:
      *       - bearerAuth: []
      *     parameters:
@@ -355,7 +355,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.delete("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+    router.delete("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.MANAGE), async (req, res) => {
         const { id: classId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(roleId, "roleId");

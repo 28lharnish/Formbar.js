@@ -1,5 +1,5 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserDataFromDb } = require("@services/user-service");
@@ -76,7 +76,7 @@ module.exports = (router) => {
     router.get(
         "/user/:id/scopes",
         isAuthenticated,
-        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user's scopes."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user's scopes."),
         async (req, res) => {
             const userId = Number(req.params.id);
 

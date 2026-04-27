@@ -57,7 +57,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/clear", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.CREATE), async (req, res) => {
+    router.post("/class/:id/polls/clear", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.DELETE), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.poll.clear.attempt", "Attempting to clear poll", { classId });
         await clearPoll(classId, req.user);

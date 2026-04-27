@@ -151,6 +151,23 @@ async function advancedEmitToClass(event, classId, options, ...data) {
 }
 
 /**
+ * Remove a socket from all class rooms to avoid stale class subscriptions.
+ * @param {import("socket.io").Socket} socket - socket.
+ * @returns {void}
+ */
+function leaveAllClassRooms(socket) {
+    if (!socket || !socket.rooms) {
+        return;
+    }
+
+    for (const room of socket.rooms) {
+        if (room.startsWith("class-")) {
+            socket.leave(room);
+        }
+    }
+}
+
+/**
  * Sets the class id for all sockets in a specific API.
  * If no class id is provided, then the class id will be set to null.
  *
@@ -170,12 +187,14 @@ async function setClassOfApiSockets(api, classId) {
             // Ensure the socket has a session before continuing
             if (!socket.request.session) continue;
 
-            socket.leave(`class-${socket.request.session.classId}`);
+            leaveAllClassRooms(socket);
             socket.request.session.classId = classId;
             socket.request.session.save();
 
             // Emit the setClass event to the socket
-            socket.join(`class-${classId}`);
+            if (classId) {
+                socket.join(`class-${classId}`);
+            }
             socket.emit("setClass", classId);
         }
     } catch (err) {
@@ -205,11 +224,8 @@ async function setClassOfUserSockets(email, classId) {
             // Ensure the socket has a session before continuing
             if (!socket.request.session) continue;
 
-            // Leave the old class room
-            const oldClassId = socket.request.session.classId;
-            if (oldClassId) {
-                socket.leave(`class-${oldClassId}`);
-            }
+            // Leave all class rooms to prevent stale cross-class subscriptions.
+            leaveAllClassRooms(socket);
 
             // Update session with new class id
             socket.request.session.classId = classId;

@@ -1,5 +1,5 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { isOwnerOrHasScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const membershipService = require("@services/class-membership-service");
@@ -58,7 +58,7 @@ module.exports = (router) => {
     router.delete(
         "/class/:id",
         isAuthenticated,
-        isOwnerOrHasScope(membershipService.classroomOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not have permission to delete this classroom."),
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, [SCOPES.GLOBAL.CLASS.DELETE, SCOPES.CLASS.SYSTEM.CAN_DELETE_CLASS], "You do not have permission to delete this classroom."),
         async (req, res) => {
             const id = Number(req.params.id);
 

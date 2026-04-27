@@ -52,7 +52,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.get("/class/:id/active", isAuthenticated, isClassMember(), async (req, res) => {
+    router.get("/class/:id/active", isAuthenticated, isClassMember(),  async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.active.view.attempt", "Attempting to view class active status", { classId });
 

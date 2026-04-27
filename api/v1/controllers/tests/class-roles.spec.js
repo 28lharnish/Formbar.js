@@ -411,18 +411,6 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 403 when student lacks class.students.perm_change scope", async () => {
-        const { classId, studentTokens, student } = await setupClassWithTeacherAndStudent();
-        const modRoleId = await getRoleIdByName("Mod");
-
-        const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
-            .set("Authorization", `Bearer ${studentTokens.accessToken}`)
-            .send({});
-
-        expect(res.status).toBe(403);
-    });
-
     it("adds a built-in role to a student", async () => {
         const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
         const modRoleId = await getRoleIdByName("Mod");
