@@ -22,6 +22,7 @@ jest.mock("@modules/database", () => {
 });
 
 const { getUserInventory, getItemById, addItemToInventory, removeItemFromInventory, registerItem } = require("@services/inventory-service");
+const { getUser } = require("@services/user-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -60,6 +61,10 @@ describe("getUserInventory()", () => {
         await addItemToInventory(USER_ID, 2, 1);
         const result = await getUserInventory(USER_ID);
         expect(result).toHaveLength(2);
+        expect(result[0]).toHaveProperty("id", 1);
+        expect(result[0]).toHaveProperty("quantity", 3);
+        expect(result[1]).toHaveProperty("id", 2);
+        expect(result[1]).toHaveProperty("quantity", 1);
     });
 
     it("does not return items belonging to other users", async () => {
@@ -72,7 +77,7 @@ describe("getUserInventory()", () => {
     it("returns rows with item_id and quantity fields", async () => {
         await addItemToInventory(USER_ID, 1, 7);
         const result = await getUserInventory(USER_ID);
-        expect(result[0]).toHaveProperty("item_id", 1);
+        expect(result[0]).toHaveProperty("id", 1);
         expect(result[0]).toHaveProperty("quantity", 7);
     });
 });
@@ -88,24 +93,34 @@ describe("getItemById()", () => {
 describe("addItemToInventory()", () => {
     it("inserts a new row when the item does not exist", async () => {
         await addItemToInventory(USER_ID, 1, 3);
-        const row = await mockDatabase.dbGet("SELECT * FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
-        expect(row).toBeDefined();
-        expect(row.quantity).toBe(3);
+        const inventory = await getUserInventory(USER_ID);
+        const item = inventory[0];
+        expect(item).toBeDefined();
+        expect(item.quantity).toBe(3);
+    });
+
+    it("handles multiple rows for the same item correctly", async () => {
+        await addItemToInventory(USER_ID, 1, 95);
+        await addItemToInventory(USER_ID, 1, 10); // should create a new row with quantity 5
+        const inventory = await getUserInventory(USER_ID);
+        expect(inventory).toHaveLength(1);
+        const totalQuantity = inventory.reduce((sum, item) => sum + item.quantity, 0);
+        expect(totalQuantity).toBe(105);
     });
 
     it("increments the quantity when the item already exists", async () => {
         await addItemToInventory(USER_ID, 1, 3);
         await addItemToInventory(USER_ID, 1, 2);
-        const row = await mockDatabase.dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
-        expect(row.quantity).toBe(5);
+        const inventory = await getUserInventory(USER_ID);
+        expect(inventory[0].quantity).toBe(5);
     });
 
     it("handles adding to multiple different items independently", async () => {
         await addItemToInventory(USER_ID, 1, 1);
         await addItemToInventory(USER_ID, 2, 4);
-        const items = await getUserInventory(USER_ID);
-        const item1 = items.find((i) => i.item_id === 1);
-        const item2 = items.find((i) => i.item_id === 2);
+        const inventory = await getUserInventory(USER_ID);
+        const item1 = inventory[0];
+        const item2 = inventory[1];
         expect(item1.quantity).toBe(1);
         expect(item2.quantity).toBe(4);
     });
@@ -115,22 +130,22 @@ describe("removeItemFromInventory()", () => {
     it("decrements the quantity when more than 'quantity' remain", async () => {
         await addItemToInventory(USER_ID, 1, 10);
         await removeItemFromInventory(USER_ID, 1, 3);
-        const row = await mockDatabase.dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
-        expect(row.quantity).toBe(7);
+        const inventory = await getUserInventory(USER_ID);
+        expect(inventory[0].quantity).toBe(7);
     });
 
     it("deletes the row when removing exactly the full quantity", async () => {
         await addItemToInventory(USER_ID, 1, 5);
         await removeItemFromInventory(USER_ID, 1, 5);
-        const row = await mockDatabase.dbGet("SELECT * FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
-        expect(row).toBeUndefined();
+        const inventory = await getUserInventory(USER_ID);
+        expect(inventory).toHaveLength(0);
     });
 
     it("deletes the row when removing more than the current quantity", async () => {
         await addItemToInventory(USER_ID, 1, 2);
         await removeItemFromInventory(USER_ID, 1, 10);
-        const row = await mockDatabase.dbGet("SELECT * FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
-        expect(row).toBeUndefined();
+        const inventory = await getUserInventory(USER_ID);
+        expect(inventory).toHaveLength(0);
     });
 
     it("throws NotFoundError when the item does not exist in inventory", async () => {
@@ -142,22 +157,23 @@ describe("removeItemFromInventory()", () => {
         await addItemToInventory(2, 1, 5);
         await removeItemFromInventory(USER_ID, 1, 5);
 
-        const otherRow = await mockDatabase.dbGet("SELECT quantity FROM inventory WHERE user_id = 2 AND item_id = ?", [1]);
-        expect(otherRow.quantity).toBe(5);
+        const otherInventory = await getUserInventory(2);
+        expect(otherInventory[0].quantity).toBe(5);
     });
 
     it("handles item overflow correctly", async () => {
         await addItemToInventory(USER_ID, 1, 95);
         await addItemToInventory(USER_ID, 1, 10); // should create a new row with quantity 5
-        const items = await mockDatabase.dbGetAll("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
-        const totalQuantity = items.reduce((sum, row) => sum + row.quantity, 0);
-        expect(items).toHaveLength(2);
+        const inventory = await getUserInventory(USER_ID);
+        const totalQuantity = inventory.reduce((sum, item) => sum + item.quantity, 0);
+        expect(inventory).toHaveLength(1);
         expect(totalQuantity).toBe(105);
     });
+
     it("handles item underflow correctly", async () => {
         await addItemToInventory(USER_ID, 1, 5);
         await removeItemFromInventory(USER_ID, 1, 10);
-        const row = await mockDatabase.dbGet("SELECT * FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
-        expect(row).toBeUndefined();
+        const inventory = await getUserInventory(USER_ID);
+        expect(inventory).toHaveLength(0);
     });
 });

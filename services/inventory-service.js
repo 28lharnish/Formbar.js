@@ -4,11 +4,36 @@ const NotFoundError = require("@errors/not-found-error");
 /**
  * Get a user inventory.
  * @param {number} userId - userId.
- * @returns {Promise<Object[]>}
+ * @returns {<Object>}
  */
 async function getUserInventory(userId) {
-    const inventoryItems = await dbGetAll("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
-    return inventoryItems;
+    const items = new Map();
+
+    // gets all inventory rows (stored as item ID with quantity)
+    const inventoryRows = await dbGetAll("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
+
+    for (const row of inventoryRows) {
+
+        const itemInfo = await dbGet("SELECT id, name, description, stack_size, image_url FROM item_registry WHERE id = ?", [row.item_id]);
+        if (!itemInfo) continue; // if item info can't be found, skip it
+
+        itemInfo.quantity = row.quantity;
+
+        const itemIndex = row.item_id - 1; // item IDs are 1-indexed, but we'll use 0-indexing for the map
+
+        // if item hasn't been added to the itemsMap, add it
+        if (!items.has(itemIndex)) {
+            items.set(itemIndex, itemInfo);
+        } else {
+            // if it has been added, increment the quantity
+            const existing = items.get(itemIndex);
+            existing.quantity += row.quantity;
+        }
+
+    }
+
+    return Array.from(items.values());
+
 }
 
 /**
