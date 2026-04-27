@@ -159,7 +159,6 @@ module.exports = (router) => {
         req.infoEvent("class.polls.view", "Viewing class polls", { classId });
 
         const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_POLL_LIMIT, MAX_POLL_LIMIT);
-
         const { polls, total } = await getPreviousPolls(classId, limit, offset);
 
         req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, offset });

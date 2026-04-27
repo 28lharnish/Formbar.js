@@ -114,6 +114,27 @@ function calculateResponseWeight(poll, res) {
 }
 
 /**
+ * Converts the selected button answers into the response option ids stored in poll_history.responses.
+ * @param {Array<Object>} pollResponses - The response options for the saved poll.
+ * @param {(string|string[])} buttonRes - The student's selected answer(s).
+ * @returns {string|null} JSON array of selected response ids, or null when there are no button selections.
+ */
+function getSelectedResponseIds(pollResponses, buttonRes) {
+    const selectedAnswers = Array.isArray(buttonRes)
+        ? buttonRes
+        : buttonRes !== "" && buttonRes !== null && buttonRes !== undefined
+          ? [buttonRes]
+          : [];
+
+    if (selectedAnswers.length === 0) return null;
+
+    const responseIdsByAnswer = new Map(pollResponses.map((response, index) => [response.answer, response.id ?? index]));
+    const responseIds = selectedAnswers.filter((answer) => responseIdsByAnswer.has(answer)).map((answer) => responseIdsByAnswer.get(answer));
+
+    return responseIds.length > 0 ? JSON.stringify(responseIds) : null;
+}
+
+/**
  * Updates a student's poll response state.
  * @param {Object} student - The student object.
  * @param {(string|string[])} res - The button response.
@@ -144,8 +165,7 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
  * @throws {ValidationError} If class is not active
  */
 async function createPoll(classId, pollData, userData) {
-    const { prompt, answers, blind, tags, weight, excludedRespondents, allowVoteChanges, indeterminate, allowTextResponses, allowMultipleResponses } =
-        pollData;
+    const { prompt, answers, blind, weight, excludedRespondents, allowVoteChanges, allowTextResponses, allowMultipleResponses } = pollData;
     const numberOfResponses = Object.keys(answers).length;
 
     requireInternalParam(classId, "classId");
@@ -195,10 +215,11 @@ async function createPoll(classId, pollData, userData) {
         }
 
         classroom.poll.responses.push({
+            id: i,
             answer: answer,
             weight: weight,
             color: color,
-            correct: answers[i].correct,
+            isCorrect: !!(answers[i].isCorrect ?? answers[i].correct),
         });
     }
 
@@ -367,6 +388,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     }
 
     const currentPollId = pollRuntimeStore.getLastSavedPollId(classId);
+    const savedPollResponses = classroom.poll.responses;
 
     classroom.poll.responses = [];
     classroom.poll.prompt = "";
@@ -404,14 +426,15 @@ async function clearPoll(classId, userSession, updateClass = true) {
             }
 
             const textResponse = student.pollRes.textRes || null;
+            const responseIds = getSelectedResponseIds(savedPollResponses, buttonRes);
 
             // Skip students with no response at all
             if (buttonResponse === null && textResponse === null) continue;
 
             const studentId = student.id;
             await dbRun(
-                "INSERT OR REPLACE INTO poll_answers(pollId, classId, userId, buttonResponse, textResponse, createdAt) VALUES(?, ?, ?, ?, ?, ?)",
-                [currentPollId, classId, studentId, buttonResponse, textResponse, Date.now()]
+                "INSERT OR REPLACE INTO poll_answers(pollId, classId, userId, responseIds, buttonResponse, textResponse, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)",
+                [currentPollId, classId, studentId, responseIds, buttonResponse, textResponse, Date.now()]
             );
         }
     }

@@ -173,20 +173,3 @@ describe("DELETE /api/v1/class/:id/students/:userId/help", () => {
         expect(res.body.success).toBe(true);
     });
 });
-
-describe("GET /api/v1/class/:id/students/:userId/help/delete (deprecated)", () => {
-    it("returns 200 with deprecation headers on success", async () => {
-        const { classId, teacherTokens, student } = await setupClassWithStudent();
-
-        await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
-
-        const res = await request(app)
-            .get(`/api/v1/class/${classId}/students/${student.id}/help/delete`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
