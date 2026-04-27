@@ -154,5 +154,10 @@ describe("removeItemFromInventory()", () => {
         expect(items).toHaveLength(2);
         expect(totalQuantity).toBe(105);
     });
-    //TODO handles item underflow correctly (removing more than total quantity across multiple rows)")
+    it("handles item underflow correctly", async () => {
+        await addItemToInventory(USER_ID, 1, 5);
+        await removeItemFromInventory(USER_ID, 1, 10);
+        const row = await mockDatabase.dbGet("SELECT * FROM inventory WHERE user_id = ? AND item_id = ?", [USER_ID, 1]);
+        expect(row).toBeUndefined();
+    });
 });
