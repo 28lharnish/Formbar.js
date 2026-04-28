@@ -2,6 +2,8 @@ const fs = require("fs");
 const crypto = require("crypto");
 require("dotenv").config();
 
+const envFlag = (key) => process.env[key] === "true";
+
 /*
  * Generates a new RSA key pair and saves them to files.
  * Private and public keys are to be used to make Formbar OAuth more secure.
@@ -12,11 +14,6 @@ require("dotenv").config();
  * jack black
  *
  * @returns {Object} An object containing the generated public and private keys.
- */
-/**
- * Generate the RSA key pair used to sign and verify tokens for this instance.
- *
- * @returns {*}
  */
 function generateKeyPair() {
     // Generate a new RSA key pair
@@ -77,9 +74,12 @@ function getConfig() {
     return {
         settings: {
             port: +process.env.PORT || 420,
-            whitelistActive: process.env.WHITELIST_ENABLED === "true",
-            blacklistActive: process.env.BLACKLIST_ENABLED === "true",
-            emailEnabled: process.env.EMAIL_ENABLED === "true",
+            emailEnabled: envFlag("EMAIL_ENABLED"),
+
+            ipAccess: {
+                whitelistEnabled: envFlag("WHITELIST_ENABLED"),
+                blacklistEnabled: envFlag("BLACKLIST_ENABLED"),
+            },
 
             // Sliding window length in milliseconds for rate limiting.
             // Reads RATE_LIMIT_WINDOW_SECONDS; falls back to 60 s if absent or invalid.
@@ -95,12 +95,7 @@ function getConfig() {
         publicKey: publicKey,
         privateKey: privateKey,
         frontendUrl: process.env.FRONTEND_URL,
-        rateLimit: {
-            maxAttempts: 5,
-            lockoutDuration: 15 * 60 * 1000, // 15 minutes in milliseconds
-            attemptWindow: 5 * 60 * 1000, // 5 minute sliding window
-            minDelayBetweenAttempts: 500, // 500ms minimum delay
-        },
+        envFlag
     };
 }
 

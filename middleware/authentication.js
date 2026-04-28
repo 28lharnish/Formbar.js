@@ -241,14 +241,71 @@ async function isVerified(req, res, next) {
     throw new AuthError("User email is not verified.");
 }
 
+/**
+ * Get the IP access list.
+ * @returns {Promise<Object>}
+ */
+async function getIPAccess() {
+    const ips = await dbGetAll("SELECT ip FROM ip_access_list");
+
+    return {
+        whitelistedIps: ips.filter((ip) => ip.is_whitelist).map((ip) => ip.ip),
+        blacklistedIps: ips.filter((ip) => !ip.is_whitelist).map((ip) => ip.ip),
+    }
+}
+
+/**
+ * Check if the IP is allowed.
+ * @param {string} ip - IP address.
+ * @returns {boolean}
+ */
+function checkIPAllowed(ip) {
+    // Remove the ::ffff: prefix from the IP address
+    if (ip.startsWith("::ffff:")) ip = ip.slice(7);
+
+    let allow = true;
+    if (settings.ipAccess.whitelistEnabled) {
+        allow = whitelistedIps.includes(ip);
+    }
+
+    if (settings.ipAccess.blacklistEnabled && allow) {
+        allow = !blacklistedIps.includes(ip);
+    }
+
+    return allow;
+}
+
+/**
+ * Middleware to check if the IP is banned.
+ * @param {import("express").Request} req - req.
+ * @param {import("express").Response} res - res.
+ * @param {import("express").NextFunction} next - next.
+ * @returns {void}
+ */
+function isIPBanned(req, res, next) {
+    let ip = req.ip;
+    if (!ip) return next();
+    
+    const ipAllowed = checkIPAllowed(ip);
+    if (!ipAllowed) {
+        req.warnEvent("auth.ip_banned", `IP address is not allowed: ${ip}`, { ip });
+        throw new AuthError("Your IP address is not allowed to access this resource.");
+    }
+
+    next();
+    return;
+}
+
 module.exports = {
     cleanRefreshTokens,
 
     // Whitelisted/Blacklisted IP addresses
+    checkIPAllowed,
     whitelistedIps,
     blacklistedIps,
 
     // Authentication functions
     isAuthenticated,
     isVerified,
+    isIPBanned,
 };
