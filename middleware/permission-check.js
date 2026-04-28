@@ -142,17 +142,15 @@ function isSelfOrHasScopes(scopes, message) {
         });
     };
 }
- 
-
 /**
  * Middleware: allows access if the user owns the resource or has the specified scope.
  * The ownerCheck function receives (req) and must return a boolean (or promise of boolean).
  * @param {Function} ownerCheck - Async function (req) => boolean indicating ownership.
- * @param {string | string[]} scope - The scope(s) required if the user is not the owner.
+ * @param {string | string[]} scopes - The scope(s) required if the user is not the owner.
  * @param {string} [message] - Optional custom error message.
  * @returns {Function} Express middleware function.
  */
-function isOwnerOrHasScopes(ownerCheck, scope, message) {
+function isOwnerOrHasScopes(ownerCheck, scopes, message) {
 	return async function (req, res, next) {
 		if (!req.user || !req.user.email) {
 			throw new AuthError("User is not authenticated");
@@ -163,7 +161,7 @@ function isOwnerOrHasScopes(ownerCheck, scope, message) {
 			return next();
 		}
 
-		const requiredScopes = Array.isArray(scope) ? scope : [scope];
+		const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
 		const user = classStateStore.getUser(req.user.email) || req.user;
 
 		let classroom = null;
@@ -213,6 +211,30 @@ function isOwnerOrHasScopes(ownerCheck, scope, message) {
 }
 
 /**
+ * Middleware: stack to check if the user is the class owner, has the required scope, or is calling a method targeting themself.
+ * Uses the isOwnerOrHasScopes and isSelfOrHasScopes middleware in combination.
+ * @param {Function} ownerCheck - Async function (req) => boolean indicating ownership.
+ * @param {string | string[]} scopes - The scope(s) required if the user is not the owner.
+ * @param {string} [message] - Optional custom error message.
+ * @return {Function} Express middleware function.
+ */
+function isOwnerHasScopesOrIsSelf(ownerCheck, scopes, message) {
+	const ownerOrScopeMiddleware = isOwnerOrHasScopes(ownerCheck, scopes, message);
+	const selfOrScopeMiddleware = isSelfOrHasScopes(scopes, message);
+	return async function (req, res, next) {
+		try {
+			await ownerOrScopeMiddleware(req, res, next);
+		} catch (err) {
+			if (err instanceof ForbiddenError) {
+				await selfOrScopeMiddleware(req, res, next);
+			} else {
+				throw err;
+			}
+		}
+	};
+}
+
+/**
  * Middleware: checks if the user is a member of the class (enrolled in classusers or the class owner).
  * Resolves class ID from req.params.id, req.user.classId, or req.user.activeClass.
  * Does NOT require the class to be active in memory — checks the database.
@@ -258,6 +280,7 @@ module.exports = {
     hasClassScope,
     isSelfOrHasScopes,
     isOwnerOrHasScopes,
+	isOwnerHasScopesOrIsSelf,
     isClassMember,
     normalizeClassId,
 };

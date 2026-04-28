@@ -6,6 +6,7 @@ const { userHasScope } = require("@modules/scope-resolver");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
+const { isClassMember } = require("@middleware/permission-check");
 
 /**
  * Register class controller routes.
@@ -51,7 +52,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id", isAuthenticated, async (req, res) => {
+    router.get("/class/:id", isAuthenticated, isClassMember(), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
 
@@ -62,13 +63,7 @@ module.exports = (router) => {
         // If the class does not exist, return an error
         const rawClassData = classStateStore.getClassroom(classId);
         if (!rawClassData) {
-            throw new NotFoundError("Class not started");
-        }
-
-        // Get the user from the session, and if the user is not in the class, return an error
-        const user = req.user;
-        if (!rawClassData.students[user.email]) {
-            throw new ForbiddenError("User is not logged into the selected class", { event: "class.user_not_in_class", reason: "user_not_in_class" });
+            throw new NotFoundError("Class not started or it has not been loaded.", { event: "class.view_error", reason: "not_loaded" });
         }
 
         const classStudent = rawClassData.students[user.email];

@@ -1,4 +1,4 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { approveBreak } = require("@services/class-service");
@@ -6,6 +6,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register approve controller routes.
@@ -108,10 +109,10 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/approve", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), approveBreakHandler);
+    router.post("/class/:id/students/:userId/break/approve", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to approve this user's break."), approveBreakHandler);
 
     // Deprecated endpoint - kept for backwards compatibility, use POST /api/v1/class/:id/students/:userId/break/approve instead
-    router.get("/class/:id/students/:userId/break/approve", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), async (req, res) => {
+    router.get("/class/:id/students/:userId/break/approve", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to approve this user's break."), async (req, res) => {
         res.setHeader("X-Deprecated", "Use POST /api/v1/class/:id/students/:userId/break/approve instead");
         res.setHeader(
             "Warning",

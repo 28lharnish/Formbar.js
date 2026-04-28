@@ -1,11 +1,12 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { hasClassScope, normalizeClassId } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes, normalizeClassId } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
 const { classStateStore } = require("@services/classroom-service");
 const { addStudentRole, removeStudentRole, getStudentRoleAssignments, getActingUser } = require("@services/role-service");
 const { broadcastClassUpdate } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register assign controller routes.
@@ -77,7 +78,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/students/:userId/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.READ), async (req, res) => {
+    router.get("/class/:id/students/:userId/roles", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.READ, "You do not have permission to view assigned roles for this class."), async (req, res) => {
         const { id: classIdRaw, userId } = req.params;
         const classId = normalizeClassId(classIdRaw);
         requireQueryParam(classIdRaw, "id");
@@ -166,7 +167,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.post("/class/:id/students/:userId/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.ASSIGN), async (req, res) => {
+    router.post("/class/:id/students/:userId/roles/:roleId", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.ASSIGN, "You do not have permission to assign roles in this class."), async (req, res) => {
         const { id: classIdRaw, userId, roleId } = req.params;
         requireQueryParam(classIdRaw, "id");
         requireQueryParam(userId, "userId");
@@ -254,7 +255,7 @@ module.exports = (router) => {
     router.delete(
         "/class/:id/students/:userId/roles/:roleId",
         isAuthenticated,
-        hasClassScope(SCOPES.CLASS.ROLES.REMOVE),
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.REMOVE, "You do not have permission to remove roles in this class."),
         async (req, res) => {
             const { id: classIdRaw, userId, roleId } = req.params;
             requireQueryParam(classIdRaw, "id");

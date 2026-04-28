@@ -1,8 +1,9 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerHasScopesOrIsSelf } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { deleteHelpTicket } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register delete controller routes.
@@ -70,7 +71,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.delete("/class/:id/students/:userId/help", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.APPROVE), async (req, res) => {
+    router.delete("/class/:id/students/:userId/help", isAuthenticated, isOwnerHasScopesOrIsSelf(membershipService.classroomOwnerCheck, SCOPES.CLASS.HELP.APPROVE, "You don't have permission to delete this user's help request."), async (req, res) => {
         const classId = req.params.id;
         const targetUserId = req.params.userId;
 

@@ -1,8 +1,9 @@
 const { SCOPES } = require("@modules/permissions");
 const { dbRun } = require("@modules/database");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register remove controller routes.
@@ -89,10 +90,10 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.delete("/class/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), removeLinkHandler);
+    router.delete("/class/:id/links", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.MANAGE, "You don't have permission to manage links for this class."), removeLinkHandler);
 
     // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/class/:id/links instead
-    router.post("/class/:id/links/remove", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
+    router.post("/class/:id/links/remove", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.MANAGE, "You don't have permission to manage links for this class."), async (req, res) => {
         res.setHeader("X-Deprecated", "Use DELETE /api/v1/class/:id/links instead");
         res.setHeader(
             "Warning",

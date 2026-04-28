@@ -1,7 +1,8 @@
 const { clearPoll } = require("@services/poll-service");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register clear controller routes.
@@ -57,7 +58,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/clear", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.DELETE), async (req, res) => {
+    router.post("/class/:id/polls/clear", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.POLL.DELETE, "You don't have permission to clear polls for this class."), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.poll.clear.attempt", "Attempting to clear poll", { classId });
         await clearPoll(classId, req.user);

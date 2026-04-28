@@ -394,25 +394,20 @@ function getPollResponseInformation(classData) {
  * @param {Object} options - options.
  * @returns {Object}
  */
-function getClassUpdateData(studentData, classData, hasTeacherPermissions, options = { restrictToControlPanel: false, studentEmail: null }) {
-	const canReadPoll = userHasScope(studentData, SCOPES.CLASS.POLL.READ, classData) || studentData === 'control';
-	const canReadRoles = userHasScope(studentData, SCOPES.CLASS.ROLES.READ, classData) || studentData === 'control';
-	const canReadStudents = userHasScope(studentData, SCOPES.CLASS.STUDENTS.READ, classData) || studentData === 'control';
-
+function getClassUpdateData(classData, hasTeacherPermissions, options = { restrictToControlPanel: false, studentEmail: null }) {
     const result = {
         id: classData.id,
         className: classData.className,
         isActive: classData.isActive,
         owner: classData.owner,
         timer: classData.timer,
-        poll: canReadPoll ? {
+        poll: {
             ...classData.poll,
-        } : undefined,
+        },
         key: hasTeacherPermissions ? classData.key : undefined,
         tags: hasTeacherPermissions ? classData.tags : undefined,
-        roles: canReadRoles ? classData.availableRoles || [] : undefined,
-        students: canReadStudents
-            ? Object.fromEntries(
+        roles: hasTeacherPermissions ? classData.availableRoles || [] : undefined,
+        students:Object.fromEntries(
                   Object.entries(classData.students).map(([email, student]) => [
                       student.id,
                       {
@@ -428,8 +423,7 @@ function getClassUpdateData(studentData, classData, hasTeacherPermissions, optio
                           isGuest: student.isGuest,
                       },
                   ])
-              )
-            : undefined,
+              ),
     };
 
     // If studentEmail is provided, include personalized data for that student
@@ -491,14 +485,14 @@ class SocketUpdates {
             classData.poll.totalResponders = totalResponders;
 
             if (options.global) {
-                const controlPanelData = structuredClone(getClassUpdateData('control', classData, true));
+                const controlPanelData = structuredClone(getClassUpdateData(classData, true));
 
                 // Send personalized data to each student with their own tags
                 // This ensures students can see if they have the "Excluded" tag without exposing other students' data
                 for (const [email, student] of Object.entries(classData.students)) {
                     if (hasControlPanelAccess(student, classroom)) continue; // Skip control panel users, they get controlPanelData
 
-                    const personalizedData = structuredClone(getClassUpdateData(student, classData, false, { studentEmail: email }));
+                    const personalizedData = structuredClone(getClassUpdateData(classData, false, { studentEmail: email }));
                     advancedEmitToClass("classUpdate", classId, { email: email }, personalizedData);
                 }
 
@@ -507,16 +501,16 @@ class SocketUpdates {
             } else {
                 if (userData && !hasControlPanelAccess(userData, classroom) && !options.restrictToControlPanel) {
                     // If the user requesting class information is a student, send them personalized data
-                    const personalizedData = getClassUpdateData(userData, classData, hasTeacherPermissions, { studentEmail: userData.email });
+                    const personalizedData = getClassUpdateData(classData, hasTeacherPermissions, { studentEmail: userData.email });
                     this.socket.emit("classUpdate", personalizedData);
                 } else if (options.restrictToControlPanel || hasControlPanelAccess(userData, classroom)) {
                     // If it's restricted to the control panel, then only send it to people with control panel access
-                    const classReturnData = getClassUpdateData(userData, classData, hasTeacherPermissions);
+                    const classReturnData = getClassUpdateData(classData, hasTeacherPermissions);
                     advancedEmitToClass("classUpdate", classId, { scopes: CONTROL_PANEL_SCOPES }, classReturnData);
                 } else {
                     // For guests and other non-teachers, send personalized data only to this socket
                     const email = this.socket.request.session?.email;
-                    const personalizedData = getClassUpdateData(userData, classData, hasTeacherPermissions, { studentEmail: email });
+                    const personalizedData = getClassUpdateData(classData, hasTeacherPermissions, { studentEmail: email });
                     this.socket.emit("classUpdate", personalizedData);
                 }
                 this.customPollUpdate();

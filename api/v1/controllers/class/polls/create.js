@@ -1,8 +1,9 @@
 const { createPoll } = require("@services/poll-service");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { parseJson } = require("@middleware/parse-json");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register create controller routes.
@@ -94,7 +95,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/create", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.CREATE), parseJson, async (req, res) => {
+    router.post("/class/:id/polls/create", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.POLL.CREATE, "You don't have permission to create polls for this class."), parseJson, async (req, res) => {
         const classId = req.params.id;
         const body = req.body || {};
         req.infoEvent("class.poll.create.attempt", "Attempting to create poll", { classId });

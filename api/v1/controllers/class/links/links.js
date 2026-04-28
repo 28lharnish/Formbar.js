@@ -1,10 +1,11 @@
 const { SCOPES } = require("@modules/permissions");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { isUserEnrolled, getClassLinksPaginated } = require("@services/class-membership-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const ForbiddenError = require("@errors/forbidden-error");
+const membershipService = require("@services/class-membership-service");
 
 const DEFAULT_LINK_LIMIT = 20;
 const MAX_LINK_LIMIT = 100;
@@ -134,7 +135,7 @@ module.exports = (router) => {
      *         data:
      *           $ref: '#/components/schemas/LinksData'
      */
-    router.get("/class/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.READ), async (req, res) => {
+    router.get("/class/:id/links", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.READ, "You don't have permission to view links for this class."), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
         req.infoEvent("class.links.view.attempt", "Attempting to view class links", { classId });

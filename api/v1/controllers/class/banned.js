@@ -1,10 +1,11 @@
 const { dbGet, dbGetAll } = require("@modules/database");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { classStateStore } = require("@services/classroom-service");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const NotFoundError = require("@errors/not-found-error");
+const membershipService = require("@services/class-membership-service");
 
 const DEFAULT_BANNED_LIMIT = 20;
 const MAX_BANNED_LIMIT = 100;
@@ -109,7 +110,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/banned", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (req, res) => {
+    router.get("/class/:id/banned", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.STUDENTS.BAN, "You do not have permission to view banned students for this class."), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.banned.view", "Viewing banned users for class", { classId });
 

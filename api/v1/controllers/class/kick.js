@@ -1,9 +1,10 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { classKickStudent, classKickStudents } = require("@services/class-service");
 const { advancedEmitToClass } = require("@services/socket-updates-service");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register kick controller routes.
@@ -58,7 +59,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/students/:userId/kick", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (req, res) => {
+    router.post("/class/:id/students/:userId/kick", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.STUDENTS.KICK, "You do not have permission to kick this student."), async (req, res) => {
         const classId = Number(req.params.id);
         const userId = Number(req.params.userId);
 
@@ -118,7 +119,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/students/kick-all", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (req, res) => {
+    router.post("/class/:id/students/kick-all", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.STUDENTS.KICK, "You do not have permission to kick students from this class."), async (req, res) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "id");

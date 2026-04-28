@@ -1,8 +1,9 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { regenerateClassCode } = require("@services/class-service");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register regenerate-code controller routes.
@@ -68,7 +69,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.post("/class/:id/code/regenerate", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.REGENERATE_CODE), async (req, res) => {
+    router.post("/class/:id/code/regenerate", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.REGENERATE_CODE, "You do not have permission to regenerate this class code."), async (req, res) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "id");

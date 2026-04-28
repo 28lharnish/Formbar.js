@@ -1,8 +1,9 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { SCOPES } = require("@modules/permissions");
 const classService = require("@services/class-service");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register clear controller routes.
@@ -51,7 +52,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/clear", isAuthenticated, hasClassScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
+    router.post("/class/:id/timer/clear", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to clear the class timer."), async (req, res) => {
         const classId = Number(req.params.id);
         requireQueryParam(classId, "id");
 

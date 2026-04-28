@@ -1,10 +1,10 @@
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const { isClassMember } = require("@middleware/permission-check");
+const { isClassMember, isOwnerOrHasScopes } = require("@middleware/permission-check");
 const ForbiddenError = require("@errors/forbidden-error");
 const { SCOPES } = require("@modules/permissions");
-const { hasClassScope } = require("@middleware/permission-check");
 const classService = require("@services/class-service");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register timer controller routes.
@@ -64,7 +64,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.get("/class/:id/timer", isAuthenticated, isClassMember(), hasClassScope(SCOPES.CLASS.TIMER.READ), async (req, res) => {
+    router.get("/class/:id/timer", isAuthenticated, isClassMember(), isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.READ, "You do not have permission to view the timer for this class."), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.timer.view.attempt", "Attempting to view class timer", { classId });
 

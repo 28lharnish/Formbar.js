@@ -226,10 +226,10 @@ async function enrollInClass(userSession, classCode) {
  * Deletes the user from the class in memory and the database, updates the user's session,
  * emits leave events, and reloads the user's page.
  * @param {Object} userData - The session object of the user being unenrolled.
+ * @param {number} classId - The ID of the class from which to unenroll the user.
  * @returns {Promise<void>}
  */
-async function unenrollFromClass(userData) {
-    const classId = userData.classId;
+async function unenrollFromClass(userData, classId) {
     const email = userData.email;
     const studentId = await getIdFromEmail(email);
 

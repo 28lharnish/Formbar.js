@@ -1,11 +1,12 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
 const { classStateStore } = require("@services/classroom-service");
 const { getClassRoles, createClassRole, updateClassRole, deleteClassRole, getActingUser } = require("@services/role-service");
 const { broadcastClassUpdate } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register roles controller routes.
@@ -68,7 +69,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.READ), async (req, res) => {
+    router.get("/class/:id/roles", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.READ, "You do not have permission to view roles for this class."), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
         req.infoEvent("class.roles.list.start", { classId, actorId: req.user.id });
@@ -168,7 +169,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.MANAGE), async (req, res) => {
+    router.post("/class/:id/roles", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.MANAGE, "You do not have permission to manage roles for this class."), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
 
@@ -276,7 +277,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.patch("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.MANAGE), async (req, res) => {
+    router.patch("/class/:id/roles/:roleId", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.MANAGE, "You do not have permission to manage roles for this class."), async (req, res) => {
         const { id: classId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(roleId, "roleId");
@@ -355,7 +356,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.delete("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.ROLES.MANAGE), async (req, res) => {
+    router.delete("/class/:id/roles/:roleId", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.MANAGE, "You do not have permission to manage roles for this class."), async (req, res) => {
         const { id: classId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(roleId, "roleId");

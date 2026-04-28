@@ -1,10 +1,11 @@
-const { hasClassScope, isClassMember } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes, isClassMember } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { setTags } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register tags controller routes.
@@ -87,7 +88,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/tags", isAuthenticated, ensureClassLoaded, isClassMember(), hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
+    router.get("/class/:id/tags", isAuthenticated, ensureClassLoaded, isClassMember(), isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TAGS.MANAGE, "You do not have permission to view tags for this class."), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {
@@ -152,10 +153,10 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.put("/class/:id/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), setTagsHandler);
+    router.put("/class/:id/tags", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TAGS.MANAGE, "You do not have permission to manage tags for this class."), setTagsHandler);
 
     // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/:id/tags instead
-    router.post("/class/:id/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
+    router.post("/class/:id/tags", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TAGS.MANAGE, "You do not have permission to manage tags for this class."), async (req, res) => {
         res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/tags instead");
         res.setHeader(
             "Warning",

@@ -1,9 +1,10 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { SCOPES } = require("@modules/permissions");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register pause controller routes.
@@ -58,7 +59,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/pause", isAuthenticated, hasClassScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
+    router.post("/class/:id/timer/pause", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to pause the class timer."), async (req, res) => {
         const classId = Number(req.params.id);
         requireQueryParam(classId, "id");
 

@@ -1,4 +1,4 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
 const { SCOPES, computeClassPermissionLevel } = require("@modules/permissions");
@@ -6,6 +6,7 @@ const { getUserScopes } = require("@modules/scope-resolver");
 const { dbGetAll } = require("@modules/database");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const NotFoundError = require("@errors/not-found-error");
+const membershipService = require("@services/class-membership-service");
 
 const DEFAULT_STUDENT_LIMIT = 20;
 const MAX_STUDENT_LIMIT = 100;
@@ -103,7 +104,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/students", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.READ), async (req, res) => {
+    router.get("/class/:id/students", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.STUDENTS.READ, "You do not have permission to view students for this class."), async (req, res) => {
         // Get the class key from the request parameters and log the request details
         const classId = req.params.id;
         req.infoEvent("class.students.view", "Viewing class students", { classId });

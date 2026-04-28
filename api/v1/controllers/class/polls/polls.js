@@ -2,9 +2,10 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const { getPreviousPolls } = require("@services/poll-service");
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
+const membershipService = require("@services/class-membership-service");
 
 const DEFAULT_POLL_LIMIT = 20;
 const MAX_POLL_LIMIT = 100;
@@ -143,7 +144,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/polls", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.READ), async (req, res) => {
+    router.get("/class/:id/polls", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.POLL.READ, "You do not have permission to view polls for this class."), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "classId");
 

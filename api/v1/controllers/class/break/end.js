@@ -1,10 +1,11 @@
-const { isSelfOrHasScopes } = require("@middleware/permission-check");
+const { isOwnerHasScopesOrIsSelf } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { endBreak } = require("@services/class-service");
 const ForbiddenError = require("@errors/forbidden-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register end controller routes.
@@ -66,7 +67,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/break/end", isAuthenticated, isSelfOrHasScopes(SCOPES.CLASS.BREAK.APPROVE, "You do not have permission to end this user's break."), async (req, res) => {
+    router.post("/class/:id/break/end", isAuthenticated, isOwnerHasScopesOrIsSelf(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You do not have permission to end this user's break."), async (req, res) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "id");

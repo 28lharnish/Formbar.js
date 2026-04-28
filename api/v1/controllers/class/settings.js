@@ -1,8 +1,9 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { SCOPES } = require("@modules/permissions");
 const { updateClassSetting } = require("@services/class-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register settings controller routes.
@@ -89,7 +90,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.patch("/class/:id/settings", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+    router.patch("/class/:id/settings", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.SETTINGS, "You do not have permission to update this class's settings."), async (req, res) => {
         const classId = req.params.id;
         const classSettings = req.body;
         requireQueryParam(classId, "id");

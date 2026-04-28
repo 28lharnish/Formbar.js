@@ -1,4 +1,4 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { approveBreak } = require("@services/class-service");
@@ -6,6 +6,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register deny controller routes.
@@ -69,7 +70,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/deny", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), async (req, res) => {
+    router.post("/class/:id/students/:userId/break/deny", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to deny this user's break."), async (req, res) => {
         const classId = Number(req.params.id);
         const targetUserId = Number(req.params.userId);
 

@@ -1,8 +1,9 @@
 const { SCOPES } = require("@modules/permissions");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { dbRun } = require("@modules/database");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register add controller routes.
@@ -68,7 +69,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/links/add", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
+    router.post("/class/:id/links/add", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.MANAGE, "You don't have permission to add links to this class."), async (req, res) => {
         const classId = req.params.id;
         const { name, url } = req.body;
         req.infoEvent("class.links.add.attempt", "Attempting to add class link", { classId, linkName: name });
