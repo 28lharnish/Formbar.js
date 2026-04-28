@@ -56,7 +56,7 @@ app.set("trust proxy", parseTrustProxySetting(process.env.TRUST_PROXY));
 app.use(requestLoggerMiddleware);
 
 // Connect rate limiter middleware
-// app.use(rateLimiter);
+app.use(rateLimiter);
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
