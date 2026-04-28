@@ -2,7 +2,7 @@ const { classStateStore } = require("@services/classroom-service");
 
 const { generateColors } = require("@modules/util");
 const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
-const { database, dbGet, dbGetAll, dbRun } = require("@modules/database");
+const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
 const { userSocketUpdates } = require("../sockets/init");
@@ -493,18 +493,17 @@ function sendPollResponse(classId, res, textRes, userSession) {
         const resWeight = calculateResponseWeight(classroom.poll, res);
 
         // Increase pog meter by 100 times the weight of the response
-        // If pog meter reaches 500, increase digipogs by 1 and reset pog meter to 0
-        const pogMeterIncrease = Math.floor(100 * resWeight);
+        // If pog meter reaches 100, increase digipogs by 1 and reset pog meter to 0
+        const pogMeterIncrease = Math.floor((process.env.POG_METER_INCREMENT || 20) * resWeight);
         student.pogMeter += pogMeterIncrease;
-        if (student.pogMeter >= 500) {
-            student.pogMeter -= 500;
+        if (student.pogMeter >= 100) {
+            student.pogMeter -= 100;
             let addPogs = Math.floor(Math.random() * 10) + 1; // Randomly add between 1 and 10 digipogs
-            database.run("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [addPogs, user.id], (err) => {
-                if (err) {
-                } else {
-                }
-            });
+            dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [addPogs, student.id]);
         }
+
+        dbRun("UPDATE users SET pog_meter = ? WHERE id = ?", [student.pogMeter, student.id]);
+        
         pollRuntimeStore.markPogMeterIncreased(classId, email);
     }
 
