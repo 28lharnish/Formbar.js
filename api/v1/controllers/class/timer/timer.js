@@ -67,18 +67,28 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.get("/class/:id/timer", isAuthenticated, isClassMember(), isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.READ, "You do not have permission to view the timer for this class."), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.timer.view.attempt", "Attempting to view class timer", { classId });
+    router.get(
+        "/class/:id/timer",
+        isAuthenticated,
+        isClassMember(),
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.TIMER.READ,
+            "You do not have permission to view the timer for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.timer.view.attempt", "Attempting to view class timer", { classId });
 
-        const timer = classService.getTimer(classId);
+            const timer = classService.getTimer(classId);
 
-        req.infoEvent("class.timer.view.success", "Class timer returned", { classId, timer: timer || { active: false } });
-        res.status(200).json({
-            success: true,
-            data: {
-                timer: timer || { active: false },
-            },
-        });
-    });
+            req.infoEvent("class.timer.view.success", "Class timer returned", { classId, timer: timer || { active: false } });
+            res.status(200).json({
+                success: true,
+                data: {
+                    timer: timer || { active: false },
+                },
+            });
+        }
+    );
 };

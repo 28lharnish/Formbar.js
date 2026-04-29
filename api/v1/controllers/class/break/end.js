@@ -149,26 +149,31 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/end", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.END, "You do not have permission to end this user's break."), async (req, res) => {
-        const classId = Number(req.params.id);
-        const targetUserId = Number(req.params.userId);
+    router.post(
+        "/class/:id/students/:userId/break/end",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.END, "You do not have permission to end this user's break."),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            const targetUserId = Number(req.params.userId);
 
-        requireQueryParam(classId, "id");
-        requireQueryParam(targetUserId, "userId");
+            requireQueryParam(classId, "id");
+            requireQueryParam(targetUserId, "userId");
 
-        req.infoEvent("class.break.end.attempt", "Attempting to end user's break", { classId });
+            req.infoEvent("class.break.end.attempt", "Attempting to end user's break", { classId });
 
-        const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
-            throw new ForbiddenError("You do not have permission to end this user's break.");
+            const classroom = classStateStore.getClassroom(classId);
+            if (classroom && !classroom.students[req.user.email]) {
+                throw new ForbiddenError("You do not have permission to end this user's break.");
+            }
+
+            await endBreak(targetUserId, classId);
+
+            req.infoEvent("class.break.end.success", "User's break ended", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
         }
-
-        await endBreak(targetUserId, classId);
-
-        req.infoEvent("class.break.end.success", "User's break ended", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+    );
 };

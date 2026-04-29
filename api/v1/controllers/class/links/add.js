@@ -69,22 +69,27 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/links/add", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.MANAGE, "You don't have permission to add links to this class."), async (req, res) => {
-        const classId = req.params.id;
-        const { name, url } = req.body;
-        req.infoEvent("class.links.add.attempt", "Attempting to add class link", { classId, linkName: name });
-        if (!name || !url) {
-            throw new ValidationError("Name and URL are required.");
-        }
+    router.post(
+        "/class/:id/links/add",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.MANAGE, "You don't have permission to add links to this class."),
+        async (req, res) => {
+            const classId = req.params.id;
+            const { name, url } = req.body;
+            req.infoEvent("class.links.add.attempt", "Attempting to add class link", { classId, linkName: name });
+            if (!name || !url) {
+                throw new ValidationError("Name and URL are required.");
+            }
 
-        // Add the link to the database
-        await dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, name, url]);
-        req.infoEvent("class.links.add.success", "Class link added", { classId, linkName: name });
-        res.status(200).json({
-            success: true,
-            data: {
-                message: "Link added successfully.",
-            },
-        });
-    });
+            // Add the link to the database
+            await dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, name, url]);
+            req.infoEvent("class.links.add.success", "Class link added", { classId, linkName: name });
+            res.status(200).json({
+                success: true,
+                data: {
+                    message: "Link added successfully.",
+                },
+            });
+        }
+    );
 };

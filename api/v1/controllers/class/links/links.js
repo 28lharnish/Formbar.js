@@ -135,22 +135,27 @@ module.exports = (router) => {
      *         data:
      *           $ref: '#/components/schemas/LinksData'
      */
-    router.get("/class/:id/links", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.READ, "You don't have permission to view links for this class."), async (req, res) => {
-        const classId = req.params.id;
-        requireQueryParam(classId, "id");
-        req.infoEvent("class.links.view.attempt", "Attempting to view class links", { classId });
+    router.get(
+        "/class/:id/links",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.READ, "You don't have permission to view links for this class."),
+        async (req, res) => {
+            const classId = req.params.id;
+            requireQueryParam(classId, "id");
+            req.infoEvent("class.links.view.attempt", "Attempting to view class links", { classId });
 
-        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_LINK_LIMIT, MAX_LINK_LIMIT);
-        const { links, total } = await getClassLinksPaginated(classId, limit, offset);
-        if (links) {
-            req.infoEvent("class.links.view.success", "Class links returned", { classId, linkCount: links.length });
-            res.status(200).json({
-                success: true,
-                data: {
-                    links,
-                    pagination: buildPagination(total, limit, offset, links.length),
-                },
-            });
+            const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_LINK_LIMIT, MAX_LINK_LIMIT);
+            const { links, total } = await getClassLinksPaginated(classId, limit, offset);
+            if (links) {
+                req.infoEvent("class.links.view.success", "Class links returned", { classId, linkCount: links.length });
+                res.status(200).json({
+                    success: true,
+                    data: {
+                        links,
+                        pagination: buildPagination(total, limit, offset, links.length),
+                    },
+                });
+            }
         }
-    });
+    );
 };

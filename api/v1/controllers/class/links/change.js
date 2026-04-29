@@ -102,15 +102,33 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.put("/class/:id/links", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.MANAGE, "You don't have permission to manage links for this class."), changeLinkHandler);
+    router.put(
+        "/class/:id/links",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.LINKS.MANAGE,
+            "You don't have permission to manage links for this class."
+        ),
+        changeLinkHandler
+    );
 
     // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/:id/links instead
-    router.post("/class/:id/links/change", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.LINKS.MANAGE, "You don't have permission to manage links for this class."), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/links instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use PUT /api/v1/class/:id/links instead. This endpoint will be removed in a future version."'
-        );
-        await changeLinkHandler(req, res);
-    });
+    router.post(
+        "/class/:id/links/change",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.LINKS.MANAGE,
+            "You don't have permission to manage links for this class."
+        ),
+        async (req, res) => {
+            res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/links instead");
+            res.setHeader(
+                "Warning",
+                '299 - "Deprecated API: Use PUT /api/v1/class/:id/links instead. This endpoint will be removed in a future version."'
+            );
+            await changeLinkHandler(req, res);
+        }
+    );
 };

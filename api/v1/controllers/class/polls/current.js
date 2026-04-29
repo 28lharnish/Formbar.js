@@ -65,17 +65,26 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/polls/current", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.POLL.READ, "You do not have permission to view the current poll for this class."), async (req, res) => {
-        const classId = req.params.id;
-        requireQueryParam(classId);
+    router.get(
+        "/class/:id/polls/current",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.POLL.READ,
+            "You do not have permission to view the current poll for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            requireQueryParam(classId);
 
-        req.infoEvent("class.poll.current.view.attempt", "Attempting to view current poll", { classId });
-        const poll = await getCurrentPoll(classId, req.user);
-        req.infoEvent("class.poll.current.view.success", "Current poll returned", { classId, pollStatus: poll.status });
+            req.infoEvent("class.poll.current.view.attempt", "Attempting to view current poll", { classId });
+            const poll = await getCurrentPoll(classId, req.user);
+            req.infoEvent("class.poll.current.view.success", "Current poll returned", { classId, pollStatus: poll.status });
 
-        res.status(200).json({
-            success: true,
-            data: poll,
-        });
-    });
+            res.status(200).json({
+                success: true,
+                data: poll,
+            });
+        }
+    );
 };

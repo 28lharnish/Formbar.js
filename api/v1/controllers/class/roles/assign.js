@@ -78,25 +78,34 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/students/:userId/roles", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.READ, "You do not have permission to view assigned roles for this class."), async (req, res) => {
-        const { id: classIdRaw, userId } = req.params;
-        const classId = normalizeClassId(classIdRaw);
-        requireQueryParam(classIdRaw, "id");
-        requireQueryParam(userId, "userId");
-        req.infoEvent("class.roles.student.list.start", { classId, userId, actorId: req.user.id });
+    router.get(
+        "/class/:id/students/:userId/roles",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.ROLES.READ,
+            "You do not have permission to view assigned roles for this class."
+        ),
+        async (req, res) => {
+            const { id: classIdRaw, userId } = req.params;
+            const classId = normalizeClassId(classIdRaw);
+            requireQueryParam(classIdRaw, "id");
+            requireQueryParam(userId, "userId");
+            req.infoEvent("class.roles.student.list.start", { classId, userId, actorId: req.user.id });
 
-        const classroom = classStateStore.getClassroom(classId);
-        if (!classroom) throw new NotFoundError("Class not found.");
+            const classroom = classStateStore.getClassroom(classId);
+            if (!classroom) throw new NotFoundError("Class not found.");
 
-        const email = req.user.email;
-        if (!classroom.students[email] && classroom.owner !== req.user.id) {
-            throw new NotFoundError("Class not found.");
+            const email = req.user.email;
+            if (!classroom.students[email] && classroom.owner !== req.user.id) {
+                throw new NotFoundError("Class not found.");
+            }
+
+            const roles = await getStudentRoleAssignments(classId, userId);
+            req.infoEvent("class.roles.student.list.success", { classId, userId, actorId: req.user.id, roleCount: roles.length });
+            res.status(200).json({ success: true, data: { roles } });
         }
-
-        const roles = await getStudentRoleAssignments(classId, userId);
-        req.infoEvent("class.roles.student.list.success", { classId, userId, actorId: req.user.id, roleCount: roles.length });
-        res.status(200).json({ success: true, data: { roles } });
-    });
+    );
 
     /**
      * @swagger
@@ -167,21 +176,30 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.post("/class/:id/students/:userId/roles/:roleId", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.ASSIGN, "You do not have permission to assign roles in this class."), async (req, res) => {
-        const { id: classIdRaw, userId, roleId } = req.params;
-        requireQueryParam(classIdRaw, "id");
-        requireQueryParam(userId, "userId");
-        requireQueryParam(roleId, "roleId");
-        const classId = normalizeClassId(classIdRaw);
-        req.infoEvent("class.roles.student.add.start", { classId, userId, roleId, actorId: req.user.id });
-        const classroom = classStateStore.getClassroom(classId);
-        const actingClassUser = getActingUser(classroom, req.user);
+    router.post(
+        "/class/:id/students/:userId/roles/:roleId",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.ROLES.ASSIGN,
+            "You do not have permission to assign roles in this class."
+        ),
+        async (req, res) => {
+            const { id: classIdRaw, userId, roleId } = req.params;
+            requireQueryParam(classIdRaw, "id");
+            requireQueryParam(userId, "userId");
+            requireQueryParam(roleId, "roleId");
+            const classId = normalizeClassId(classIdRaw);
+            req.infoEvent("class.roles.student.add.start", { classId, userId, roleId, actorId: req.user.id });
+            const classroom = classStateStore.getClassroom(classId);
+            const actingClassUser = getActingUser(classroom, req.user);
 
-        await addStudentRole(classId, userId, Number(roleId), actingClassUser, classroom);
-        await broadcastClassUpdate(classId);
-        req.infoEvent("class.roles.student.add.success", { classId, userId, roleId, actorId: req.user.id });
-        res.status(200).json({ success: true, data: { message: "Role added." } });
-    });
+            await addStudentRole(classId, userId, Number(roleId), actingClassUser, classroom);
+            await broadcastClassUpdate(classId);
+            req.infoEvent("class.roles.student.add.success", { classId, userId, roleId, actorId: req.user.id });
+            res.status(200).json({ success: true, data: { message: "Role added." } });
+        }
+    );
 
     /**
      * @swagger
@@ -255,7 +273,11 @@ module.exports = (router) => {
     router.delete(
         "/class/:id/students/:userId/roles/:roleId",
         isAuthenticated,
-        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.MANAGE, "You do not have permission to remove roles in this class."),
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.ROLES.MANAGE,
+            "You do not have permission to remove roles in this class."
+        ),
         async (req, res) => {
             const { id: classIdRaw, userId, roleId } = req.params;
             requireQueryParam(classIdRaw, "id");

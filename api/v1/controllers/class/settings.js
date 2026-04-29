@@ -90,17 +90,26 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.patch("/class/:id/settings", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.SETTINGS, "You do not have permission to update this class's settings."), async (req, res) => {
-        const classId = req.params.id;
-        const classSettings = req.body;
-        requireQueryParam(classId, "id");
+    router.patch(
+        "/class/:id/settings",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.SESSION.SETTINGS,
+            "You do not have permission to update this class's settings."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            const classSettings = req.body;
+            requireQueryParam(classId, "id");
 
-        req.infoEvent("class.settings.update", "Updating class settings", { classId, classSettings });
+            req.infoEvent("class.settings.update", "Updating class settings", { classId, classSettings });
 
-        await updateClassSetting(classId, classSettings);
+            await updateClassSetting(classId, classSettings);
 
-        req.infoEvent("class.settings.updated", "Class settings updated", { classId, classSettings });
+            req.infoEvent("class.settings.updated", "Class settings updated", { classId, classSettings });
 
-        res.status(200).json({ success: true });
-    });
+            res.status(200).json({ success: true });
+        }
+    );
 };

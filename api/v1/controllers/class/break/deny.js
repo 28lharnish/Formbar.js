@@ -70,29 +70,34 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/deny", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to deny this user's break."), async (req, res) => {
-        const classId = Number(req.params.id);
-        const targetUserId = Number(req.params.userId);
+    router.post(
+        "/class/:id/students/:userId/break/deny",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to deny this user's break."),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            const targetUserId = Number(req.params.userId);
 
-        requireQueryParam(classId, "id");
-        requireQueryParam(targetUserId, "userId");
+            requireQueryParam(classId, "id");
+            requireQueryParam(targetUserId, "userId");
 
-        req.infoEvent("class.break.deny.attempt", "Attempting to deny user's break", { classId, targetUserId });
-		
-        const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
-            throw new ForbiddenError("You do not have permission to approve this user's break.");
+            req.infoEvent("class.break.deny.attempt", "Attempting to deny user's break", { classId, targetUserId });
+
+            const classroom = classStateStore.getClassroom(classId);
+            if (classroom && !classroom.students[req.user.email]) {
+                throw new ForbiddenError("You do not have permission to approve this user's break.");
+            }
+
+            const result = await approveBreak(false, targetUserId, req.user, classId);
+            if (result === true) {
+                req.infoEvent("class.break.deny.success", "User's break denied", { classId, targetUserId });
+                res.status(200).json({
+                    success: true,
+                    data: {},
+                });
+            } else {
+                throw new AppError(result, { statusCode: 500 });
+            }
         }
-
-        const result = await approveBreak(false, targetUserId, req.user, classId);
-        if (result === true) {
-            req.infoEvent("class.break.deny.success", "User's break denied", { classId, targetUserId });
-            res.status(200).json({
-                success: true,
-                data: {},
-            });
-        } else {
-            throw new AppError(result, { statusCode: 500 });
-        }
-    });
+    );
 };

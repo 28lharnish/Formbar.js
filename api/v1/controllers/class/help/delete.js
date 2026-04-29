@@ -72,31 +72,40 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.delete("/class/:id/students/:userId/help", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.HELP.APPROVE, "You don't have permission to delete this user's help request."), async (req, res) => {
-        const classId = Number(req.params.id);
-        const targetUserId = Number(req.params.userId);
+    router.delete(
+        "/class/:id/students/:userId/help",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.HELP.APPROVE,
+            "You don't have permission to delete this user's help request."
+        ),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            const targetUserId = Number(req.params.userId);
 
-		requireQueryParam(classId, "id");
-		requireQueryParam(targetUserId, "userId");
+            requireQueryParam(classId, "id");
+            requireQueryParam(targetUserId, "userId");
 
-		if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
-            throw new AppError("Invalid userId parameter.", { statusCode: 400 });
+            if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+                throw new AppError("Invalid userId parameter.", { statusCode: 400 });
+            }
+
+            req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
+            const result = await deleteHelpTicket(targetUserId, req.user, classId);
+            if (result === true) {
+                req.infoEvent("class.help.delete.success", "Class help request deleted", { classId, targetUserId });
+                res.status(200).json({
+                    success: true,
+                    data: {},
+                });
+            } else {
+                throw new AppError(result, { statusCode: 500 });
+            }
         }
+    );
 
-        req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
-        const result = await deleteHelpTicket(targetUserId, req.user, classId);
-        if (result === true) {
-            req.infoEvent("class.help.delete.success", "Class help request deleted", { classId, targetUserId });
-            res.status(200).json({
-                success: true,
-                data: {},
-            });
-        } else {
-            throw new AppError(result, { statusCode: 500 });
-        }
-    });
-
-	    /**
+    /**
      * @swagger
      * /api/v1/class/{id}/help:
      *   delete:
@@ -106,7 +115,7 @@ module.exports = (router) => {
      *     description: |
      *       Deletes your own help request from a class.
      *
-     *       **Required Scope:** `class.help.request` 
+     *       **Required Scope:** `class.help.request`
      *
      *       **Permission Levels:**
      *       - 1: Guest
@@ -153,7 +162,7 @@ module.exports = (router) => {
     router.delete("/class/:id/help", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.REQUEST), async (req, res) => {
         const classId = Number(req.params.id);
 
-		requireQueryParam(classId, "id");
+        requireQueryParam(classId, "id");
 
         req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId });
         const result = await deleteHelpTicket(req.user.id, req.user, classId);

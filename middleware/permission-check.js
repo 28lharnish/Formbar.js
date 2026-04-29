@@ -111,30 +111,30 @@ function isSelfOrHasScopes(scopes, message) {
         if (!req.user || !req.user.email) {
             throw new AuthError("User is not authenticated");
         }
- 
+
         const targetId = Number(req.params.id);
         if (req.user.id === targetId) {
             return next();
         }
- 
+
         const user = classStateStore.getUser(req.user.email) || req.user;
         const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
- 
+
         // check if user has all required scopes
         let userHasRequiredScopes = true;
         for (const scope of requiredScopes) {
             if (!userHasScope(user, scope)) userHasRequiredScopes = false;
         }
- 
+
         if (userHasRequiredScopes) {
             return next();
         }
- 
+
         req.warnEvent("auth.self_or_scope.forbidden", `User ${req.user.email} is not target and lacks required scopes`, {
             email: req.user.email,
             requiredScopes,
         });
- 
+
         throw new ForbiddenError(message || "You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "not_self_and_insufficient_scope",
@@ -151,63 +151,63 @@ function isSelfOrHasScopes(scopes, message) {
  * @returns {Function} Express middleware function.
  */
 function isOwnerOrHasScopes(ownerCheck, scopes, message) {
-	return async function (req, res, next) {
-		if (!req.user || !req.user.email) {
-			throw new AuthError("User is not authenticated");
-		}
+    return async function (req, res, next) {
+        if (!req.user || !req.user.email) {
+            throw new AuthError("User is not authenticated");
+        }
 
         const isOwner = await ownerCheck(req);
-		if (isOwner) {
-			return next();
-		}
+        if (isOwner) {
+            return next();
+        }
 
-		const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
-		const user = classStateStore.getUser(req.user.email) || req.user;
+        const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
+        const user = classStateStore.getUser(req.user.email) || req.user;
 
-		let classroom = null;
-		let classUser = null;
-		const needsClassContext = requiredScopes.some((s) => typeof s === "string" && s.startsWith("class."));
+        let classroom = null;
+        let classUser = null;
+        const needsClassContext = requiredScopes.some((s) => typeof s === "string" && s.startsWith("class."));
 
-		if (needsClassContext) {
-			const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
-			if (classId !== undefined && classId !== null && classId !== "") {
-				classroom = classStateStore.getClassroom(classId);
-				if (classroom) {
-					classUser = classroom.students[req.user.email] || null;
-				}
-			}
-		}
+        if (needsClassContext) {
+            const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
+            if (classId !== undefined && classId !== null && classId !== "") {
+                classroom = classStateStore.getClassroom(classId);
+                if (classroom) {
+                    classUser = classroom.students[req.user.email] || null;
+                }
+            }
+        }
 
-		const hasRequiredScope = requiredScopes.every((requiredScope) => {
-			if (typeof requiredScope !== "string") {
-				return false;
-			}
+        const hasRequiredScope = requiredScopes.every((requiredScope) => {
+            if (typeof requiredScope !== "string") {
+                return false;
+            }
 
-			if (requiredScope.startsWith("class.")) {
-				if (!classroom || !classUser) {
-					return false;
-				}
-				return userHasScope(classUser, requiredScope, classroom);
-			}
+            if (requiredScope.startsWith("class.")) {
+                if (!classroom || !classUser) {
+                    return false;
+                }
+                return userHasScope(classUser, requiredScope, classroom);
+            }
 
-			return userHasScope(user, requiredScope);
-		});
+            return userHasScope(user, requiredScope);
+        });
 
-		if (hasRequiredScope) {
-			return next();
-		}
+        if (hasRequiredScope) {
+            return next();
+        }
 
-		req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks required scope(s)`, {
-			email: req.user.email,
-			requiredScopes,
-		});
+        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks required scope(s)`, {
+            email: req.user.email,
+            requiredScopes,
+        });
 
-		throw new ForbiddenError(message || "You do not have permission to access this resource.", {
-			event: "permission.check.failed",
-			reason: "not_owner_and_insufficient_scope",
-			scope: requiredScopes,
-		});
-	};
+        throw new ForbiddenError(message || "You do not have permission to access this resource.", {
+            event: "permission.check.failed",
+            reason: "not_owner_and_insufficient_scope",
+            scope: requiredScopes,
+        });
+    };
 }
 
 /**

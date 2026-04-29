@@ -88,22 +88,33 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/tags", isAuthenticated, ensureClassLoaded, isClassMember(), isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TAGS.MANAGE, "You do not have permission to view tags for this class."), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
-        if (!classId || !classStateStore.getClassroom(classId)) {
-            throw new NotFoundError("Class not found or not loaded.");
-        }
+    router.get(
+        "/class/:id/tags",
+        isAuthenticated,
+        ensureClassLoaded,
+        isClassMember(),
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.TAGS.MANAGE,
+            "You do not have permission to view tags for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
+            if (!classId || !classStateStore.getClassroom(classId)) {
+                throw new NotFoundError("Class not found or not loaded.");
+            }
 
-        const tags = classStateStore.getClassroom(classId).tags || [];
-        req.infoEvent("class.tags.view.success", "Class tags returned", { classId, tagCount: tags.length });
-        return res.status(200).json({
-            success: true,
-            data: {
-                tags,
-            },
-        });
-    });
+            const tags = classStateStore.getClassroom(classId).tags || [];
+            req.infoEvent("class.tags.view.success", "Class tags returned", { classId, tagCount: tags.length });
+            return res.status(200).json({
+                success: true,
+                data: {
+                    tags,
+                },
+            });
+        }
+    );
 
     /**
      * @swagger
@@ -153,15 +164,33 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.put("/class/:id/tags", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TAGS.MANAGE, "You do not have permission to manage tags for this class."), setTagsHandler);
+    router.put(
+        "/class/:id/tags",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.TAGS.MANAGE,
+            "You do not have permission to manage tags for this class."
+        ),
+        setTagsHandler
+    );
 
     // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/:id/tags instead
-    router.post("/class/:id/tags", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TAGS.MANAGE, "You do not have permission to manage tags for this class."), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/tags instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use PUT /api/v1/class/:id/tags instead. This endpoint will be removed in a future version."'
-        );
-        await setTagsHandler(req, res);
-    });
+    router.post(
+        "/class/:id/tags",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.TAGS.MANAGE,
+            "You do not have permission to manage tags for this class."
+        ),
+        async (req, res) => {
+            res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/tags instead");
+            res.setHeader(
+                "Warning",
+                '299 - "Deprecated API: Use PUT /api/v1/class/:id/tags instead. This endpoint will be removed in a future version."'
+            );
+            await setTagsHandler(req, res);
+        }
+    );
 };

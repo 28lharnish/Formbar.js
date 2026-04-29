@@ -69,19 +69,28 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.post("/class/:id/code/regenerate", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.REGENERATE_CODE, "You do not have permission to regenerate this class code."), async (req, res) => {
-        const classId = Number(req.params.id);
+    router.post(
+        "/class/:id/code/regenerate",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.SESSION.REGENERATE_CODE,
+            "You do not have permission to regenerate this class code."
+        ),
+        async (req, res) => {
+            const classId = Number(req.params.id);
 
-        requireQueryParam(classId, "id");
+            requireQueryParam(classId, "id");
 
-        req.infoEvent("class.code.regenerate.attempt", "Attempting to regenerate class code", { classId });
+            req.infoEvent("class.code.regenerate.attempt", "Attempting to regenerate class code", { classId });
 
-        const key = await regenerateClassCode(classId);
+            const key = await regenerateClassCode(classId);
 
-        req.infoEvent("class.code.regenerate.success", "Class code regenerated", { classId });
-        res.status(200).json({
-            success: true,
-            data: { key },
-        });
-    });
+            req.infoEvent("class.code.regenerate.success", "Class code regenerated", { classId });
+            res.status(200).json({
+                success: true,
+                data: { key },
+            });
+        }
+    );
 };

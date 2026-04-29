@@ -58,16 +58,21 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/start", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.START, "You do not have permission to start this class."), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.start.attempt", "Starting class session", { classId });
+    router.post(
+        "/class/:id/start",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.START, "You do not have permission to start this class."),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.start.attempt", "Starting class session", { classId });
 
-        await startClass(classId);
+            await startClass(classId);
 
-        req.infoEvent("class.start.success", "Class session started successfully", { classId });
-        return res.json({
-            success: true,
-            data: {},
-        });
-    });
+            req.infoEvent("class.start.success", "Class session started successfully", { classId });
+            return res.json({
+                success: true,
+                data: {},
+            });
+        }
+    );
 };

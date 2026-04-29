@@ -59,27 +59,32 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/end", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to end the class timer."), async (req, res) => {
-        const classId = Number(req.params.id);
-        requireQueryParam(classId, "id");
+    router.post(
+        "/class/:id/timer/end",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to end the class timer."),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            requireQueryParam(classId, "id");
 
-        req.infoEvent("class.timer.end.attempt", "Attempting to end a timer", { classId });
+            req.infoEvent("class.timer.end.attempt", "Attempting to end a timer", { classId });
 
-        const timer = classService.getTimer(classId);
-        if (!timer) {
-            throw new ValidationError("No current timer found for this class.");
+            const timer = classService.getTimer(classId);
+            if (!timer) {
+                throw new ValidationError("No current timer found for this class.");
+            }
+
+            if (!timer.active) {
+                throw new ValidationError("Timer is not active.");
+            }
+
+            classService.endTimer(classId);
+
+            req.infoEvent("class.timer.end.success", "Ended timer", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
         }
-
-        if (!timer.active) {
-            throw new ValidationError("Timer is not active.");
-        }
-
-        classService.endTimer(classId);
-
-        req.infoEvent("class.timer.end.success", "Ended timer", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+    );
 };

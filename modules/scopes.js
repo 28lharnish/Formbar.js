@@ -24,9 +24,9 @@ const SCOPES = {
     CLASS: {
         SYSTEM: {
             ADMIN: "class.system.admin",
-			PANEL_ACCESS: "class.system.panel_access",
-			CAN_DELETE_CLASS: "class.system.can_delete_class",
-			CAN_RENAME_CLASS: "class.system.can_rename_class",
+            PANEL_ACCESS: "class.system.panel_access",
+            CAN_DELETE_CLASS: "class.system.can_delete_class",
+            CAN_RENAME_CLASS: "class.system.can_rename_class",
             BLOCKED: "class.system.blocked",
         },
 
@@ -39,11 +39,11 @@ const SCOPES = {
             SHARE: "class.poll.share",
         },
 
-		ROLES: {
-			ASSIGN: "class.roles.assign",
-			READ: "class.roles.read",
-			MANAGE: "class.roles.manage",
-		},
+        ROLES: {
+            ASSIGN: "class.roles.assign",
+            READ: "class.roles.read",
+            MANAGE: "class.roles.manage",
+        },
 
         STUDENTS: {
             READ: "class.students.read",
@@ -62,7 +62,7 @@ const SCOPES = {
         BREAK: {
             REQUEST: "class.break.request",
             APPROVE: "class.break.approve",
-			END: "class.break.end",
+            END: "class.break.end",
         },
 
         HELP: {

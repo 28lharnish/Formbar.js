@@ -78,42 +78,47 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/start", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to start the class timer."), async (req, res) => {
-        const classId = Number(req.params.id);
-        let { duration, sound } = req.body;
-        requireQueryParam(classId, "id");
+    router.post(
+        "/class/:id/timer/start",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to start the class timer."),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            let { duration, sound } = req.body;
+            requireQueryParam(classId, "id");
 
-        if (duration === undefined || duration === null) {
-            throw new ValidationError("Duration is required.");
+            if (duration === undefined || duration === null) {
+                throw new ValidationError("Duration is required.");
+            }
+
+            duration = Number(duration);
+
+            if (!Number.isInteger(duration)) {
+                throw new ValidationError("Duration must be an integer.");
+            }
+
+            if (duration <= 0) {
+                throw new ValidationError("Duration must be greater than 0.");
+            }
+
+            if (typeof sound !== "undefined" && typeof sound !== "boolean") {
+                throw new ValidationError("Sound must be a boolean.");
+            }
+
+            req.infoEvent("class.timer.start.attempt", "Attempting to start a timer", { classId });
+
+            const classroom = classStateStore.getClassroom(classId);
+            if (!classroom) {
+                throw new ForbiddenError("Classroom is not currently loaded.");
+            }
+
+            classService.startTimer({ classId, duration, sound });
+
+            req.infoEvent("class.timer.start.success", "Timer successfully started", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
         }
-
-        duration = Number(duration);
-
-        if (!Number.isInteger(duration)) {
-            throw new ValidationError("Duration must be an integer.");
-        }
-
-        if (duration <= 0) {
-            throw new ValidationError("Duration must be greater than 0.");
-        }
-
-        if (typeof sound !== "undefined" && typeof sound !== "boolean") {
-            throw new ValidationError("Sound must be a boolean.");
-        }
-
-        req.infoEvent("class.timer.start.attempt", "Attempting to start a timer", { classId });
-
-        const classroom = classStateStore.getClassroom(classId);
-        if (!classroom) {
-            throw new ForbiddenError("Classroom is not currently loaded.");
-        }
-
-        classService.startTimer({ classId, duration, sound });
-
-        req.infoEvent("class.timer.start.success", "Timer successfully started", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+    );
 };

@@ -102,7 +102,7 @@ function userUpdateSocket(email, methodName, ...args) {
 }
 
 // Scopes that grant access to the control panel
-// A user must have all of these scopes to have access to the control panel 
+// A user must have all of these scopes to have access to the control panel
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.SYSTEM.PANEL_ACCESS];
 
 /**
@@ -454,11 +454,7 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
         delete poll.totalResponders;
     }
 
-    const studentEntries = access.canReadStudents
-        ? Object.entries(classData.students)
-        : viewerStudent
-            ? [[options.studentEmail, viewerStudent]]
-            : [];
+    const studentEntries = access.canReadStudents ? Object.entries(classData.students) : viewerStudent ? [[options.studentEmail, viewerStudent]] : [];
 
     const result = {
         id: classData.id,
@@ -471,7 +467,9 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
         tags: access.canManageTags ? classData.tags : undefined,
         settings: access.canReadSettings ? classData.settings : undefined,
         roles: access.canReadRoles ? classData.availableRoles || [] : undefined,
-        students: access.canReadStudents ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)])) : undefined,
+        students: access.canReadStudents
+            ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)]))
+            : undefined,
     };
 
     // If studentEmail is provided, include personalized data for that student
@@ -517,7 +515,9 @@ class SocketUpdates {
                 for (const [email, student] of Object.entries(classData.students)) {
                     if (hasControlPanelAccess(student, classroom)) continue; // Skip control panel users, they get controlPanelData
 
-                    const personalizedData = structuredClone(getClassUpdateData(classData, getClassUpdateAccess(student, classroom), { studentEmail: email }));
+                    const personalizedData = structuredClone(
+                        getClassUpdateData(classData, getClassUpdateAccess(student, classroom), { studentEmail: email })
+                    );
                     advancedEmitToClass("classUpdate", classId, { email: email }, personalizedData);
                 }
 

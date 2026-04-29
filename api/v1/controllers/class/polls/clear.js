@@ -58,14 +58,23 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/clear", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.POLL.DELETE, "You don't have permission to clear polls for this class."), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.poll.clear.attempt", "Attempting to clear poll", { classId });
-        await clearPoll(classId, req.user);
-        req.infoEvent("class.poll.clear.success", "Poll cleared", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+    router.post(
+        "/class/:id/polls/clear",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.POLL.DELETE,
+            "You don't have permission to clear polls for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.poll.clear.attempt", "Attempting to clear poll", { classId });
+            await clearPoll(classId, req.user);
+            req.infoEvent("class.poll.clear.success", "Poll cleared", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        }
+    );
 };

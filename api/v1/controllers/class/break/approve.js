@@ -27,15 +27,15 @@ module.exports = (router) => {
         requireQueryParam(targetUserId, "userId");
 
         req.infoEvent("class.break.approve.attempt", "Attempting to approve user's break", { classId, targetUserId });
-		
+
         const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email] || !req.user.activeClass === classId) {
+        if ((classroom && !classroom.students[req.user.email]) || !req.user.activeClass === classId) {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }
 
-		if(classroom && !classroom.isActive) {
-			throw new ForbiddenError("This class is not active, you are restricted to ending or denying breaks.")
-		}
+        if (classroom && !classroom.isActive) {
+            throw new ForbiddenError("This class is not active, you are restricted to ending or denying breaks.");
+        }
 
         const result = await approveBreak(true, targetUserId, req.user, classId);
         if (result === true) {
@@ -109,15 +109,33 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/approve", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to approve this user's break."), approveBreakHandler);
+    router.post(
+        "/class/:id/students/:userId/break/approve",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.BREAK.APPROVE,
+            "You don't have permission to approve this user's break."
+        ),
+        approveBreakHandler
+    );
 
     // Deprecated endpoint - kept for backwards compatibility, use POST /api/v1/class/:id/students/:userId/break/approve instead
-    router.get("/class/:id/students/:userId/break/approve", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to approve this user's break."), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use POST /api/v1/class/:id/students/:userId/break/approve instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use POST /api/v1/class/:id/students/:userId/break/approve instead. This endpoint will be removed in a future version."'
-        );
-        await approveBreakHandler(req, res);
-    });
+    router.get(
+        "/class/:id/students/:userId/break/approve",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.BREAK.APPROVE,
+            "You don't have permission to approve this user's break."
+        ),
+        async (req, res) => {
+            res.setHeader("X-Deprecated", "Use POST /api/v1/class/:id/students/:userId/break/approve instead");
+            res.setHeader(
+                "Warning",
+                '299 - "Deprecated API: Use POST /api/v1/class/:id/students/:userId/break/approve instead. This endpoint will be removed in a future version."'
+            );
+            await approveBreakHandler(req, res);
+        }
+    );
 };

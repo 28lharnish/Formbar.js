@@ -52,18 +52,23 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/clear", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to clear the class timer."), async (req, res) => {
-        const classId = Number(req.params.id);
-        requireQueryParam(classId, "id");
+    router.post(
+        "/class/:id/timer/clear",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.TIMER.CONTROL, "You do not have permission to clear the class timer."),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            requireQueryParam(classId, "id");
 
-        req.infoEvent("class.timer.clear.attempt", "Attempting to clear a timer", { classId });
+            req.infoEvent("class.timer.clear.attempt", "Attempting to clear a timer", { classId });
 
-        classService.clearTimer(classId);
+            classService.clearTimer(classId);
 
-        req.infoEvent("class.timer.clear.success", "Timer cleared", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+            req.infoEvent("class.timer.clear.success", "Timer cleared", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        }
+    );
 };
