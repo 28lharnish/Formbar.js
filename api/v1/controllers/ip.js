@@ -1,13 +1,14 @@
+const fs = require("fs");
+const net = require("net");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { settings } = require("@modules/config");
 const { SCOPES } = require("@modules/permissions");
 const { getIpAccess, getIpAccessPaginated } = require("@services/ip-service");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const authentication = require("@middleware/authentication");
-const fs = require("fs");
-const net = require("net");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
+const { requireBodyParam } = require("@modules/error-wrapper");
+const authentication = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
 
@@ -233,6 +234,8 @@ module.exports = (router) => {
     router.post("/ip/:type", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const { ip } = req.body || {};
+        requireBodyParam("ip", ip);
+
         req.infoEvent("ip.list.add.attempt", "Attempting to add IP to access list", { listType: type });
         if (type !== "whitelist" && type !== "blacklist") {
             throw new ValidationError("Invalid type");
@@ -251,19 +254,18 @@ module.exports = (router) => {
         // Check if the IP already exists
         const exists = await dbGet(`SELECT 1 AS one FROM ip_access_list WHERE ip=? AND is_whitelist=?`, [ip, isWhitelist]);
         if (exists && exists.one) {
-            throw new ConflictError("IP already exists");
+            throw new ConflictError("IP is already in the list.");
         }
 
         // Insert the IP into the database
         await dbRun(`INSERT INTO ip_access_list (ip, is_whitelist) VALUES(?, ?)`, [ip, isWhitelist]);
         const cache = await getIpAccess(type);
         if (type === "whitelist") {
-            Object.keys(authentication.whitelistedIps).forEach((k) => delete authentication.whitelistedIps[k]);
-            Object.assign(authentication.whitelistedIps, cache);
+            authentication.whitelistedIps.push(ip);
         } else {
-            Object.keys(authentication.blacklistedIps).forEach((k) => delete authentication.blacklistedIps[k]);
-            Object.assign(authentication.blacklistedIps, cache);
+            authentication.blacklistedIps.push(ip);
         }
+
         req.infoEvent("ip.list.add.success", "IP added to access list", { listType: type });
         res.status(201).json({
             success: true,

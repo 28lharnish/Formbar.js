@@ -1,19 +1,22 @@
 const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
-const { dbGet, dbRun } = require("@modules/database");
+const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
 const AuthError = require("@errors/auth-error");
 
-const whitelistedIps = {};
-const blacklistedIps = {};
+let whitelistedIps = [];
+let blacklistedIps = [];
+getIPAccess().then((ipAccess) => {
+    whitelistedIps = ipAccess.whitelistedIps;
+    blacklistedIps = ipAccess.blacklistedIps;
+});
 
-// Removes expired refresh tokens and authorization codes from the database
 /**
- * Clean Refresh Tokens.
+ * Removes expired refresh tokens and authorization codes from the database
  *
  * @returns {Promise<*>}
  */
@@ -246,7 +249,7 @@ async function isVerified(req, res, next) {
  * @returns {Promise<Object>}
  */
 async function getIPAccess() {
-    const ips = await dbGetAll("SELECT ip FROM ip_access_list");
+    const ips = await dbGetAll("SELECT ip, is_whitelist FROM ip_access_list");
 
     return {
         whitelistedIps: ips.filter((ip) => ip.is_whitelist).map((ip) => ip.ip),
@@ -300,6 +303,7 @@ module.exports = {
     cleanRefreshTokens,
 
     // Whitelisted/Blacklisted IP addresses
+    getIPAccess,
     checkIPAllowed,
     whitelistedIps,
     blacklistedIps,

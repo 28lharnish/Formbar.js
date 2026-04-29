@@ -17,6 +17,7 @@ if (!fs.existsSync("database/database.db")) {
 }
 
 // Custom modules
+const authentication = require("@middleware/authentication.js");
 const { initSocketRoutes } = require("./sockets/init.js");
 const { app, io, http } = require("@modules/web-server.js");
 const { settings } = require("@modules/config.js");
@@ -222,7 +223,7 @@ http.listen(settings.port, async () => {
         console.error("Failed to ensure Formbar Developer Pool exists:", err);
     }
 
-    const ipAccess = await getIpAccess();
+    const ipAccess = await authentication.getIPAccess();
     authentication.whitelistedIps = ipAccess.whitelistedIps;
     authentication.blacklistedIps = ipAccess.blacklistedIps;
 
