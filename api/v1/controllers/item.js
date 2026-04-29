@@ -1,8 +1,6 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { isOwnerOrHasScopes } = require("@middleware/permission-check");
-const { SCOPES } = require("@modules/permissions");
 const { getItemById } = require("@services/inventory-service");
-const { requireParam, requireBodyParam } = require("@modules/error-wrapper");
+const { requireParam } = require("@modules/error-wrapper");
 const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {

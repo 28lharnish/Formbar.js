@@ -2,7 +2,7 @@ const ValidationError = require("@errors/validation-error");
 const AppError = require("@errors/app-error");
 
 /**
- * Requires a query parameter to be present/
+ * Requires a query parameter to be present.
  *
  * @param {*} param - param.
  * @param {*} name - name.

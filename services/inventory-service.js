@@ -4,7 +4,7 @@ const NotFoundError = require("@errors/not-found-error");
 /**
  * Get a user inventory.
  * @param {number} userId - userId.
- * @returns {<Object>}
+ * @returns {Promise<Object[]>}
  */
 async function getUserInventory(userId) {
     const items = new Map();
@@ -13,7 +13,6 @@ async function getUserInventory(userId) {
     const inventoryRows = await dbGetAll("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
 
     for (const row of inventoryRows) {
-
         const itemInfo = await dbGet("SELECT id, name, description, stack_size, image_url FROM item_registry WHERE id = ?", [row.item_id]);
         if (!itemInfo) continue; // if item info can't be found, skip it
 
@@ -29,11 +28,9 @@ async function getUserInventory(userId) {
             const existing = items.get(itemIndex);
             existing.quantity += row.quantity;
         }
-
     }
 
     return Array.from(items.values());
-
 }
 
 /**
@@ -56,7 +53,7 @@ async function registerItem({ name, description, stackSize = 1, iconUrl = "" }) 
 }
 
 /**
- * // * Get item info by id.
+ * Get item info by id.
  * @param {number} itemId
  * @returns {Promise<Object>}
  */
