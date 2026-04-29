@@ -24,7 +24,7 @@ module.exports = (router) => {
      *       Ends the current user's break in a class.
      *
      *       **Required Permission:** Class-specific Student permission (level 2)
-	 * 		 **Required scope:** `class.break.request`
+     *       **Required scope:** `class.break.request`
      *
      *       **Permission Levels:**
      *       - 1: Guest
@@ -89,7 +89,7 @@ module.exports = (router) => {
         });
     });
 
-/**
+    /**
      * @swagger
      * /api/v1/class/{id}/students/{userId}/break/end:
      *   post:
@@ -149,13 +149,12 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-
-	router.post("/class/:id/students/:userId/break/end", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.END, "You do not have permission to end this user's break."), async (req, res) => {
+    router.post("/class/:id/students/:userId/break/end", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.END, "You do not have permission to end this user's break."), async (req, res) => {
         const classId = Number(req.params.id);
-		const targetUserId = Number(req.params.userId);
+        const targetUserId = Number(req.params.userId);
 
         requireQueryParam(classId, "id");
-		requireQueryParam(targetUserId, "userId");
+        requireQueryParam(targetUserId, "userId");
 
         req.infoEvent("class.break.end.attempt", "Attempting to end user's break", { classId });
 

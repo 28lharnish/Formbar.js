@@ -66,7 +66,7 @@ module.exports = (router) => {
             throw new NotFoundError("Class not started or it has not been loaded.", { event: "class.view_error", reason: "not_loaded" });
         }
 
-        const classStudent = rawClassData.students[user.email];
+        const classStudent = rawClassData.students[req.user.email];
         const canReadStudents = userHasScope(classStudent, SCOPES.CLASS.STUDENTS.READ, rawClassData);
         const canReadPoll = userHasScope(classStudent, SCOPES.CLASS.POLL.READ, rawClassData);
         const canReadRoles = userHasScope(classStudent, SCOPES.CLASS.ROLES.READ, rawClassData);
@@ -74,7 +74,7 @@ module.exports = (router) => {
         const canReadSettings = userHasScope(classStudent, SCOPES.CLASS.SESSION.SETTINGS, rawClassData);
 
         // Get the users in the class
-        const classUsers = await getClassUsers(user, rawClassData.key);
+        const classUsers = await getClassUsers(req.user, rawClassData.key);
 
         // If an error occurs, log the error and return the error
         if (classUsers.error) {
@@ -91,7 +91,7 @@ module.exports = (router) => {
                 isActive: rawClassData.isActive,
                 owner: rawClassData.owner,
                 poll: canReadPoll ? rawClassData.poll : undefined,
-                students: canReadStudents ? classUsers : { [user.email]: classUsers[user.email] },
+                students: canReadStudents ? classUsers : undefined,
                 tags: canManageTags ? rawClassData.tags : undefined,
                 settings: canReadSettings ? rawClassData.settings : undefined,
                 timer: rawClassData.timer,

@@ -98,7 +98,7 @@ module.exports = (router) => {
 
 	    /**
      * @swagger
-     * /api/v1/class/help:
+     * /api/v1/class/{id}/help:
      *   delete:
      *     summary: Delete your own help request
      *     tags:
@@ -155,10 +155,10 @@ module.exports = (router) => {
 
 		requireQueryParam(classId, "id");
 
-        req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
+        req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId });
         const result = await deleteHelpTicket(req.user.id, req.user, classId);
         if (result === true) {
-            req.infoEvent("class.help.delete.success", "Class help request deleted", { classId, targetUserId });
+            req.infoEvent("class.help.delete.success", "Class help request deleted", { classId });
             res.status(200).json({
                 success: true,
                 data: {},

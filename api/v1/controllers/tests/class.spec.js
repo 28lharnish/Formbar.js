@@ -731,11 +731,39 @@ describe("DELETE /api/v1/class/:id", () => {
         const { tokens: otherTokens, user: otherUser } = await seedAuthenticatedUser(mockDatabase, {
             email: "other@example.com",
             displayName: "Other",
-            permissions: TEACHER_PERMISSIONS,
+            permissions: GUEST_PERMISSIONS,
         });
 
         const res = await request(app).delete(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${otherTokens.accessToken}`);
         expect(res.status).toBe(403);
+    });
+
+    it("returns 200 when a user with class.system.can_delete_class deletes the class", async () => {
+        const { user: owner } = await seedAuthenticatedUser(mockDatabase, {
+            email: "owner@example.com",
+            displayName: "Owner",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(owner.id);
+
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "class-admin@example.com",
+            displayName: "Class Admin",
+            permissions: GUEST_PERMISSIONS,
+        });
+
+        const classAdmin = classStateStore.getUser(user.email);
+        classStateStore.setUser(user.email, {
+            ...classAdmin,
+            scopes: {
+                global: [],
+                class: [SCOPES.CLASS.SYSTEM.CAN_DELETE_CLASS],
+            },
+        });
+
+        const res = await request(app).delete(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
     });
 
     it("returns 200 when the class owner deletes the class", async () => {

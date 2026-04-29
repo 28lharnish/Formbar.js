@@ -100,7 +100,7 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/{id}/students/{userId}/roles/:roleId:
+     * /api/v1/class/{id}/students/{userId}/roles/{roleId}:
      *   post:
      *     summary: Add a role to a student
      *     tags:
@@ -195,7 +195,7 @@ module.exports = (router) => {
      *       and cannot be removed. If all roles are removed, the student
      *       effectively has only Guest permissions.
      *
-     *       **Required scope:** `class.roles.remove`
+     *       **Required scope:** `class.roles.manage`
      *     security:
      *       - bearerAuth: []
      *     parameters:

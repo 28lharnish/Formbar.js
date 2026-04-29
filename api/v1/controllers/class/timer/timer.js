@@ -19,8 +19,10 @@ module.exports = (router) => {
      *     summary: Get class timer status
      *     tags:
      *       - Timer
-     *     description: Returns the current timer state for a class. Requires the caller to be a member of the class.
-	 *    **Required Permission:** `CLASS.TIMER.READ`
+     *     description: |
+     *       Returns the current timer state for a class. Requires the caller to be a member of the class.
+     *
+     *       **Required Permission:** `CLASS.TIMER.READ`
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
