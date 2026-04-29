@@ -255,7 +255,7 @@ module.exports = (router) => {
     router.delete(
         "/class/:id/students/:userId/roles/:roleId",
         isAuthenticated,
-        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.REMOVE, "You do not have permission to remove roles in this class."),
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.ROLES.MANAGE, "You do not have permission to remove roles in this class."),
         async (req, res) => {
             const { id: classIdRaw, userId, roleId } = req.params;
             requireQueryParam(classIdRaw, "id");

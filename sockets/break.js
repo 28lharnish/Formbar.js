@@ -19,7 +19,7 @@ module.exports = {
 
         // Ends the break
         onSocketEvent(socket, "endBreak", hasClassScope(SCOPES.CLASS.BREAK.REQUEST), async (socketContext) => {
-            endBreak(socketContext.session, socketContext.session.classId);
+            endBreak(socketContext.session.id, socketContext.session.classId);
         });
     },
 };

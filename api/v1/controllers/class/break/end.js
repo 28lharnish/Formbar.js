@@ -1,4 +1,4 @@
-const { isOwnerOrHasScopes, isSelfOrHasScopes } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes, isSelfOrHasScopes, hasClassScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
@@ -68,7 +68,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/break/end", isAuthenticated, isSelfOrHasScopes(SCOPES.CLASS.BREAK.REQUEST, "You do not have permission to end this user's break."), async (req, res) => {
+    router.post("/class/:id/break/end", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.REQUEST), async (req, res) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "id");
@@ -80,7 +80,7 @@ module.exports = (router) => {
             throw new ForbiddenError("You do not have permission to end this user's break.");
         }
 
-        endBreak(req.user.id, classId);
+        await endBreak(req.user.id, classId);
 
         req.infoEvent("class.break.end.success", "User's break ended", { classId });
         res.status(200).json({
@@ -164,7 +164,7 @@ module.exports = (router) => {
             throw new ForbiddenError("You do not have permission to end this user's break.");
         }
 
-        endBreak(targetUserId, classId);
+        await endBreak(targetUserId, classId);
 
         req.infoEvent("class.break.end.success", "User's break ended", { classId });
         res.status(200).json({

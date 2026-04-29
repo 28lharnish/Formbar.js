@@ -101,7 +101,7 @@ module.exports = (router) => {
             throw new ValidationError("A reason for the break must be provided.");
         }
 
-        const result = requestBreak(req.body.reason, req.user, classId);
+        const result = await requestBreak(req.body.reason, req.user, classId);
         if (result === true) {
             req.infoEvent("class.break.request.success", "User's break requested", { classId });
             res.status(200).json({

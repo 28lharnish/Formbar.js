@@ -1,9 +1,10 @@
-const { isOwnerHasScopesOrIsSelf } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes, hasClassScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { deleteHelpTicket } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 const membershipService = require("@services/class-membership-service");
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 /**
  * Register delete controller routes.
@@ -71,7 +72,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.delete("/class/:id/students/:userId/help", isAuthenticated, isOwnerHasScopesOrIsSelf(membershipService.classroomOwnerCheck, SCOPES.CLASS.HELP.APPROVE, "You don't have permission to delete this user's help request."), async (req, res) => {
+    router.delete("/class/:id/students/:userId/help", isAuthenticated, isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.HELP.APPROVE, "You don't have permission to delete this user's help request."), async (req, res) => {
         const classId = Number(req.params.id);
         const targetUserId = Number(req.params.userId);
 
@@ -84,6 +85,78 @@ module.exports = (router) => {
 
         req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
         const result = await deleteHelpTicket(targetUserId, req.user, classId);
+        if (result === true) {
+            req.infoEvent("class.help.delete.success", "Class help request deleted", { classId, targetUserId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        } else {
+            throw new AppError(result, { statusCode: 500 });
+        }
+    });
+
+	    /**
+     * @swagger
+     * /api/v1/class/help:
+     *   delete:
+     *     summary: Delete your own help request
+     *     tags:
+     *       - Class - Help
+     *     description: |
+     *       Deletes your own help request from a class.
+     *
+     *       **Required Scope:** `class.help.request` 
+     *
+     *       **Permission Levels:**
+     *       - 1: Guest
+     *       - 2: Student
+     *       - 3: Moderator
+     *       - 4: Teacher
+     *       - 5: Manager
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Class ID
+     *     responses:
+     *       200:
+     *         description: Help request deleted successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/SuccessResponse'
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       500:
+     *         description: Server error
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ServerError'
+     */
+    router.delete("/class/:id/help", isAuthenticated, hasClassScope(SCOPES.CLASS.HELP.REQUEST), async (req, res) => {
+        const classId = Number(req.params.id);
+
+		requireQueryParam(classId, "id");
+
+        req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
+        const result = await deleteHelpTicket(req.user.id, req.user, classId);
         if (result === true) {
             req.infoEvent("class.help.delete.success", "Class help request deleted", { classId, targetUserId });
             res.status(200).json({
