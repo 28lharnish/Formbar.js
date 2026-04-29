@@ -33,7 +33,7 @@ module.exports = (router) => {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }
 
-		if(!classroom.isActive) {
+		if(classroom && !classroom.isActive) {
 			throw new ForbiddenError("This class is not active, you are restricted to ending or denying breaks.")
 		}
 

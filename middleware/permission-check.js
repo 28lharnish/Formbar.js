@@ -178,7 +178,7 @@ function isOwnerOrHasScopes(ownerCheck, scopes, message) {
 			}
 		}
 
-		const hasRequiredScope = requiredScopes.some((requiredScope) => {
+		const hasRequiredScope = requiredScopes.every((requiredScope) => {
 			if (typeof requiredScope !== "string") {
 				return false;
 			}

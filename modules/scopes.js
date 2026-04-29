@@ -30,12 +30,6 @@ const SCOPES = {
             BLOCKED: "class.system.blocked",
         },
 
-        ROLES: {
-            ASSIGN: "class.roles.assign",
-            READ: "class.roles.read",
-            MANAGE: "class.roles.manage",
-        },
-
         POLL: {
             READ: "class.poll.read",
             VOTE: "class.poll.vote",
@@ -68,6 +62,7 @@ const SCOPES = {
         BREAK: {
             REQUEST: "class.break.request",
             APPROVE: "class.break.approve",
+			END: "class.break.end",
         },
 
         HELP: {

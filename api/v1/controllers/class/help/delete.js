@@ -72,8 +72,15 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.delete("/class/:id/students/:userId/help", isAuthenticated, isOwnerHasScopesOrIsSelf(membershipService.classroomOwnerCheck, SCOPES.CLASS.HELP.APPROVE, "You don't have permission to delete this user's help request."), async (req, res) => {
-        const classId = req.params.id;
-        const targetUserId = req.params.userId;
+        const classId = Number(req.params.id);
+        const targetUserId = Number(req.params.userId);
+
+		requireQueryParam(classId, "id");
+		requireQueryParam(targetUserId, "userId");
+
+		if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+            throw new AppError("Invalid userId parameter.", { statusCode: 400 });
+        }
 
         req.infoEvent("class.help.delete.attempt", "Attempting to delete class help request", { classId, targetUserId });
         const result = await deleteHelpTicket(targetUserId, req.user, classId);

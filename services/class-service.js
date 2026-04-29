@@ -707,14 +707,14 @@ async function approveBreak(breakApproval, userId, userData, classId) {
 
 /**
  * Ends a student's active break.
- * @param {Object} userData - Session user data.
+ * @param {Object} userId - Session user id.
  * @param {number} classId - Student's current class ID.
  * @returns {void}
  */
-function endBreak(userData, classId) {
-    const email = userData.email;
+async function endBreak(userId, classId) {
+    const email = await getEmailFromId(userId);
     const student = classStateStore.getClassroomStudent(classId, email);
-    classStateStore.updateClassroomStudent(classId, userData.email, { break: false });
+    classStateStore.updateClassroomStudent(classId, email, { break: false });
 
     io.to(`user-${email}`).emit("break", false);
     if (student && student.API) {

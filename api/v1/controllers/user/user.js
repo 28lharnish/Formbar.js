@@ -60,8 +60,8 @@ module.exports = (router) => {
                 throw new NotFoundError("User not found.", { event: "user.get.failed", reason: "user_not_found" });
             }
 
-            const { id, displayName, email, digipogs, API, pin, password, permissions, verified } = userData;
-            if (!id || !displayName || !email || digipogs === undefined || !API) {
+            const { id, displayName, email, digipogs, pin, password, permissions, verified } = userData;
+            if (!id || !displayName || !email || digipogs === undefined) {
                 throw new AppError("Unable to retrieve user information. Please try again.", {
                     event: "user.get.failed",
                     reason: "missing_required_fields",
