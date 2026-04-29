@@ -1,6 +1,13 @@
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { compareBcrypt, isBcryptHash, sha256 } = require("@modules/crypto");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
+const { getUserById } = require("@services/user-service");
+const { getAppById} = require("@services/app-service");
+
+const entityResolvers = {
+    "user": getUserById,
+    "app": getAppById,
+}
 
 /**
  * Normalize a raw API key value from headers, query strings, or request bodies.
@@ -37,24 +44,30 @@ async function resolveAPIKey(rawAPIKey) {
         return null;
     }
 
-    const cachedEmail = apiKeyCacheStore.get(apiKey);
-    if (cachedEmail) {
+    // Check the cache for this API key before hitting the database
+    const cachedEntityId = apiKeyCacheStore.get(apiKey);
+    if (cachedEntityId) {
         const apiKeyHash = hashAPIKey(apiKey);
-        const cachedUser = await dbGet("SELECT id, email, API FROM users WHERE email = ? AND API = ?", [cachedEmail, apiKeyHash]);
-        if (cachedUser) {
-            return { ...cachedUser, fromCache: true, migrated: false };
+        const entity = await dbGet("SELECT entity_id, entity_type FROM api_keys WHERE api_key_hash = ?", [apiKeyHash]);
+        if (entity) {
+            const resolver = entityResolvers[entity.entity_type];
+            if (resolver) {
+                return resolver(entity.entity_id);
+            }
         }
         apiKeyCacheStore.delete(apiKey);
     }
 
-    const apiKeyHash = hashAPIKey(apiKey);
+    const apiKeyHash = hashAPIKey(ApiKey);
     const shaUser = await dbGet("SELECT id, email, API FROM users WHERE API = ?", [apiKeyHash]);
     if (shaUser) {
-        apiKeyCacheStore.set(apiKey, shaUser.email);
+        apiKeyCacheStore.set(apiKey, shaUser.id);
         return { ...shaUser, migrated: false };
     }
 
     const legacyUsers = await dbGetAll("SELECT id, email, API FROM users WHERE API IS NOT NULL AND API LIKE '$2%'");
+   
+    await dbRun("BEGIN TRANSACTION");
     for (const user of legacyUsers) {
         if (!isBcryptHash(user.API)) {
             continue;
@@ -69,6 +82,7 @@ async function resolveAPIKey(rawAPIKey) {
         apiKeyCacheStore.set(apiKey, user.email);
         return { ...user, API: apiKeyHash, migrated: true };
     }
+    await dbRun("COMMIT");
 
     return null;
 }

@@ -9,7 +9,7 @@ class ApiKeyCacheStore {
     }
 
     /**
-     * Return the cached email for an API key if it is still valid.
+     * Return the cached entity ID for an API key if it is still valid.
      *
      * @param {*} apiKey - apiKey.
      * @returns {*}
@@ -23,20 +23,20 @@ class ApiKeyCacheStore {
             return undefined;
         }
 
-        return entry.email;
+        return entry.entityId;
     }
 
     /**
      * Cache an API key lookup result until its TTL expires.
      *
      * @param {*} apiKey - apiKey.
-     * @param {*} email - email.
+     * @param {*} entityId - entityId.
      * @param {*} ttlMs - ttlMs.
      * @returns {*}
      */
-    set(apiKey, email, ttlMs = this._defaultTtlMs) {
+    set(apiKey, entityId, ttlMs = this._defaultTtlMs) {
         const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : null;
-        this._cache.set(apiKey, { email, expiresAt });
+        this._cache.set(apiKey, { entityId, expiresAt });
     }
 
     /**
@@ -59,14 +59,14 @@ class ApiKeyCacheStore {
     }
 
     /**
-     * Remove every cached API key associated with one email address.
+     * Remove every cached API key associated with one entity ID.
      *
-     * @param {*} email - email.
+     * @param {*} entityId - entityId.
      * @returns {*}
      */
-    invalidateByEmail(email) {
+    deleteAPIKeyByEntityId(entityId) {
         for (const [apiKey, entry] of this._cache.entries()) {
-            if (entry.email === email) {
+            if (entry.entityId === entityId) {
                 this._cache.delete(apiKey);
             }
         }
