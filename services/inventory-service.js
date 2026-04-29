@@ -10,13 +10,24 @@ async function getUserInventory(userId) {
     const items = new Map();
 
     // gets all inventory rows (stored as item ID with quantity)
-    const inventoryRows = await dbGetAll("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
+    const inventoryRows = await dbGetAll(
+        `SELECT i.item_id, i.quantity,
+                r.id, r.name, r.description, r.stack_size, r.image_url
+         FROM inventory i
+         INNER JOIN item_registry r ON r.id = i.item_id
+         WHERE i.user_id = ?`,
+        [userId],
+    );
 
     for (const row of inventoryRows) {
-        const itemInfo = await dbGet("SELECT id, name, description, stack_size, image_url FROM item_registry WHERE id = ?", [row.item_id]);
-        if (!itemInfo) continue; // if item info can't be found, skip it
-
-        itemInfo.quantity = row.quantity;
+        const itemInfo = {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            stack_size: row.stack_size,
+            image_url: row.image_url,
+            quantity: row.quantity,
+        };
 
         const itemIndex = row.item_id - 1; // item IDs are 1-indexed, but we'll use 0-indexing for the map
 
@@ -66,6 +77,20 @@ async function getItemById(itemId) {
 }
 
 /**
+ * Get the stack size of an item with the least quantity in the user's inventory.
+ * @param {number} userId - userId.
+ * @param {number} itemId - itemId.
+ * @returns {Promise<number>}
+ */
+async function getItemStackWithLeastQuantity(userId, itemId) {
+    const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
+    if (!existingItem) {
+        throw new NotFoundError("Item not found in inventory");
+    }
+    return existingItem;
+}
+
+/**
  * Add quantity of an item to a user inventory.
  * @param {number} userId - userId.
  * @param {Object} itemId - itemId.
@@ -74,7 +99,7 @@ async function getItemById(itemId) {
  */
 async function addItemToInventory(userId, itemId, quantity) {
     // Check if the item already exists in the user's inventory
-    const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
+    const existingItemStack = await getItemStackWithLeastQuantity(userId, itemId);
     const itemInfo = await dbGet("SELECT stack_size FROM item_registry WHERE id = ?", [itemId]);
 
     if (existingItem) {
