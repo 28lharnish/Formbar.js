@@ -254,7 +254,7 @@ async function getIPAccess() {
     return {
         whitelistedIps: ips.filter((ip) => ip.is_whitelist).map((ip) => ip.ip),
         blacklistedIps: ips.filter((ip) => !ip.is_whitelist).map((ip) => ip.ip),
-    }
+    };
 }
 
 /**
@@ -288,7 +288,7 @@ function checkIPAllowed(ip) {
 function isIPBanned(req, res, next) {
     let ip = req.ip;
     if (!ip) return next();
-    
+
     const ipAllowed = checkIPAllowed(ip);
     if (!ipAllowed) {
         req.warnEvent("auth.ip_banned", `IP address is not allowed: ${ip}`, { ip });

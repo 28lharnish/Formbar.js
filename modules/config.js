@@ -95,7 +95,7 @@ function getConfig() {
         publicKey: publicKey,
         privateKey: privateKey,
         frontendUrl: process.env.FRONTEND_URL,
-        envFlag
+        envFlag,
     };
 }
 
