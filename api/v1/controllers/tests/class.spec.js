@@ -541,7 +541,7 @@ describe("POST /api/v1/class/:id/start", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not active in classStateStore", async () => {
+    it("returns 404 when class is not active in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             displayName: "Teacher",
@@ -550,7 +550,7 @@ describe("POST /api/v1/class/:id/start", () => {
 
         const res = await request(app).post("/api/v1/class/9999/start").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 });
@@ -563,7 +563,7 @@ describe("POST /api/v1/class/:id/end", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not active in classStateStore", async () => {
+    it("returns 404 when class is not active in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             displayName: "Teacher",
@@ -572,7 +572,7 @@ describe("POST /api/v1/class/:id/end", () => {
 
         const res = await request(app).post("/api/v1/class/9999/end").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 });
@@ -585,7 +585,7 @@ describe("GET /api/v1/class/:id/students", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not active in classStateStore", async () => {
+    it("returns 404 when class is not active in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             displayName: "Teacher",
@@ -594,7 +594,7 @@ describe("GET /api/v1/class/:id/students", () => {
 
         const res = await request(app).get("/api/v1/class/9999/students").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 
@@ -817,10 +817,10 @@ describe("GET /api/v1/class/:id/tags", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 403 when class is not loaded", async () => {
+    it("returns 404 when class is not loaded", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
         const res = await request(app).get("/api/v1/class/9999/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
     });
 
     it("returns 403 when user lacks class.tags.manage scope", async () => {
@@ -1135,7 +1135,7 @@ describe("GET /api/v1/class/:id/banned", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 403 when class not in classStateStore", async () => {
+    it("returns 404 when class not in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             permissions: TEACHER_PERMISSIONS,
@@ -1143,7 +1143,7 @@ describe("GET /api/v1/class/:id/banned", () => {
 
         const res = await request(app).get("/api/v1/class/9999/banned").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
     });
 
     it("returns 200 with empty array when no banned users", async () => {
