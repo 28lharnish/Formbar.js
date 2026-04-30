@@ -512,8 +512,8 @@ describe("GET /api/v1/user/:id/classes", () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     id: classroom.id,
-                    permissions: 3,
-                    classPermissions: 3,
+                    permissions: 4,
+                    classPermissions: 4,
                 }),
             ])
         );

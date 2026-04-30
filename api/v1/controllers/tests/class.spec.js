@@ -254,12 +254,12 @@ describe("GET /api/v1/class/:id", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 404 when class is not started (not in classStateStore)", async () => {
+    it("returns 403 when class is not started (not in classStateStore)", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app).get("/api/v1/class/9999").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 
@@ -334,8 +334,7 @@ describe("GET /api/v1/class/:id", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data.students).toEqual(expect.objectContaining({ [student.email]: expect.any(Object) }));
-        expect(res.body.data.students[teacher.email]).toBeUndefined();
+        expect(res.body.data.students).toBeUndefined();
         expect(res.body.data.poll).toBeUndefined();
         expect(res.body.data.tags).toBeUndefined();
         expect(res.body.data.settings).toBeUndefined();
@@ -442,12 +441,12 @@ describe("POST /api/v1/class/:id/join", () => {
         expect(res.body.success).toBe(true);
     });
 
-    it("returns 404 when class does not exist", async () => {
+    it("returns 403 when class does not exist", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app).post("/api/v1/class/9999/join").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 
@@ -523,12 +522,12 @@ describe("POST /api/v1/class/:id/leave", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 404 when user is not in the specified class", async () => {
+    it("returns 403 when user is not in the specified class", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app).post("/api/v1/class/9999/leave").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 });

@@ -29,7 +29,7 @@ module.exports = (router) => {
         req.infoEvent("class.break.approve.attempt", "Attempting to approve user's break", { classId, targetUserId });
 
         const classroom = classStateStore.getClassroom(classId);
-        if ((classroom && !classroom.students[req.user.email]) || !req.user.activeClass === classId) {
+        if ((classroom && !classroom.students[req.user.email]) || req.user.activeClass == null || Number(req.user.activeClass) !== Number(classId)) {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }
 

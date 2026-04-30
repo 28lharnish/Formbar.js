@@ -231,33 +231,34 @@ async function enrollInClass(userSession, classCode) {
  */
 async function unenrollFromClass(userData, classId) {
     const email = userData.email;
+    const resolvedClassId = classId ?? userData.classId ?? userData.activeClass;
     const studentId = await getIdFromEmail(email);
 
     // Remove the user from the class
-    classStateStore.removeClassroomStudent(classId, email);
+    classStateStore.removeClassroomStudent(resolvedClassId, email);
     classStateStore.updateUser(email, {
         activeClass: null,
         break: false,
         help: false,
     });
-    await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
+    await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [resolvedClassId, studentId]);
 
     // If the owner of the classroom leaves, then delete the classroom
-    const classRow = await dbGet("SELECT owner FROM classroom WHERE id=?", classId);
+    const classRow = await dbGet("SELECT owner FROM classroom WHERE id=?", resolvedClassId);
     if (classRow && classRow.owner === studentId) {
-        await deleteClassroom(classId);
+        await deleteClassroom(resolvedClassId);
     }
 
     // Update the class and play leave sound
     const userSockets = userSocketUpdates.get(email);
     if (userSockets) {
         for (const socketUpdate of userSockets.values()) {
-            socketUpdate.classUpdate(classId);
+            socketUpdate.classUpdate(resolvedClassId);
         }
     }
 
     // Play leave sound and reload the user's page
-    await advancedEmitToClass("leaveSound", classId, {});
+    await advancedEmitToClass("leaveSound", resolvedClassId, {});
     await emitToUser(email, "reload");
 }
 

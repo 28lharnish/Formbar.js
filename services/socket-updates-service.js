@@ -456,21 +456,19 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
 
     const studentEntries = access.canReadStudents ? Object.entries(classData.students) : viewerStudent ? [[options.studentEmail, viewerStudent]] : [];
 
-    const result = {
-        id: classData.id,
-        className: classData.className,
-        isActive: classData.isActive,
-        owner: classData.owner,
-        timer: access.canReadTimer ? classData.timer : undefined,
+        const result = {
+            id: classData.id,
+            className: classData.className,
+            isActive: classData.isActive,
+            owner: classData.owner,
+            timer: access.canReadTimer ? classData.timer : undefined,
         poll: access.canReadPoll ? poll : undefined,
         key: access.canReadKey ? classData.key : undefined,
         tags: access.canManageTags ? classData.tags : undefined,
         settings: access.canReadSettings ? classData.settings : undefined,
         roles: access.canReadRoles ? classData.availableRoles || [] : undefined,
-        students: access.canReadStudents
-            ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)]))
-            : undefined,
-    };
+            students: studentEntries.length ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)])) : undefined,
+        };
 
     // If studentEmail is provided, include personalized data for that student
     if (viewerStudent) {
