@@ -88,9 +88,10 @@ module.exports = (router) => {
      */
     router.post("/class/:id/break/request", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.REQUEST), async (req, res) => {
         const classId = Number(req.params.id);
+
         requireQueryParam(classId, "id");
 
-        req.infoEvent("class.break.request.attempt", "Attempting to request class break", { classId });
+        req.infoEvent("class.break.request.attempt", "Attempting to request user's break", { classId });
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && !classroom.students[req.user.email]) {
             throw new ForbiddenError("You do not have permission to request a break.");
@@ -100,9 +101,9 @@ module.exports = (router) => {
             throw new ValidationError("A reason for the break must be provided.");
         }
 
-        const result = requestBreak(req.body.reason, { ...req.user, classId });
+        const result = await requestBreak(req.body.reason, req.user, classId);
         if (result === true) {
-            req.infoEvent("class.break.request.success", "Class break requested", { classId });
+            req.infoEvent("class.break.request.success", "User's break requested", { classId });
             res.status(200).json({
                 success: true,
                 data: {},

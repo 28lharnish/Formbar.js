@@ -109,7 +109,7 @@ module.exports = (router) => {
         "/user/:id/transactions",
         isAuthenticated,
         isVerified,
-        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "You do not have permission to view these transactions."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view these transactions."),
         async (req, res) => {
             const userId = Number(req.params.id);
             requireQueryParam(userId, "id");

@@ -134,7 +134,7 @@ module.exports = (router) => {
         "/user/:id/pools",
         isAuthenticated,
         isVerified,
-        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "You do not have permission to view this user's pools."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user's pools."),
         async (req, res) => {
             const userId = Number(req.params.id);
             requireQueryParam(userId, "id");

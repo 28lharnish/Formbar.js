@@ -1,8 +1,9 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { parseJson } = require("@middleware/parse-json");
 const { SCOPES } = require("@modules/permissions");
 const { updatePoll } = require("@services/poll-service");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register end controller routes.
@@ -58,16 +59,22 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/end", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.END), parseJson, async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.poll.end.attempt", "Attempting to end poll", { classId });
+    router.post(
+        "/class/:id/polls/end",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.POLL.END, "You do not have permission to end this poll."),
+        parseJson,
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.poll.end.attempt", "Attempting to end poll", { classId });
 
-        await updatePoll(classId, { status: false }, req.user);
+            await updatePoll(classId, { status: false }, req.user);
 
-        req.infoEvent("class.poll.end.success", "Poll ended", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+            req.infoEvent("class.poll.end.success", "Poll ended", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        }
+    );
 };

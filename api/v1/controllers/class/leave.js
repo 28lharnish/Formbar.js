@@ -1,6 +1,7 @@
 const { leaveClass } = require("@services/class-service");
 const ValidationError = require("@errors/validation-error");
 const { isAuthenticated } = require("@middleware/authentication");
+const { isClassMember } = require("@middleware/permission-check");
 
 /**
  * Register leave controller routes.
@@ -62,7 +63,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/leave", isAuthenticated, async (req, res) => {
+    router.post("/class/:id/leave", isAuthenticated, isClassMember(), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.leave.attempt", "Attempting to leave class", { classId });
 

@@ -132,7 +132,6 @@ function isSelfOrHasScopes(scopes, message) {
 
         req.warnEvent("auth.self_or_scope.forbidden", `User ${req.user.email} is not target and lacks required scopes`, {
             email: req.user.email,
-            targetId,
             requiredScopes,
         });
 
@@ -143,12 +142,11 @@ function isSelfOrHasScopes(scopes, message) {
         });
     };
 }
-
 /**
  * Middleware: allows access if the user owns the resource or has the specified scope.
  * The ownerCheck function receives (req) and must return a boolean (or promise of boolean).
  * @param {Function} ownerCheck - Async function (req) => boolean indicating ownership.
- * @param {string[]|string} scopes - Required scope(s) if the user is not the owner.
+ * @param {string | string[]} scopes - The scope(s) required if the user is not the owner.
  * @param {string} [message] - Optional custom error message.
  * @returns {Function} Express middleware function.
  */
@@ -163,20 +161,43 @@ function isOwnerOrHasScopes(ownerCheck, scopes, message) {
             return next();
         }
 
-        const user = classStateStore.getUser(req.user.email) || req.user;
         const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
+        const user = classStateStore.getUser(req.user.email) || req.user;
 
-        // check if user has all required scopes
-        let userHasRequiredScopes = true;
-        for (const scope of requiredScopes) {
-            if (!userHasScope(user, scope)) userHasRequiredScopes = false;
+        let classroom = null;
+        let classUser = null;
+        const needsClassContext = requiredScopes.some((s) => typeof s === "string" && s.startsWith("class."));
+
+        if (needsClassContext) {
+            const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
+            if (classId !== undefined && classId !== null && classId !== "") {
+                classroom = classStateStore.getClassroom(classId);
+                if (classroom) {
+                    classUser = classroom.students[req.user.email] || null;
+                }
+            }
         }
 
-        if (userHasRequiredScopes) {
+        const hasRequiredScope = requiredScopes.every((requiredScope) => {
+            if (typeof requiredScope !== "string") {
+                return false;
+            }
+
+            if (requiredScope.startsWith("class.")) {
+                if (!classroom || !classUser) {
+                    return false;
+                }
+                return userHasScope(classUser, requiredScope, classroom);
+            }
+
+            return userHasScope(user, requiredScope);
+        });
+
+        if (hasRequiredScope) {
             return next();
         }
 
-        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks required scopes`, {
+        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks required scope(s)`, {
             email: req.user.email,
             requiredScopes,
         });
@@ -184,7 +205,7 @@ function isOwnerOrHasScopes(ownerCheck, scopes, message) {
         throw new ForbiddenError(message || "You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "not_owner_and_insufficient_scope",
-            scopes: requiredScopes,
+            scope: requiredScopes,
         });
     };
 }
