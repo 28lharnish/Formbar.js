@@ -665,10 +665,10 @@ function broadcastClassUpdate(classId, preferredEmail) {
  * Requests a break for a student.
  * @param {string} reason - Break reason.
  * @param {Object} userData - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {void}
  */
-function requestBreak(reason, userData) {
-    const classId = userData.classId;
+function requestBreak(reason, userData, classId) {
     const email = userData.email;
     if (!classStateStore.getClassroom(classId)?.isActive) {
         return "This class is not currently active.";
@@ -688,12 +688,12 @@ function requestBreak(reason, userData) {
  * @param {boolean} breakApproval - Whether the break is approved.
  * @param {number} userId - Student user ID.
  * @param {Object} userData - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {Promise<boolean|string>}
  */
-async function approveBreak(breakApproval, userId, userData) {
+async function approveBreak(breakApproval, userId, userData, classId) {
     const email = await getEmailFromId(userId);
 
-    const classId = userData.classId;
     const student = classStateStore.getClassroomStudent(classId, email);
     classStateStore.updateClassroomStudent(classId, email, { break: breakApproval });
 
@@ -707,14 +707,14 @@ async function approveBreak(breakApproval, userId, userData) {
 
 /**
  * Ends a student's active break.
- * @param {Object} userData - Session user data.
+ * @param {Object} userId - Session user id.
+ * @param {number} classId - Student's current class ID.
  * @returns {void}
  */
-function endBreak(userData) {
-    const email = userData.email;
-    const classId = userData.classId;
+async function endBreak(userId, classId) {
+    const email = await getEmailFromId(userId);
     const student = classStateStore.getClassroomStudent(classId, email);
-    classStateStore.updateClassroomStudent(classId, userData.email, { break: false });
+    classStateStore.updateClassroomStudent(classId, email, { break: false });
 
     io.to(`user-${email}`).emit("break", false);
     if (student && student.API) {
@@ -729,10 +729,10 @@ function endBreak(userData) {
  * Sends a help ticket for a student.
  * @param {string} reason - Help reason.
  * @param {Object} userSession - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {void}
  */
-function sendHelpTicket(reason, userSession) {
-    const classId = userSession.classId;
+function sendHelpTicket(reason, userSession, classId) {
     const email = userSession.email;
     if (!classStateStore.getClassroom(classId)?.isActive) {
         return "This class is not currently active.";
@@ -757,10 +757,10 @@ function sendHelpTicket(reason, userSession) {
  * Deletes a help ticket for a student.
  * @param {number} studentId - Student user ID.
  * @param {Object} userData - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {Promise<void>}
  */
-async function deleteHelpTicket(studentId, userData) {
-    const classId = userData.classId;
+async function deleteHelpTicket(studentId, userData, classId) {
     const email = userData.email;
     const studentEmail = await getEmailFromId(studentId);
 

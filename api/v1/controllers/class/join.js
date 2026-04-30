@@ -1,6 +1,7 @@
 const { joinClass } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const { isClassMember } = require("@middleware/permission-check");
 
 /**
  * Register join controller routes.
@@ -56,7 +57,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/join", isAuthenticated, async (req, res) => {
+    router.post("/class/:id/join", isAuthenticated, isClassMember(), async (req, res) => {
         const classId = Number(req.params.id);
         requireQueryParam(classId, "id");
 

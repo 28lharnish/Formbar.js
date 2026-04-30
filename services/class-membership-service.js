@@ -226,38 +226,39 @@ async function enrollInClass(userSession, classCode) {
  * Deletes the user from the class in memory and the database, updates the user's session,
  * emits leave events, and reloads the user's page.
  * @param {Object} userData - The session object of the user being unenrolled.
+ * @param {number} classId - The ID of the class from which to unenroll the user.
  * @returns {Promise<void>}
  */
-async function unenrollFromClass(userData) {
-    const classId = userData.classId;
+async function unenrollFromClass(userData, classId) {
     const email = userData.email;
+    const resolvedClassId = classId ?? userData.classId ?? userData.activeClass;
     const studentId = await getIdFromEmail(email);
 
     // Remove the user from the class
-    classStateStore.removeClassroomStudent(classId, email);
+    classStateStore.removeClassroomStudent(resolvedClassId, email);
     classStateStore.updateUser(email, {
         activeClass: null,
         break: false,
         help: false,
     });
-    await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
+    await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [resolvedClassId, studentId]);
 
     // If the owner of the classroom leaves, then delete the classroom
-    const classRow = await dbGet("SELECT owner FROM classroom WHERE id=?", classId);
+    const classRow = await dbGet("SELECT owner FROM classroom WHERE id=?", resolvedClassId);
     if (classRow && classRow.owner === studentId) {
-        await deleteClassroom(classId);
+        await deleteClassroom(resolvedClassId);
     }
 
     // Update the class and play leave sound
     const userSockets = userSocketUpdates.get(email);
     if (userSockets) {
         for (const socketUpdate of userSockets.values()) {
-            socketUpdate.classUpdate(classId);
+            socketUpdate.classUpdate(resolvedClassId);
         }
     }
 
     // Play leave sound and reload the user's page
-    await advancedEmitToClass("leaveSound", classId, {});
+    await advancedEmitToClass("leaveSound", resolvedClassId, {});
     await emitToUser(email, "reload");
 }
 
@@ -303,7 +304,7 @@ async function getClassLinksPaginated(classId, limit = 20, offset = 0) {
 
 /**
  * Middleware-compatible ownership check for classrooms.
- * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
+ * Returns a promise resolving to boolean, suitable for isOwnerOrHasScopes middleware.
  * Also caches the classroom on req._room for use by the handler.
  * @param {import("express").Request} req - Request object.
  * @returns {Promise<boolean>}

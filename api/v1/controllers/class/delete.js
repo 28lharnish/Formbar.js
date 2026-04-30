@@ -1,9 +1,11 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { isOwnerOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const { userHasScope } = require("@modules/scope-resolver");
+const { classStateStore } = require("@services/classroom-service");
 const membershipService = require("@services/class-membership-service");
 const NotFoundError = require("@errors/not-found-error");
+const ForbiddenError = require("@errors/forbidden-error");
 
 /**
  * Register delete controller routes.
@@ -58,7 +60,27 @@ module.exports = (router) => {
     router.delete(
         "/class/:id",
         isAuthenticated,
-        isOwnerOrHasScope(membershipService.classroomOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not have permission to delete this classroom."),
+        async (req, res, next) => {
+            const isOwner = await membershipService.classroomOwnerCheck(req);
+            if (isOwner) {
+                return next();
+            }
+
+            const classId = Number(req.params.id);
+            const classroom = classStateStore.getClassroom(classId) || req._room || null;
+            const user = classStateStore.getUser(req.user.email) || req.user;
+            const classUser = classroom?.students?.[req.user.email] || user;
+
+            if (userHasScope(user, SCOPES.GLOBAL.CLASS.DELETE)) {
+                return next();
+            }
+
+            if (userHasScope(classUser, SCOPES.CLASS.SYSTEM.CAN_DELETE_CLASS, classroom)) {
+                return next();
+            }
+
+            throw new ForbiddenError("You do not have permission to delete this classroom.");
+        },
         async (req, res) => {
             const id = Number(req.params.id);
 
