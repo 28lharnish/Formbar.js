@@ -114,9 +114,15 @@ describe("Student class", () => {
         expect(s.roles.class).toEqual([]);
         expect(s.help).toBe(false);
         expect(s.break).toBe(false);
+        expect(s.isOffline).toBe(false);
         expect(s.digipogs).toBe(0);
         expect(s.pogMeter).toBe(0);
         expect(s.pollRes).toEqual({ buttonRes: "", textRes: "", time: null });
+    });
+
+    it("keeps an explicit isOffline value from input data", () => {
+        const s = createStudentFromUserData({ email: "a@b.com", id: 1, API: "key123", isOffline: true });
+        expect(s.isOffline).toBe(true);
     });
 
     it("uses provided values when all arguments are given", () => {

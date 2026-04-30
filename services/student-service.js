@@ -21,6 +21,7 @@ class Student {
         };
         this.help = false;
         this.break = false;
+        this.isOffline = false;
         this.API = API;
         this.digipogs = 0;
         this.pogMeter = 0;
@@ -127,6 +128,10 @@ function createStudentFromUserData(userData, options = {}) {
 
     if (userData.break !== undefined) {
         student.break = userData.break;
+    }
+
+    if (userData.isOffline !== undefined) {
+        student.isOffline = userData.isOffline;
     }
 
     if (userData.pollRes && typeof userData.pollRes === "object") {

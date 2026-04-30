@@ -154,6 +154,7 @@ function getClassStudentSnapshot(student) {
         pollRes: student.pollRes,
         help: student.help,
         break: student.break,
+		isOffline: student.isOffline,
         pogMeter: student.pogMeter,
         isGuest: student.isGuest,
     };
@@ -357,7 +358,7 @@ function sortStudentsInPoll(classData) {
         }
 
         // Prevent students from being included if they are offline or teacher or higher
-        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
+        if (student.isOffline || accessProfile.isTeacher || accessProfile.isManager) {
             excluded = true;
             included = false;
         }

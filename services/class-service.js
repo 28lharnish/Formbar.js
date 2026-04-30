@@ -218,10 +218,8 @@ async function initializeClassroom(id) {
             }
         }
 
-        // Ensure 'Offline' is present exactly once at the front
-        if (!student.tags.includes("Offline")) {
-            student.tags.unshift("Offline");
-        }
+        student.tags = student.tags.filter((tag) => tag !== "Offline");
+        student.isOffline = true;
 
         student.displayName = student.displayName || student.email;
         classStateStore.setUser(studentEmail, student);
@@ -354,6 +352,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         currentUser.isClassOwner = isOwner;
         currentUser.activeClass = classId;
         currentUser.tags = [];
+        currentUser.isOffline = false;
 
         // Add the student to the class
         classStateStore.setClassroomStudent(classId, email, currentUser);
@@ -542,7 +541,7 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
         student.activeClass = null;
         student.break = false;
         student.help = false;
-        student.tags = ["Offline"];
+        student.isOffline = true;
         if (classStateStore.getUser(email)) {
             classStateStore.setUser(email, student);
         }
@@ -1142,7 +1141,7 @@ function clearVotesFromExcludedStudents(classId) {
             shouldExclude = true;
         }
 
-        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
+        if (student.isOffline || accessProfile.isTeacher || accessProfile.isManager) {
             shouldExclude = true;
         }
 
