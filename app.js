@@ -56,7 +56,7 @@ app.set("trust proxy", parseTrustProxySetting(process.env.TRUST_PROXY));
 app.use(requestLoggerMiddleware);
 
 // Connect rate limiter middleware
-app.use(rateLimiter);
+// app.use(rateLimiter);
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
@@ -74,7 +74,7 @@ io.use((socket, next) => {
         let ip = socket.handshake.address;
         if (ip && ip.startsWith("::ffff:")) ip = ip.slice(7);
 
-        // @TODO fix
+        // TODO fix
         // if (authentication.checkIPBanned(ip)) {
         //     return next(new Error("IP banned"));
         // }

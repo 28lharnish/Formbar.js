@@ -76,7 +76,7 @@ module.exports = (router) => {
     router.get(
         "/user/:id/scopes",
         isAuthenticated,
-        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "You do not have permission to view this user's scopes."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user's scopes."),
         async (req, res) => {
             const userId = Number(req.params.id);
 

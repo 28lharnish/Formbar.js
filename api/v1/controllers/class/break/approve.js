@@ -1,4 +1,4 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { approveBreak } = require("@services/class-service");
@@ -6,6 +6,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register approve controller routes.
@@ -25,16 +26,20 @@ module.exports = (router) => {
         requireQueryParam(classId, "id");
         requireQueryParam(targetUserId, "userId");
 
-        req.infoEvent("class.break.approve.attempt", "Attempting to approve class break", { classId, targetUserId });
+        req.infoEvent("class.break.approve.attempt", "Attempting to approve user's break", { classId, targetUserId });
+
         const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
+        if ((classroom && !classroom.students[req.user.email]) || req.user.activeClass == null || Number(req.user.activeClass) !== Number(classId)) {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }
 
-        const userData = { ...req.user, classId };
-        const result = await approveBreak(true, targetUserId, userData);
+        if (classroom && !classroom.isActive) {
+            throw new ForbiddenError("This class is not active, you are restricted to ending or denying breaks.");
+        }
+
+        const result = await approveBreak(true, targetUserId, req.user, classId);
         if (result === true) {
-            req.infoEvent("class.break.approve.success", "Class break approved", { classId, targetUserId });
+            req.infoEvent("class.break.approve.success", "User's break approved", { classId, targetUserId });
             res.status(200).json({
                 success: true,
                 data: {},
@@ -104,15 +109,33 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/approve", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), approveBreakHandler);
+    router.post(
+        "/class/:id/students/:userId/break/approve",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.BREAK.APPROVE,
+            "You don't have permission to approve this user's break."
+        ),
+        approveBreakHandler
+    );
 
     // Deprecated endpoint - kept for backwards compatibility, use POST /api/v1/class/:id/students/:userId/break/approve instead
-    router.get("/class/:id/students/:userId/break/approve", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use POST /api/v1/class/:id/students/:userId/break/approve instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use POST /api/v1/class/:id/students/:userId/break/approve instead. This endpoint will be removed in a future version."'
-        );
-        await approveBreakHandler(req, res);
-    });
+    router.get(
+        "/class/:id/students/:userId/break/approve",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.BREAK.APPROVE,
+            "You don't have permission to approve this user's break."
+        ),
+        async (req, res) => {
+            res.setHeader("X-Deprecated", "Use POST /api/v1/class/:id/students/:userId/break/approve instead");
+            res.setHeader(
+                "Warning",
+                '299 - "Deprecated API: Use POST /api/v1/class/:id/students/:userId/break/approve instead. This endpoint will be removed in a future version."'
+            );
+            await approveBreakHandler(req, res);
+        }
+    );
 };

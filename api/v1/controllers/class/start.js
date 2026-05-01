@@ -1,7 +1,8 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { startClass } = require("@services/class-service");
 const { SCOPES } = require("@modules/permissions");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register start controller routes.
@@ -57,16 +58,21 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/start", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.START), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.start.attempt", "Starting class session", { classId });
+    router.post(
+        "/class/:id/start",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.START, "You do not have permission to start this class."),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.start.attempt", "Starting class session", { classId });
 
-        await startClass(classId);
+            await startClass(classId);
 
-        req.infoEvent("class.start.success", "Class session started successfully", { classId });
-        return res.json({
-            success: true,
-            data: {},
-        });
-    });
+            req.infoEvent("class.start.success", "Class session started successfully", { classId });
+            return res.json({
+                success: true,
+                data: {},
+            });
+        }
+    );
 };

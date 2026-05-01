@@ -1,8 +1,10 @@
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const { isClassMember } = require("@middleware/permission-check");
+const { isClassMember, isOwnerOrHasScopes } = require("@middleware/permission-check");
 const ForbiddenError = require("@errors/forbidden-error");
+const { SCOPES } = require("@modules/permissions");
 const classService = require("@services/class-service");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register timer controller routes.
@@ -17,7 +19,10 @@ module.exports = (router) => {
      *     summary: Get class timer status
      *     tags:
      *       - Timer
-     *     description: Returns the current timer state for a class. Requires the caller to be a member of the class.
+     *     description: |
+     *       Returns the current timer state for a class. Requires the caller to be a member of the class.
+     *
+     *       **Required Permission:** `CLASS.TIMER.READ`
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -62,18 +67,28 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.get("/class/:id/timer", isAuthenticated, isClassMember(), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.timer.view.attempt", "Attempting to view class timer", { classId });
+    router.get(
+        "/class/:id/timer",
+        isAuthenticated,
+        isClassMember(),
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.TIMER.READ,
+            "You do not have permission to view the timer for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.timer.view.attempt", "Attempting to view class timer", { classId });
 
-        const timer = classService.getTimer(classId);
+            const timer = classService.getTimer(classId);
 
-        req.infoEvent("class.timer.view.success", "Class timer returned", { classId, timer: timer || { active: false } });
-        res.status(200).json({
-            success: true,
-            data: {
-                timer: timer || { active: false },
-            },
-        });
-    });
+            req.infoEvent("class.timer.view.success", "Class timer returned", { classId, timer: timer || { active: false } });
+            res.status(200).json({
+                success: true,
+                data: {
+                    timer: timer || { active: false },
+                },
+            });
+        }
+    );
 };

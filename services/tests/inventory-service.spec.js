@@ -22,26 +22,28 @@ jest.mock("@modules/database", () => {
 });
 
 const { getUserInventory, getItemById, addItemToInventory, removeItemFromInventory, registerItem } = require("@services/inventory-service");
-const { getUser } = require("@services/user-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
 });
 
-afterEach(async () => {
-    await mockDatabase.reset();
-    registerItem({
+beforeEach(async () => {
+    await registerItem({
         name: "Test Item",
         description: "A test item for inventory service tests",
         stackSize: 100,
         iconUrl: null,
     });
-    registerItem({
+    await registerItem({
         name: "Another Item",
         description: "Another test item for inventory service tests",
         stackSize: 50,
         iconUrl: null,
     });
+});
+
+afterEach(async () => {
+    await mockDatabase.reset();
 });
 
 afterAll(async () => {
@@ -61,10 +63,9 @@ describe("getUserInventory()", () => {
         await addItemToInventory(USER_ID, 2, 1);
         const result = await getUserInventory(USER_ID);
         expect(result).toHaveLength(2);
-        expect(result[0]).toHaveProperty("id", 1);
-        expect(result[0]).toHaveProperty("quantity", 3);
-        expect(result[1]).toHaveProperty("id", 2);
-        expect(result[1]).toHaveProperty("quantity", 1);
+        expect(result).toEqual(
+            expect.arrayContaining([expect.objectContaining({ id: 1, quantity: 3 }), expect.objectContaining({ id: 2, quantity: 1 })])
+        );
     });
 
     it("does not return items belonging to other users", async () => {
