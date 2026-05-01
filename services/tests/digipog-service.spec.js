@@ -26,7 +26,7 @@ jest.mock("@modules/database", () => {
 jest.mock("@modules/config", () => ({
     settings: { emailEnabled: false },
     frontendUrl: "http://localhost:3000",
-    rateLimit: {
+    digipogRateLimit: {
         maxAttempts: 5,
         lockoutDuration: 900000,
         minDelayBetweenAttempts: 1000,
