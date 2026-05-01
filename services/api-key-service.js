@@ -4,6 +4,7 @@ const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { getUserById } = require("@services/user-service");
 const { getAppById} = require("@services/app-service");
 
+// maps entity types to functions that can resolve them by ID
 const entityResolvers = {
     "user": getUserById,
     "app": getAppById,
