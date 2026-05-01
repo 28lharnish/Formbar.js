@@ -671,8 +671,6 @@ async function removeStudentRole(classId, userId, roleId) {
         throw new ValidationError("The implicit member role cannot be removed explicitly.");
     }
 
-	console.log(role)
-
     const existing = await dbGet(
         `SELECT *
          FROM user_roles ur
@@ -690,9 +688,6 @@ async function removeStudentRole(classId, userId, roleId) {
     );
     const classroomObj = classStateStore.getClassroom(classId);
     const activeStudent = await findActiveClassStudent(classroomObj, userId);
-	console.log(activeStudent.roles.class)
-	console.log(hasInMemoryRole(activeStudent, role.id))
-	console.log(existing)
     if (!existing && !hasInMemoryRole(activeStudent, role.id)) {
         throw new ValidationError(`User does not have the "${role.name}" role.`);
     }
