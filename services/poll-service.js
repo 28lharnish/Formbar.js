@@ -503,7 +503,7 @@ async function sendPollResponse(classId, res, textRes, userSession) {
         }
 
         await dbRun("UPDATE users SET pog_meter = ? WHERE id = ?", [student.pogMeter, student.id]);
-        
+
         pollRuntimeStore.markPogMeterIncreased(classId, email);
     }
 
