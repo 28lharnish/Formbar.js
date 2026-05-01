@@ -125,7 +125,7 @@ describe("Student class", () => {
     });
 
     it("uses provided values when all arguments are given", () => {
-        const s = new Student("x@y.com", 42, "apiKey", ["poll1"], ["poll2"], ["tag1", "tag2"], "Alice", true);
+        const s = new Student("x@y.com", 42, "apiKey", ["poll1"], ["poll2"], "Alice", true);
         expect(s.email).toBe("x@y.com");
         expect(s.id).toBe(42);
         expect(s.API).toBe("apiKey");

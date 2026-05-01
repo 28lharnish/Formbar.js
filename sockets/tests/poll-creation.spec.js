@@ -53,7 +53,7 @@ describe("startPoll", () => {
     });
 
     it("should pass the normalized poll payload to createPoll", async () => {
-        await startPollHandler(false, true, "Prompt", [{ answer: "A" }], true, 2, ["tag1"], [7], ["ghost"], null, true, false);
+        await startPollHandler(false, true, "Prompt", [{ answer: "A" }], true, 2, [7], ["ghost"], null, true, false);
 
         expect(createPoll).toHaveBeenCalledWith(
             testData.classId,

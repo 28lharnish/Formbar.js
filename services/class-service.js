@@ -727,17 +727,6 @@ async function deleteHelpTicket(studentId, userData, classId) {
     return true;
 }
 
-/**
- * Returns the class ID from the user session, checking both classId and activeClass properties.
- * @param {Object} userSession - Session user data.
- * @returns {Promise<void>}
- */
-function resolveClassIdFromSession(userSession) {
-    const classId = userSession?.classId ?? userSession?.activeClass;
-    const normalizedClassId = Number(classId);
-    return Number.isFinite(normalizedClassId) && normalizedClassId > 0 ? normalizedClassId : null;
-}
-
 // Class Users
 
 /**
