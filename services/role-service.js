@@ -684,7 +684,7 @@ async function removeStudentRole(classId, userId, roleId) {
                 )
            )
 		LIMIT 1`,
-        [userId, roleId, classId, classId]
+        [userId, role.id, classId, classId]
     );
     const classroomObj = classStateStore.getClassroom(classId);
     const activeStudent = await findActiveClassStudent(classroomObj, userId);
@@ -704,7 +704,7 @@ async function removeStudentRole(classId, userId, roleId) {
                         AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = user_roles.roleId AND cr.classId = ?)
                     )
                )`,
-            [userId, roleId, classId, classId]
+            [userId, role.id, classId, classId]
         );
     }
 

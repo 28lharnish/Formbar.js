@@ -48,7 +48,7 @@ afterAll(async () => {
 });
 
 async function seedClassroom({ name = "Test Class", owner = 1, key = 1234 } = {}) {
-    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?, ?)", [name, owner, key]);
+    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", [name, owner, key]);
     return { id, name, owner, key };
 }
 
