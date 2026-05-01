@@ -16,7 +16,7 @@ async function getUserInventory(userId) {
          FROM inventory i
          INNER JOIN item_registry r ON r.id = i.item_id
          WHERE i.user_id = ?`,
-        [userId],
+        [userId]
     );
 
     for (const row of inventoryRows) {
@@ -83,11 +83,7 @@ async function getItemById(itemId) {
  * @returns {Promise<number>}
  */
 async function getItemStackWithLeastQuantity(userId, itemId) {
-    const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
-    if (!existingItem) {
-        throw new NotFoundError("Item not found in inventory");
-    }
-    return existingItem;
+    return dbGet("SELECT id, quantity FROM inventory WHERE user_id = ? AND item_id = ? ORDER BY quantity ASC LIMIT 1", [userId, itemId]);
 }
 
 /**
@@ -98,24 +94,32 @@ async function getItemStackWithLeastQuantity(userId, itemId) {
  * @returns {Promise<void>}
  */
 async function addItemToInventory(userId, itemId, quantity) {
-    // Check if the item already exists in the user's inventory
-    const existingItemStack = await getItemStackWithLeastQuantity(userId, itemId);
     const itemInfo = await dbGet("SELECT stack_size FROM item_registry WHERE id = ?", [itemId]);
+    if (!itemInfo) {
+        throw new NotFoundError("Item not found");
+    }
 
-    if (existingItem) {
-        // If it exists, update the quantity
-        const newQuantity = existingItem.quantity + quantity;
+    const stackSize = itemInfo.stack_size > 0 ? itemInfo.stack_size : Number.POSITIVE_INFINITY;
+    let remainingQuantity = quantity;
 
-        // if quantity exceeds stack size, add new row with remaining quantity
-        if (newQuantity > itemInfo.stack_size) {
-            await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [itemInfo.stack_size, userId, itemId]);
-            await dbRun("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)", [userId, itemId, newQuantity - itemInfo.stack_size]);
+    // Fill the smallest existing stack first, then create new stacks for overflow.
+    const existingItemStack = await getItemStackWithLeastQuantity(userId, itemId);
+    if (existingItemStack) {
+        const newQuantity = existingItemStack.quantity + remainingQuantity;
+
+        if (newQuantity > stackSize) {
+            await dbRun("UPDATE inventory SET quantity = ? WHERE id = ?", [stackSize, existingItemStack.id]);
+            remainingQuantity = newQuantity - stackSize;
         } else {
-            await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [newQuantity, userId, itemId]);
+            await dbRun("UPDATE inventory SET quantity = ? WHERE id = ?", [newQuantity, existingItemStack.id]);
+            remainingQuantity = 0;
         }
-    } else {
-        // If it doesn't exist, insert a new record
-        await dbRun("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)", [userId, itemId, quantity]);
+    }
+
+    while (remainingQuantity > 0) {
+        const stackQuantity = Math.min(remainingQuantity, stackSize);
+        await dbRun("INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)", [userId, itemId, stackQuantity]);
+        remainingQuantity -= stackQuantity;
     }
 }
 
@@ -127,20 +131,27 @@ async function addItemToInventory(userId, itemId, quantity) {
  * @returns {Promise<void>}
  */
 async function removeItemFromInventory(userId, itemId, quantity) {
-    // Check if the item exists in the user's inventory
-    const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
-    if (existingItem) {
-        const newQuantity = existingItem.quantity - quantity;
+    const existingItems = await dbGetAll("SELECT id, quantity FROM inventory WHERE user_id = ? AND item_id = ? ORDER BY id DESC", [userId, itemId]);
+    if (existingItems.length === 0) {
+        throw new NotFoundError("Item not found in inventory");
+    }
+
+    let remainingQuantity = quantity;
+
+    for (const item of existingItems) {
+        if (remainingQuantity <= 0) {
+            break;
+        }
+
+        const newQuantity = item.quantity - remainingQuantity;
 
         if (newQuantity > 0) {
-            // If the new quantity is greater than 0, update the record
-            await dbRun("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?", [newQuantity, userId, itemId]);
+            await dbRun("UPDATE inventory SET quantity = ? WHERE id = ?", [newQuantity, item.id]);
+            remainingQuantity = 0;
         } else {
-            // If the new quantity is 0 or less, remove the record
-            await dbRun("DELETE FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
+            await dbRun("DELETE FROM inventory WHERE id = ?", [item.id]);
+            remainingQuantity = Math.abs(newQuantity);
         }
-    } else {
-        throw new NotFoundError("Item not found in inventory");
     }
 }
 

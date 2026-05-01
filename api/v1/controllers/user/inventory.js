@@ -13,7 +13,7 @@ module.exports = (router) => {
     router.get("/user/:id/inventory/", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.USERS.MANAGE]), async (req, res) => {
         req.infoEvent("user.inventory.get", "Fetching user inventory");
         requireParam(req.params.id, "id");
-        
+
         const inventory = await getUserInventory(req.params.id);
         res.status(200).json({ success: true, data: inventory });
     });
