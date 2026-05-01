@@ -1,6 +1,6 @@
 /**
  * ApiKeyCacheStore
- * In-memory cache for API key -> email lookups with TTL.
+ * In-memory cache for API key -> entity ID lookups with TTL.
  */
 class ApiKeyCacheStore {
     constructor(defaultTtlMs = 10 * 60 * 1000) {
