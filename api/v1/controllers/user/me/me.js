@@ -89,6 +89,7 @@ module.exports = (router) => {
                 displayName: req.user.displayName,
                 permissions: computeGlobalPermissionLevel(scopes.global),
                 classPermissions,
+				break: req.user.break,
                 classId: req.user.classId,
                 roles,
                 scopes,

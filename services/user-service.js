@@ -672,11 +672,7 @@ function logout(socket) {
                             student.activeClass = null;
                             student.break = false;
                             student.help = false;
-                            if (student.tags && !student.tags.includes("Offline")) {
-                                student.tags.push("Offline");
-                            } else if (!student.tags) {
-                                student.tags = ["Offline"];
-                            }
+                            student.isOffline = true;
                         }
                     }
                     userUpdateSocket(email, "classUpdate", classId);

@@ -52,12 +52,6 @@ function isUserExcludedFromVoting(classroom, user, student) {
         return true;
     }
 
-    // Check if user has the "Excluded" tag
-    if (student && student.tags && Array.isArray(student.tags) && student.tags.includes("Excluded")) {
-        logger.log("info", `[pollResponse] User ${user.id} is excluded from voting due to Excluded tag`);
-        return true;
-    }
-
     return false;
 }
 
@@ -144,7 +138,7 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
  * @throws {ValidationError} If class is not active
  */
 async function createPoll(classId, pollData, userData) {
-    const { prompt, answers, blind, tags, weight, excludedRespondents, allowVoteChanges, indeterminate, allowTextResponses, allowMultipleResponses } =
+    const { prompt, answers, blind, weight, excludedRespondents, allowVoteChanges, indeterminate, allowTextResponses, allowMultipleResponses } =
         pollData;
     const numberOfResponses = Object.keys(answers).length;
 

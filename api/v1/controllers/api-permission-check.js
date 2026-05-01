@@ -13,7 +13,6 @@ const ForbiddenError = require("@errors/forbidden-error");
 module.exports = (router) => {
     // Maps permissionType query params to scope strings
     const PERMISSION_TYPE_TO_SCOPE = {
-        games: SCOPES.CLASS.GAMES.ACCESS,
         auxiliary: SCOPES.CLASS.AUXILIARY.CONTROL,
     };
 
@@ -26,7 +25,7 @@ module.exports = (router) => {
      *       - System
      *     description: |
      *       Checks whether a user (identified by API key) has a specific permission type
-     *       within a given class. Used by external integrations (games, auxiliary tools)
+     *       within a given class. Used by external integrations (auxiliary tools)
      *       to verify access before performing actions.
      *     parameters:
      *       - in: query
@@ -40,7 +39,7 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: string
-     *           enum: [games, auxiliary]
+     *           enum: [auxiliary]
      *         description: The type of permission to check
      *       - in: query
      *         name: classId

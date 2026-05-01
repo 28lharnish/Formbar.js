@@ -131,7 +131,6 @@ function getClassUpdateAccess(viewer, classroom, controlPanelOverride = false) {
         canReadStudents: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.STUDENTS.READ, classroom),
         canReadPoll: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.POLL.READ, classroom),
         canReadRoles: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.ROLES.READ, classroom),
-        canManageTags: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.TAGS.MANAGE, classroom),
         canReadSettings: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.SESSION.SETTINGS, classroom),
         canReadTimer: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.TIMER.READ, classroom),
         canReadKey: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.SESSION.REGENERATE_CODE, classroom),
@@ -150,10 +149,10 @@ function getClassStudentSnapshot(student) {
         displayName: student.displayName,
         activeClass: student.activeClass,
         roles: { global: [], class: student.roles?.class || [] },
-        tags: student.tags,
         pollRes: student.pollRes,
         help: student.help,
         break: student.break,
+		isOffline: student.isOffline,
         pogMeter: student.pogMeter,
         isGuest: student.isGuest,
     };
@@ -328,12 +327,6 @@ function sortStudentsInPoll(classData) {
             included = true;
         }
 
-        // Check if they have the Excluded tag
-        if (student.tags && student.tags.includes("Excluded")) {
-            excluded = true;
-            included = false;
-        }
-
         // Check exclusion based on class settings for permission levels
         if (classData.settings && classData.settings.isExcluded) {
             if (classData.settings.isExcluded.guests && accessProfile.category === "guest") {
@@ -357,7 +350,7 @@ function sortStudentsInPoll(classData) {
         }
 
         // Prevent students from being included if they are offline or teacher or higher
-        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
+        if (student.isOffline || accessProfile.isTeacher || accessProfile.isManager) {
             excluded = true;
             included = false;
         }
@@ -464,7 +457,6 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
         timer: access.canReadTimer ? classData.timer : undefined,
         poll: access.canReadPoll ? poll : undefined,
         key: access.canReadKey ? classData.key : undefined,
-        tags: access.canManageTags ? classData.tags : undefined,
         settings: access.canReadSettings ? classData.settings : undefined,
         roles: access.canReadRoles ? classData.availableRoles || [] : undefined,
         students: studentEntries.length
@@ -475,7 +467,6 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
     // If studentEmail is provided, include personalized data for that student
     if (viewerStudent) {
         const student = viewerStudent;
-        result.myTags = student.tags || [];
         result.myId = student.id;
         result.myRoles = student.roles?.class || [];
     }

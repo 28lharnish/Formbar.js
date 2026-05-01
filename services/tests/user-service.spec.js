@@ -571,6 +571,7 @@ describe("getUserClass()", () => {
             id: 42,
             students: { "student@test.com": { email: "student@test.com" } },
         };
+        classStateStore.setUser("student@test.com", { email: "student@test.com", activeClass: 42 });
         const result = getUserClass("student@test.com");
         expect(result).toBe(42);
     });
@@ -609,6 +610,7 @@ describe("getUser()", () => {
             id: classRow.id,
             students: { "inclazz@test.com": { email: "inclazz@test.com", help: true, break: false, pogMeter: 50 } },
         };
+        classStateStore.setUser("inclazz@test.com", { email: "inclazz@test.com", activeClass: classRow.id });
 
         const result = await getUser({ email: "inclazz@test.com" });
         // Owner gets classPermissions = 5

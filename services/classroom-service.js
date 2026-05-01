@@ -21,7 +21,7 @@ const classStateStore = new ClassStateStore();
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, tags, customRoles, availableRoles } = {}) {
+    constructor({ id, className, key, owner, customRoles, availableRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -39,26 +39,12 @@ class Classroom {
         };
         this.key = key;
 
-        let parsedTags = tags;
-        if (typeof parsedTags === "string") {
-            try {
-                parsedTags = JSON.parse(parsedTags);
-            } catch {
-                parsedTags = null;
-            }
-        }
-
-        this.tags = Array.isArray(parsedTags) ? [...parsedTags] : ["Offline", "Excluded"];
         this.timer = {
             startTime: 0,
             endTime: 0,
             active: false,
             sound: false,
         };
-
-        if (!this.tags.includes("Offline") && Array.isArray(this.tags)) {
-            this.tags.push("Offline");
-        }
 
         this.customRoles = customRoles || {};
         this.availableRoles = Array.isArray(availableRoles) ? availableRoles : [];
