@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS "users" (
     "pin"         TEXT    DEFAULT NULL,
     "displayName" TEXT,
     "verified"    INTEGER NOT NULL DEFAULT 0,
+    "pog_meter"   INTEGER NOT NULL DEFAULT 0 CHECK (pog_meter >= 0),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON users (displayName);

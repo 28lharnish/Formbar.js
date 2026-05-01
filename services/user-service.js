@@ -316,12 +316,14 @@ async function getUserDataFromDb(userId) {
 
     const roles = await getUserRoles(userId);
     const scopes = getUserScopes({ ...user, roles });
+    const { pog_meter: pogMeterColumn, ...userData } = user;
 
     return {
-        ...user,
+        ...userData,
+        pogMeter: pogMeterColumn ?? user.pogMeter ?? 0,
         roles,
         scopes,
-        role: getUserRoleName({ ...user, roles }),
+        role: getUserRoleName({ ...userData, pogMeter: pogMeterColumn ?? user.pogMeter ?? 0, roles }),
         permissions: computeGlobalPermissionLevel(scopes.global),
         classPermissions: computeClassPermissionLevel(scopes.class),
     };
@@ -509,6 +511,14 @@ function getUserClass(email) {
         if (user?.activeClass) {
             return user.activeClass;
         }
+
+        const classrooms = classStateStore.getAllClassrooms?.() || {};
+        for (const [classId, classroom] of Object.entries(classrooms)) {
+            if (classroom?.students?.[email]) {
+                const numericClassId = Number(classId);
+                return Number.isNaN(numericClassId) ? classId : numericClassId;
+            }
+        }
         return null;
     } catch (err) {
         return err;
@@ -562,7 +572,7 @@ async function getUser(userIdentifier) {
 
         if (dbUser.error) return dbUser;
 
-        let userData = { loggedIn: false, ...dbUser, help: null, break: null, pogMeter: 0, classId, classPermissions: null };
+        let userData = { loggedIn: false, ...dbUser, help: null, break: null, pogMeter: dbUser.pogMeter ?? 0, classId, classPermissions: null };
 
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && classroom.students[dbUser.email]) {
@@ -571,7 +581,7 @@ async function getUser(userIdentifier) {
                 userData.loggedIn = true;
                 userData.help = cdUser.help;
                 userData.break = cdUser.break;
-                userData.pogMeter = cdUser.pogMeter;
+                userData.pogMeter = cdUser.pogMeter ?? userData.pogMeter;
                 userData.roles = {
                     global: dbUser.roles?.global || [],
                     class: cdUser.roles?.class || [],

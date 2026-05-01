@@ -26,7 +26,7 @@ function hashAPIKey(apiKey) {
 }
 
 /**
- * Find a user by API key. SHA-256 keys are resolved by direct lookup; legacy
+ * Find an entity by API key. SHA-256 keys are resolved by direct lookup; legacy
  * bcrypt keys are checked only as a fallback and migrated after a successful match.
  * @param {string} rawAPIKey - Plaintext API key.
  * @returns {Promise<Object|null>}

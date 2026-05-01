@@ -150,6 +150,7 @@ function isSelfOrHasScopes(scopes, message) {
  * @param {string} [message] - Optional custom error message.
  * @returns {Function} Express middleware function.
  */
+
 function isOwnerOrHasScopes(ownerCheck, scopes, message) {
     return async function (req, res, next) {
         if (!req.user || !req.user.email) {

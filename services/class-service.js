@@ -881,7 +881,7 @@ async function saveTags(studentId, tags, userSession) {
 async function getClassUsers(user, key) {
     const dbClassUsers = await new Promise((resolve, reject) => {
         database.all(
-            "SELECT DISTINCT users.id, users.email FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
+            "SELECT DISTINCT users.id, users.email, users.pog_meter FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
             [key],
             (err, rows) => {
                 if (err) return reject(err);
@@ -914,7 +914,7 @@ async function getClassUsers(user, key) {
             ...userRow,
             help: null,
             break: null,
-            pogMeter: 0,
+            pogMeter: userRow.pog_meter || 0,
         };
 
         let cdUser = cDClassUsers[userRow.email];

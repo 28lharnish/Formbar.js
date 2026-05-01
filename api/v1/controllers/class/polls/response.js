@@ -78,7 +78,7 @@ module.exports = (router) => {
         const classId = req.params.id;
 
         req.infoEvent("class.poll.response.attempt", "Attempting to submit poll response", { classId });
-        sendPollResponse(classId, response, textRes, req.user);
+        await sendPollResponse(classId, response, textRes, req.user);
         req.infoEvent("class.poll.response.success", "Poll response submitted", { classId });
 
         res.status(200).json({
