@@ -83,10 +83,6 @@ const SCOPES = {
             ACCESS: "class.games.access",
         },
 
-        TAGS: {
-            MANAGE: "class.tags.manage",
-        },
-
         DIGIPOGS: {
             AWARD: "class.digipogs.award",
         },

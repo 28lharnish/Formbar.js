@@ -60,11 +60,6 @@ module.exports = (router) => {
      *               weight:
      *                 type: number
      *                 example: 1
-     *               tags:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *                 example: ["math"]
      *               excludedRespondents:
      *                 type: array
      *                 items:
@@ -118,7 +113,6 @@ module.exports = (router) => {
                       answers: Array.isArray(body.polls) ? body.polls : [],
                       blind: body.blind,
                       weight: body.weight,
-                      tags: Array.isArray(body.tags) ? body.tags : (body.tags ?? []),
                       excludedRespondents: Array.isArray(body.boxes) ? body.boxes : undefined,
                       indeterminate: Array.isArray(body.indeterminate) ? body.indeterminate : [],
                       allowTextResponses: !!body.responseTextBox,

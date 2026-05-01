@@ -104,7 +104,6 @@ describe("Student class", () => {
         expect(s.API).toBe("key123");
         expect(s.ownedPolls).toEqual([]);
         expect(s.sharedPolls).toEqual([]);
-        expect(s.tags).toEqual([]);
         expect(s.displayName).toBeUndefined();
         expect(s.isGuest).toBe(false);
         expect(s.activeClass).toBeNull();
@@ -132,7 +131,6 @@ describe("Student class", () => {
         expect(s.API).toBe("apiKey");
         expect(s.ownedPolls).toEqual(["poll1"]);
         expect(s.sharedPolls).toEqual(["poll2"]);
-        expect(s.tags).toEqual(["tag1", "tag2"]);
         expect(s.displayName).toBe("Alice");
         expect(s.isGuest).toBe(true);
     });
@@ -178,33 +176,6 @@ describe("createStudentFromUserData()", () => {
         });
         expect(s.role).toBe("teacher");
         expect(s.roles.class).toEqual([{ id: 2, name: "helper" }]);
-    });
-
-    it("normalizes tags from comma-separated string", () => {
-        const s = createStudentFromUserData({
-            email: "u@test.com",
-            id: 1,
-            tags: " math , science , ",
-        });
-        expect(s.tags).toEqual(["math", "science"]);
-    });
-
-    it("normalizes tags from array", () => {
-        const s = createStudentFromUserData({
-            email: "u@test.com",
-            id: 1,
-            tags: [" art ", "music"],
-        });
-        expect(s.tags).toEqual(["art", "music"]);
-    });
-
-    it("normalizes null tags to empty array", () => {
-        const s = createStudentFromUserData({
-            email: "u@test.com",
-            id: 1,
-            tags: null,
-        });
-        expect(s.tags).toEqual([]);
     });
 
     it("parses ownedPolls from JSON string", () => {

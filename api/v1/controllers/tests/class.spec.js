@@ -73,7 +73,6 @@ const activeController = require("../class/active");
 const enrollController = require("../class/enroll");
 const unenrollController = require("../class/unenroll");
 const deleteController = require("../class/delete");
-const tagsController = require("../class/tags");
 const linksController = require("../class/links/links");
 const addLinkController = require("../class/links/add");
 const changeLinkController = require("../class/links/change");
@@ -87,7 +86,6 @@ const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS, GUEST_PERMISS
 
 const app = createTestApp(
     createController,
-    tagsController,
     classController,
     joinController,
     leaveController,
@@ -138,7 +136,6 @@ async function seedClassroom(ownerId, { key = "TEST1", className = "Test Class" 
         key: row.key,
         owner: row.owner,
         permissions: null,
-        tags: null,
     });
     classStateStore.setClassroom(row.id, classroom);
     return row.id;
@@ -276,7 +273,6 @@ describe("GET /api/v1/class/:id", () => {
             students: {},
             key: "ABCD",
             poll: null,
-            tags: [],
             settings: {},
             timer: {},
         });
@@ -312,7 +308,6 @@ describe("GET /api/v1/class/:id", () => {
                 active: true,
                 responses: [],
             },
-            tags: ["VisibleTag"],
             settings: { emailEnabled: false },
             timer: { active: false },
             availableRoles: [{ id: 99, name: "Custom", scopes: [] }],
@@ -336,7 +331,6 @@ describe("GET /api/v1/class/:id", () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data.students).toBeUndefined();
         expect(res.body.data.poll).toBeUndefined();
-        expect(res.body.data.tags).toBeUndefined();
         expect(res.body.data.settings).toBeUndefined();
         expect(res.body.data.roles).toBeUndefined();
     });
@@ -366,7 +360,6 @@ describe("GET /api/v1/class/:id", () => {
                 active: true,
                 responses: [{ answer: "Yes", responses: 0 }],
             },
-            tags: ["VisibleTag"],
             settings: { emailEnabled: false },
             timer: { active: true, startTime: Date.now(), endTime: Date.now() + 1000 },
             availableRoles: [{ id: 100, name: "Custom Reader", scopes: [SCOPES.CLASS.STUDENTS.READ] }],
@@ -385,7 +378,6 @@ describe("GET /api/v1/class/:id", () => {
                         class: [
                             SCOPES.CLASS.STUDENTS.READ,
                             SCOPES.CLASS.POLL.READ,
-                            SCOPES.CLASS.TAGS.MANAGE,
                             SCOPES.CLASS.SESSION.SETTINGS,
                             SCOPES.CLASS.ROLES.READ,
                         ],
@@ -400,7 +392,6 @@ describe("GET /api/v1/class/:id", () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data.students).toEqual(expect.objectContaining({ [teacher.email]: expect.any(Object), [student.email]: expect.any(Object) }));
         expect(res.body.data.poll).toEqual(expect.objectContaining({ active: true }));
-        expect(res.body.data.tags).toEqual(["VisibleTag"]);
         expect(res.body.data.settings).toEqual({ emailEnabled: false });
         expect(res.body.data.roles).toEqual(expect.arrayContaining([expect.objectContaining({ id: 100 })]));
     });
@@ -690,7 +681,7 @@ describe("GET /api/v1/class/:id/active", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests merged from room.spec.js (enroll, unenroll, delete, tags, links, banned)
+// Tests merged from room.spec.js (enroll, unenroll, delete, links, banned)
 // ---------------------------------------------------------------------------
 
 describe("POST /api/v1/class/enroll/:code", () => {
@@ -807,114 +798,6 @@ describe("DELETE /api/v1/class/:id", () => {
 
         const res = await request(app).delete("/api/v1/class/99999").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(404);
-    });
-});
-
-describe("GET /api/v1/class/:id/tags", () => {
-    it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/class/1/tags");
-        expect(res.status).toBe(401);
-    });
-
-    it("returns 404 when class is not loaded", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-        const res = await request(app).get("/api/v1/class/9999/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
-        expect(res.status).toBe(404);
-    });
-
-    it("returns 403 when user lacks class.tags.manage scope", async () => {
-        const { user: owner } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher-tags-owner@example.com",
-            displayName: "Teacher Tags Owner",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "student-tags-view@example.com",
-            displayName: "Student Tags View",
-            permissions: 2,
-        });
-
-        const classId = await seedClassroom(owner.id);
-        await enrollUserInClass(user, classId, 2);
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app).get(`/api/v1/class/${classId}/tags`).set("Authorization", `Bearer ${tokens.accessToken}`);
-        expect(res.status).toBe(403);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 200 with tags for a loaded class", async () => {
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher@example.com",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const classId = await seedClassroom(user.id);
-        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
-
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app).get(`/api/v1/class/${classId}/tags`).set("Authorization", `Bearer ${tokens.accessToken}`);
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data.tags)).toBe(true);
-    });
-});
-
-describe("PUT /api/v1/class/:id/tags", () => {
-    it("returns 401 without authentication", async () => {
-        const res = await request(app)
-            .put("/api/v1/class/1/tags")
-            .send({ tags: ["math"] });
-        expect(res.status).toBe(401);
-    });
-
-    it("returns 403 when user lacks class.tags.manage scope", async () => {
-        const { user: owner } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher@example.com",
-            displayName: "Tag Owner",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "student@example.com",
-            displayName: "Tag Student",
-            permissions: 2,
-        });
-
-        const classId = await seedClassroom(owner.id);
-        await enrollUserInClass(user, classId, 2);
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app)
-            .put(`/api/v1/class/${classId}/tags`)
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ tags: ["math"] });
-        expect(res.status).toBe(403);
-    });
-
-    it("persists tags for a loaded class when the teacher is active in that class", async () => {
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher-tags@example.com",
-            displayName: "Tag Teacher",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const classId = await seedClassroom(user.id);
-        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
-
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app)
-            .put(`/api/v1/class/${classId}/tags`)
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ tags: ["math", "science"] });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-
-        const classroom = classStateStore.getClassroom(classId);
-        expect(classroom.tags).toEqual(["math", "science", "Offline"]);
-
-        const persisted = await mockDatabase.dbGet("SELECT tags FROM classroom WHERE id = ?", [classId]);
-        expect(persisted.tags).toBe("math,science,Offline");
     });
 });
 
@@ -1059,28 +942,6 @@ describe("DELETE /api/v1/class/:id/links", () => {
 // ---------------------------------------------------------------------------
 // Deprecated endpoints (use /class/ paths)
 // ---------------------------------------------------------------------------
-
-describe("POST /api/v1/class/:id/tags (deprecated)", () => {
-    it("returns 200 with deprecation headers when a teacher sets tags", async () => {
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher@example.com",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const classId = await seedClassroom(user.id);
-        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app)
-            .post(`/api/v1/class/${classId}/tags`)
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ tags: ["science"] });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
 
 describe("POST /api/v1/class/:id/links/change (deprecated)", () => {
     it("returns 200 with deprecation headers when a teacher changes a link", async () => {

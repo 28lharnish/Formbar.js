@@ -85,7 +85,6 @@ function seedClassroom(classId = 42) {
         },
         key: "ABCD",
         poll: null,
-        tags: [],
         settings: {},
         timer: {},
         permissions: { games: 2, auxiliary: 3 },
