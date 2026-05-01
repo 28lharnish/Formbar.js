@@ -1,6 +1,7 @@
 const { unenrollFromClass } = require("@services/class-membership-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const { isClassMember } = require("@middleware/permission-check");
 
 /**
  * Register unenroll controller routes.
@@ -50,14 +51,14 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/UnauthorizedError'
      */
-    router.post("/class/:id/unenroll", isAuthenticated, async (req, res) => {
+    router.post("/class/:id/unenroll", isAuthenticated, isClassMember(), async (req, res) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "classId");
 
         req.infoEvent("class.unenroll.attempt", "User attempting to unenroll from class", { classId });
 
-        await unenrollFromClass({ ...req.user, classId });
+        await unenrollFromClass(req.user, classId);
 
         req.infoEvent("class.unenroll.success", "User unenrolled from class successfully", { classId });
         res.status(200).json({

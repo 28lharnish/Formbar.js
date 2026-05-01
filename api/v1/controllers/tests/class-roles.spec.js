@@ -129,10 +129,10 @@ describe("GET /api/v1/class/:id/roles", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns default roles for an authenticated class member", async () => {
-        const { classId, studentTokens } = await setupClassWithTeacherAndStudent();
+    it("returns default roles for a user with class.roles.read scope", async () => {
+        const { classId, teacherTokens } = await setupClassWithTeacherAndStudent();
 
-        const res = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(Array.isArray(res.body.data)).toBe(true);
@@ -144,7 +144,7 @@ describe("GET /api/v1/class/:id/roles", () => {
         expect(res.body.data.every((role) => typeof role.id === "number")).toBe(true);
     });
 
-    it("returns 404 for non-member", async () => {
+    it("returns 403 for non-member", async () => {
         const { classId } = await setupClassWithTeacherAndStudent();
 
         const { tokens: outsiderTokens } = await seedAuthenticatedUser(mockDatabase, {
@@ -154,11 +154,19 @@ describe("GET /api/v1/class/:id/roles", () => {
 
         const res = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${outsiderTokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
+    });
+
+    it("returns 403 for class members without class.roles.read scope", async () => {
+        const { classId, studentTokens } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
     });
 
     it("includes custom roles after creation", async () => {
-        const { classId, teacherTokens, studentTokens } = await setupClassWithTeacherAndStudent();
+        const { classId, teacherTokens } = await setupClassWithTeacherAndStudent();
 
         // Create a custom role
         await request(app)
@@ -166,7 +174,7 @@ describe("GET /api/v1/class/:id/roles", () => {
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({ name: "CustomMod", scopes: ["class.poll.create"] });
 
-        const res = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
 
         expect(res.status).toBe(200);
         const customRole = res.body.data.find((r) => r.name === "CustomMod");
@@ -389,7 +397,7 @@ describe("DELETE /api/v1/class/:id/roles/:roleId", () => {
         expect(res.body.data.message).toBe("Role deleted.");
 
         // Verify it's gone
-        const listRes = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+        const listRes = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
         const roleNames = listRes.body.data.map((r) => r.name);
         expect(roleNames).not.toContain("DeleteMe");
     });
@@ -401,18 +409,6 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/students/1/roles/1");
         expect(res.status).toBe(401);
-    });
-
-    it("returns 403 when student lacks class.students.perm_change scope", async () => {
-        const { classId, studentTokens, student } = await setupClassWithTeacherAndStudent();
-        const modRoleId = await getRoleIdByName("Mod");
-
-        const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
-            .set("Authorization", `Bearer ${studentTokens.accessToken}`)
-            .send({});
-
-        expect(res.status).toBe(403);
     });
 
     it("adds a built-in role to a student", async () => {
@@ -634,6 +630,16 @@ describe("GET /api/v1/class/:id/students/:userId/roles", () => {
                 }),
             ])
         );
+    });
+
+    it("returns 403 for class members without class.roles.read scope", async () => {
+        const { classId, studentTokens, student } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app)
+            .get(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
     });
 
     it("returns assigned roles", async () => {

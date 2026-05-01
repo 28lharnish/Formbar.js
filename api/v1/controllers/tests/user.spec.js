@@ -119,7 +119,16 @@ async function seedSecondStudent() {
 }
 
 describe("GET /api/v1/user/:id", () => {
-    it("returns 200 with own user data for an authenticated user", async () => {
+    it("returns 401 when unauthenticated", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 200 with user data for an authenticated self request", async () => {
         const { tokens, user } = await seedStudent();
 
         const res = await request(app).get(`/api/v1/user/${user.id}`).set("Authorization", `Bearer ${tokens.accessToken}`);
@@ -144,29 +153,38 @@ describe("GET /api/v1/user/:id", () => {
         expect(res.body.success).toBe(true);
     });
 
-    it("returns 404 for a non-existent user", async () => {
+    it("returns 403 when a non-manager requests another user id that does not belong to them", async () => {
         const { tokens } = await seedStudent();
         const res = await request(app).get("/api/v1/user/99999").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 
-    it("requires authentication", async () => {
-        const { user } = await seedStudent();
+    it("returns 403 for authenticated users viewing other profiles without manager scope", async () => {
+        const { tokens: viewerTokens } = await seedStudent();
+        const { user: targetUser } = await seedSecondStudent();
 
-        const res = await request(app).get(`/api/v1/user/${user.id}`);
+        const res = await request(app).get(`/api/v1/user/${targetUser.id}`).set("Authorization", `Bearer ${viewerTokens.accessToken}`);
 
-        expect(res.status).toBe(401);
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
     });
 
-    it("exposes email for the authenticated user's own profile", async () => {
-        const { tokens, user } = await seedStudent();
+    it("allows managers to view other users", async () => {
+        const { tokens: managerTokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "manager-viewer@example.com",
+            displayName: "Manager Viewer",
+            permissions: 5,
+        });
+        const { user: targetUser } = await seedSecondStudent();
 
-        const res = await request(app).get(`/api/v1/user/${user.id}`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/user/${targetUser.id}`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
 
         expect(res.status).toBe(200);
-        expect(res.body.data.email).toBe(user.email);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.id).toBe(targetUser.id);
+        expect(res.body.data.email).toBe(targetUser.email);
     });
 });
 
@@ -494,8 +512,8 @@ describe("GET /api/v1/user/:id/classes", () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     id: classroom.id,
-                    permissions: 3,
-                    classPermissions: 3,
+                    permissions: 4,
+                    classPermissions: 4,
                 }),
             ])
         );

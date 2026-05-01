@@ -60,7 +60,7 @@ module.exports = (router) => {
     router.get(
         "/user/:id/class",
         isAuthenticated,
-        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "Not authorized to view this user's active class."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to view this user's active class."),
         async (req, res) => {
             const userId = req.params.id;
             requireQueryParam(userId, "id");

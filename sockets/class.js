@@ -62,7 +62,7 @@ module.exports = {
          */
         socket.on("leaveRoom", async () => {
             try {
-                await unenrollFromClass(socket.request.session);
+                await unenrollFromClass(socket.request.session, socket.request.session.classId);
             } catch (err) {
                 handleSocketError(err, socket, "leaveRoom", "There was a server error. Please try again");
             }

@@ -69,7 +69,7 @@ module.exports = (router) => {
     router.post(
         "/user/:id/api/regenerate",
         isAuthenticated,
-        isSelfOrHasScopes([SCOPES.GLOBAL.USERS.MANAGE], "You do not have permission to regenerate this user's API key."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to regenerate this user's API key."),
         async (req, res) => {
             const userId = Number(req.params.id);
             requireQueryParam(userId, "id");

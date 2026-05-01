@@ -1,9 +1,10 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { SCOPES } = require("@modules/permissions");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register resume controller routes.
@@ -58,28 +59,37 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/resume", isAuthenticated, hasClassScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
-        const classId = Number(req.params.id);
-        requireQueryParam(classId, "id");
+    router.post(
+        "/class/:id/timer/resume",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.TIMER.CONTROL,
+            "You do not have permission to resume the class timer."
+        ),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            requireQueryParam(classId, "id");
 
-        req.infoEvent("class.timer.resume.attempt", "Attempting to resume a timer", { classId });
+            req.infoEvent("class.timer.resume.attempt", "Attempting to resume a timer", { classId });
 
-        const timer = classService.getTimer(classId);
-        if (!timer) {
-            throw new ValidationError("No current timer found for this class.");
+            const timer = classService.getTimer(classId);
+            if (!timer) {
+                throw new ValidationError("No current timer found for this class.");
+            }
+
+            // Ensure the timer is actually paused before attempting to resume it
+            if (timer.active || !timer.pausedAt) {
+                throw new ValidationError("Timer is not paused and cannot be resumed.");
+            }
+
+            classService.resumeTimer(classId);
+
+            req.infoEvent("class.timer.resume.success", "Timer resumed", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
         }
-
-        // Ensure the timer is actually paused before attempting to resume it
-        if (timer.active || !timer.pausedAt) {
-            throw new ValidationError("Timer is not paused and cannot be resumed.");
-        }
-
-        classService.resumeTimer(classId);
-
-        req.infoEvent("class.timer.resume.success", "Timer resumed", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+    );
 };
