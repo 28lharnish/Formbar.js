@@ -62,7 +62,6 @@ function makeClassroom() {
         isActive: true,
         owner: 99,
         key: "ABC123",
-        tags: ["VisibleTag"],
         settings: { emailEnabled: false },
         timer: { active: true, sound: false },
         availableRoles: [{ id: 7, name: "Reader", scopes: [SCOPES.CLASS.ROLES.READ] }],
@@ -93,12 +92,10 @@ function makeClassroom() {
                         SCOPES.CLASS.STUDENTS.READ,
                         SCOPES.CLASS.POLL.READ,
                         SCOPES.CLASS.ROLES.READ,
-                        SCOPES.CLASS.TAGS.MANAGE,
                         SCOPES.CLASS.TIMER.READ,
                         SCOPES.CLASS.SESSION.REGENERATE_CODE,
                     ],
                 },
-                tags: ["Staff"],
                 pollRes: { buttonRes: "A", textRes: "", date: null },
                 help: false,
                 break: false,
@@ -115,7 +112,6 @@ function makeClassroom() {
                     global: [],
                     class: [SCOPES.CLASS.POLL.READ],
                 },
-                tags: ["Learner"],
                 pollRes: { buttonRes: "A", textRes: "", date: null },
                 help: true,
                 break: false,
@@ -134,13 +130,11 @@ function makeClassroom() {
                         SCOPES.CLASS.STUDENTS.READ,
                         SCOPES.CLASS.POLL.READ,
                         SCOPES.CLASS.ROLES.READ,
-                        SCOPES.CLASS.TAGS.MANAGE,
                         SCOPES.CLASS.SESSION.SETTINGS,
                         SCOPES.CLASS.TIMER.READ,
                         SCOPES.CLASS.SESSION.REGENERATE_CODE,
                     ],
                 },
-                tags: ["Reader"],
                 pollRes: { buttonRes: "A", textRes: "", date: null },
                 help: false,
                 break: false,
@@ -171,7 +165,6 @@ describe("SocketUpdates classUpdate visibility", () => {
             "classUpdate",
             expect.objectContaining({
                 key: undefined,
-                tags: undefined,
                 settings: undefined,
                 roles: undefined,
                 students: expect.objectContaining({
@@ -181,7 +174,6 @@ describe("SocketUpdates classUpdate visibility", () => {
                     }),
                 }),
                 myId: 11,
-                myTags: ["Learner"],
                 myRoles: [],
                 poll: expect.objectContaining({
                     totalResponses: 1,
@@ -201,7 +193,6 @@ describe("SocketUpdates classUpdate visibility", () => {
 
         const payload = socket.emit.mock.calls[0][1];
         expect(payload.key).toBe("ABC123");
-        expect(payload.tags).toEqual(["VisibleTag"]);
         expect(payload.settings).toEqual({ emailEnabled: false });
         expect(payload.roles).toEqual(expect.arrayContaining([expect.objectContaining({ id: 7 })]));
         expect(payload.students[10]).toBeDefined();

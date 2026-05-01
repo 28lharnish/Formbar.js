@@ -156,7 +156,6 @@ module.exports = (router) => {
                     isOwner: true,
                     permissions: MANAGER_PERMISSIONS,
                     classPermissions: MANAGER_PERMISSIONS,
-                    tags: ownedClass.tags,
                 });
             }
 

@@ -70,7 +70,6 @@ module.exports = (router) => {
         const canReadStudents = userHasScope(classStudent, SCOPES.CLASS.STUDENTS.READ, rawClassData);
         const canReadPoll = userHasScope(classStudent, SCOPES.CLASS.POLL.READ, rawClassData);
         const canReadRoles = userHasScope(classStudent, SCOPES.CLASS.ROLES.READ, rawClassData);
-        const canManageTags = userHasScope(classStudent, SCOPES.CLASS.TAGS.MANAGE, rawClassData);
         const canReadSettings = userHasScope(classStudent, SCOPES.CLASS.SESSION.SETTINGS, rawClassData);
 
         // Get the users in the class
@@ -92,7 +91,6 @@ module.exports = (router) => {
                 owner: rawClassData.owner,
                 poll: canReadPoll ? rawClassData.poll : undefined,
                 students: canReadStudents ? classUsers : undefined,
-                tags: canManageTags ? rawClassData.tags : undefined,
                 settings: canReadSettings ? rawClassData.settings : undefined,
                 timer: rawClassData.timer,
                 roles: canReadRoles ? rawClassData.availableRoles || [] : undefined,

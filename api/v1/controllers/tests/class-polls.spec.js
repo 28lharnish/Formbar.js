@@ -160,7 +160,6 @@ describe("POST /api/v1/class/:id/polls/create", () => {
             prompt: "What is 2+2?",
             answers: ["3", "4", "5"],
             weight: 1,
-            tags: [],
             excludedRespondents: [],
             indeterminate: [],
             allowTextResponses: false,

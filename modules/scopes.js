@@ -79,14 +79,6 @@ const SCOPES = {
             CONTROL: "class.auxiliary.control",
         },
 
-        GAMES: {
-            ACCESS: "class.games.access",
-        },
-
-        TAGS: {
-            MANAGE: "class.tags.manage",
-        },
-
         DIGIPOGS: {
             AWARD: "class.digipogs.award",
         },

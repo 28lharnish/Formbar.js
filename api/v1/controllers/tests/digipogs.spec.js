@@ -123,7 +123,6 @@ describe("POST /api/v1/digipogs/award", () => {
             key: "TEST1",
             owner: 99999,
             permissions: null,
-            tags: null,
             settings: null,
         });
         classStateStore.setClassroom(1, classroom);
@@ -164,7 +163,6 @@ describe("POST /api/v1/digipogs/award", () => {
             key: "TEST1",
             owner: teacher.id,
             permissions: null,
-            tags: null,
         });
         classStateStore.setClassroom(1, classroom);
 

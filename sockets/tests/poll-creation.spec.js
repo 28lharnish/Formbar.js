@@ -33,7 +33,6 @@ describe("startPoll", () => {
             answers: [{}, {}, {}],
             blind: false,
             weight: 1,
-            tags: ["tag1"],
             excludedRespondents: ["box1"],
             indeterminate: ["indeterminate1"],
             allowTextResponses: true,
@@ -54,7 +53,7 @@ describe("startPoll", () => {
     });
 
     it("should pass the normalized poll payload to createPoll", async () => {
-        await startPollHandler(false, true, "Prompt", [{ answer: "A" }], true, 2, ["tag1"], [7], ["ghost"], null, true, false);
+        await startPollHandler(false, true, "Prompt", [{ answer: "A" }], true, 2, [7], ["ghost"], null, true, false);
 
         expect(createPoll).toHaveBeenCalledWith(
             testData.classId,
@@ -64,7 +63,6 @@ describe("startPoll", () => {
                 blind: true,
                 allowVoteChanges: false,
                 weight: 2,
-                tags: ["tag1"],
                 excludedRespondents: [7],
                 indeterminate: ["ghost"],
                 allowTextResponses: true,
@@ -82,7 +80,6 @@ describe("startPoll", () => {
             answers: [{}, {}, {}],
             blind: false,
             weight: 1,
-            tags: ["tag1"],
             excludedRespondents: ["box1"],
             indeterminate: ["indeterminate1"],
             allowTextResponses: true,
