@@ -14,7 +14,15 @@ module.exports = (router) => {
         req.infoEvent("user.inventory.get", "Fetching user inventory");
         requireParam(req.params.id, "id");
 
-        const inventory = await getUserInventory(req.params.id);
+        const parsedUserId = Number(req.params.id);
+        if (!Number.isInteger(parsedUserId)) {
+            throw new ValidationError("Invalid User Id", {
+                reason: "invalid_user_id",
+                event: "user.inventory.get.failed",
+            });
+        }
+
+        const inventory = await getUserInventory(parsedUserId);
         res.status(200).json({ success: true, data: inventory });
     });
 

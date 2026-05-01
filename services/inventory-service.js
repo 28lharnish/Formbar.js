@@ -96,7 +96,7 @@ async function getItemStackWithLeastQuantity(userId, itemId) {
 async function addItemToInventory(userId, itemId, quantity) {
     const itemInfo = await dbGet("SELECT stack_size FROM item_registry WHERE id = ?", [itemId]);
     if (!itemInfo) {
-        throw new NotFoundError("Item not found");
+        throw new NotFoundError("Item not found in registry");
     }
 
     const stackSize = itemInfo.stack_size > 0 ? itemInfo.stack_size : Number.POSITIVE_INFINITY;
