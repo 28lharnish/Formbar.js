@@ -211,6 +211,16 @@ describe("getUserDataFromDb()", () => {
         expect(result.permissions).toBe(5);
     });
 
+    it("maps pog_meter from the database to pogMeter", async () => {
+        const seeded = await seedUser({ email: "pogmeter@test.com" });
+        await mockDatabase.dbRun("UPDATE users SET pog_meter = ? WHERE id = ?", [37, seeded.id]);
+
+        const result = await getUserDataFromDb(seeded.id);
+
+        expect(result.pogMeter).toBe(37);
+        expect(result).not.toHaveProperty("pog_meter");
+    });
+
     it("returns undefined for a non-existent id", async () => {
         const result = await getUserDataFromDb(99999);
         expect(result).toBeUndefined();

@@ -151,7 +151,7 @@ function isSelfOrHasScopes(scopes, message) {
  * @returns {Function} Express middleware function.
  */
 
-function isOwnerOrHasScopes(ownerCheck, scope, message) {
+function isOwnerOrHasScopes(ownerCheck, scopes, message) {
     return async function (req, res, next) {
         if (!req.user || !req.user.email) {
             throw new AuthError("User is not authenticated");
