@@ -1,6 +1,7 @@
 const request = require("supertest");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore } = require("./helpers/test-app");
+const { classStateStore } = require("@services/classroom-service");
 
 let mockDatabase;
 
@@ -189,7 +190,7 @@ describe("POST /api/v1/class/:id/students/:userId/break/approve", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 403 when class not in classStateStore", async () => {
+    it("returns 404 when class not in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "user@test.com",
             permissions: 4,
@@ -197,12 +198,13 @@ describe("POST /api/v1/class/:id/students/:userId/break/approve", () => {
 
         const res = await request(app).post("/api/v1/class/9999/students/1/break/approve").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
     });
 
     it("returns 200 on success", async () => {
         const { classId, teacherTokens, student } = await setupClassWithStudent();
 
+        classStateStore.getClassroom(classId).isActive = true;
         // Teacher needs to join the class to be in classStateStore
         await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
 
@@ -221,7 +223,7 @@ describe("POST /api/v1/class/:id/students/:userId/break/deny", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 403 when class not in classStateStore", async () => {
+    it("returns 404 when class not in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "user@test.com",
             permissions: 4,
@@ -229,7 +231,7 @@ describe("POST /api/v1/class/:id/students/:userId/break/deny", () => {
 
         const res = await request(app).post("/api/v1/class/9999/students/1/break/deny").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
     });
 
     it("returns 200 on success", async () => {
@@ -253,6 +255,7 @@ describe("GET /api/v1/class/:id/students/:userId/break/approve (deprecated)", ()
     it("returns 200 with deprecation headers on success", async () => {
         const { classId, teacherTokens, student } = await setupClassWithStudent();
 
+        classStateStore.getClassroom(classId).isActive = true;
         await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
 
         const res = await request(app)

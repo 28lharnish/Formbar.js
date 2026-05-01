@@ -1,8 +1,9 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { endClass } = require("@services/class-service");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register end controller routes.
@@ -58,16 +59,21 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/end", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.END), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.end.attempt", "Ending class session", { classId });
+    router.post(
+        "/class/:id/end",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.SESSION.END, "You do not have permission to end this class."),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.end.attempt", "Ending class session", { classId });
 
-        await endClass(classId, req.user);
+            await endClass(classId, req.user);
 
-        req.infoEvent("class.end.success", "Class session ended successfully", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+            req.infoEvent("class.end.success", "Class session ended successfully", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        }
+    );
 };

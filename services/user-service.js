@@ -499,18 +499,15 @@ async function regenerateAPIKey(userId) {
 // User lookup
 
 /**
- * Gets the class id for the given user by checking in-memory classrooms.
+ * Gets the class id for the given user
  * @param {string} email - User email.
  * @returns {number|null|Error}
  */
 function getUserClass(email) {
     try {
-        const allClassrooms = classStateStore.getAllClassrooms();
-        for (const classroomId in allClassrooms) {
-            const classroom = allClassrooms[classroomId];
-            if (classroom.students[email]) {
-                return classroom.id;
-            }
+        const user = classStateStore.getUser(email);
+        if (user?.activeClass) {
+            return user.activeClass;
         }
         return null;
     } catch (err) {
