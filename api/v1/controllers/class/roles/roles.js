@@ -1,11 +1,12 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
 const { classStateStore } = require("@services/classroom-service");
 const { getClassRoles, createClassRole, updateClassRole, deleteClassRole, getActingUser } = require("@services/role-service");
 const { broadcastClassUpdate } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register roles controller routes.
@@ -68,23 +69,32 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/roles", isAuthenticated, async (req, res) => {
-        const classId = req.params.id;
-        requireQueryParam(classId, "id");
-        req.infoEvent("class.roles.list.start", { classId, actorId: req.user.id });
+    router.get(
+        "/class/:id/roles",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.ROLES.READ,
+            "You do not have permission to view roles for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            requireQueryParam(classId, "id");
+            req.infoEvent("class.roles.list.start", { classId, actorId: req.user.id });
 
-        const classroom = classStateStore.getClassroom(classId);
-        if (!classroom) throw new NotFoundError("Class not found.");
+            const classroom = classStateStore.getClassroom(classId);
+            if (!classroom) throw new NotFoundError("Class not found.");
 
-        const { id: userId, email } = req.user;
-        if (!classroom.students[email] && classroom.owner !== userId && classroom.owner !== email) {
-            throw new NotFoundError("Class not found.");
+            const { id: userId, email } = req.user;
+            if (!classroom.students[email] && classroom.owner !== userId && classroom.owner !== email) {
+                throw new NotFoundError("Class not found.");
+            }
+
+            const roles = await getClassRoles(classId);
+            req.infoEvent("class.roles.list.success", { classId, actorId: req.user.id, roleCount: roles.length });
+            res.status(200).json({ success: true, data: roles });
         }
-
-        const roles = await getClassRoles(classId);
-        req.infoEvent("class.roles.list.success", { classId, actorId: req.user.id, roleCount: roles.length });
-        res.status(200).json({ success: true, data: roles });
-    });
+    );
 
     /**
      * @swagger
@@ -168,24 +178,33 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
-        const classId = req.params.id;
-        requireQueryParam(classId, "id");
+    router.post(
+        "/class/:id/roles",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.ROLES.MANAGE,
+            "You do not have permission to manage roles for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            requireQueryParam(classId, "id");
 
-        const { name, scopes, color } = req.body;
-        requireBodyParam(name, "name");
-        requireBodyParam(scopes, "scopes");
-        req.infoEvent("class.roles.create.start", { classId, actorId: req.user.id, roleName: name });
+            const { name, scopes, color } = req.body;
+            requireBodyParam(name, "name");
+            requireBodyParam(scopes, "scopes");
+            req.infoEvent("class.roles.create.start", { classId, actorId: req.user.id, roleName: name });
 
-        const classroom = classStateStore.getClassroom(classId);
-        if (!classroom) throw new NotFoundError("Class not found.");
-        const actingClassUser = getActingUser(classroom, req.user);
+            const classroom = classStateStore.getClassroom(classId);
+            if (!classroom) throw new NotFoundError("Class not found.");
+            const actingClassUser = getActingUser(classroom, req.user);
 
-        const role = await createClassRole({ classId, name, scopes, actingClassUser, classroom, color });
-        await broadcastClassUpdate(classId);
-        req.infoEvent("class.roles.create.success", { classId, actorId: req.user.id, roleId: role.id, roleName: role.name });
-        res.status(201).json({ success: true, data: role });
-    });
+            const role = await createClassRole({ classId, name, scopes, actingClassUser, classroom, color });
+            await broadcastClassUpdate(classId);
+            req.infoEvent("class.roles.create.success", { classId, actorId: req.user.id, roleId: role.id, roleName: role.name });
+            res.status(201).json({ success: true, data: role });
+        }
+    );
 
     /**
      * @swagger
@@ -198,7 +217,7 @@ module.exports = (router) => {
      *       Updates the name and/or scopes of a role.
      *       You can only grant scopes you possess yourself.
      *
-     *       **Required scope:** `class.session.settings`
+     *       **Required scope:** `class.roles.manage`
      *     security:
      *       - bearerAuth: []
      *     parameters:
@@ -276,28 +295,37 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.patch("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
-        const { id: classId, roleId } = req.params;
-        requireQueryParam(classId, "id");
-        requireQueryParam(roleId, "roleId");
-        req.infoEvent("class.roles.update.start", { classId, roleId, actorId: req.user.id });
+    router.patch(
+        "/class/:id/roles/:roleId",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.ROLES.MANAGE,
+            "You do not have permission to manage roles for this class."
+        ),
+        async (req, res) => {
+            const { id: classId, roleId } = req.params;
+            requireQueryParam(classId, "id");
+            requireQueryParam(roleId, "roleId");
+            req.infoEvent("class.roles.update.start", { classId, roleId, actorId: req.user.id });
 
-        const updates = req.body;
-        const classroom = classStateStore.getClassroom(classId);
-        if (!classroom) throw new NotFoundError("Class not found.");
-        const actingClassUser = getActingUser(classroom, req.user);
+            const updates = req.body;
+            const classroom = classStateStore.getClassroom(classId);
+            if (!classroom) throw new NotFoundError("Class not found.");
+            const actingClassUser = getActingUser(classroom, req.user);
 
-        const role = await updateClassRole({
-            roleId,
-            classId,
-            updates,
-            actingClassUser,
-            classroom,
-        });
-        await broadcastClassUpdate(classId);
-        req.infoEvent("class.roles.update.success", { classId, roleId: role.id, actorId: req.user.id });
-        res.status(200).json({ success: true, data: role });
-    });
+            const role = await updateClassRole({
+                roleId,
+                classId,
+                updates,
+                actingClassUser,
+                classroom,
+            });
+            await broadcastClassUpdate(classId);
+            req.infoEvent("class.roles.update.success", { classId, roleId: role.id, actorId: req.user.id });
+            res.status(200).json({ success: true, data: role });
+        }
+    );
 
     /**
      * @swagger
@@ -310,7 +338,7 @@ module.exports = (router) => {
      *       Deletes a role. Students assigned to this role are
      *       reassigned to the Guest role.
      *
-     *       **Required scope:** `class.session.settings`
+     *       **Required scope:** `class.roles.manage`
      *     security:
      *       - bearerAuth: []
      *     parameters:
@@ -355,15 +383,24 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.delete("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
-        const { id: classId, roleId } = req.params;
-        requireQueryParam(classId, "id");
-        requireQueryParam(roleId, "roleId");
-        req.infoEvent("class.roles.delete.start", { classId, roleId, actorId: req.user.id });
+    router.delete(
+        "/class/:id/roles/:roleId",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.ROLES.MANAGE,
+            "You do not have permission to manage roles for this class."
+        ),
+        async (req, res) => {
+            const { id: classId, roleId } = req.params;
+            requireQueryParam(classId, "id");
+            requireQueryParam(roleId, "roleId");
+            req.infoEvent("class.roles.delete.start", { classId, roleId, actorId: req.user.id });
 
-        await deleteClassRole(roleId, classId);
-        await broadcastClassUpdate(classId);
-        req.infoEvent("class.roles.delete.success", { classId, roleId, actorId: req.user.id });
-        res.status(200).json({ success: true, data: { message: "Role deleted." } });
-    });
+            await deleteClassRole(roleId, classId);
+            await broadcastClassUpdate(classId);
+            req.infoEvent("class.roles.delete.success", { classId, roleId, actorId: req.user.id });
+            res.status(200).json({ success: true, data: { message: "Role deleted." } });
+        }
+    );
 };

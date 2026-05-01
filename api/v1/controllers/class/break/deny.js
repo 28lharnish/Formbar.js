@@ -1,4 +1,4 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { approveBreak } = require("@services/class-service");
@@ -6,6 +6,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register deny controller routes.
@@ -69,27 +70,34 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/deny", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), async (req, res) => {
-        const classId = Number(req.params.id);
-        const targetUserId = Number(req.params.userId);
-        requireQueryParam(classId, "id");
-        requireQueryParam(targetUserId, "userId");
+    router.post(
+        "/class/:id/students/:userId/break/deny",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.BREAK.APPROVE, "You don't have permission to deny this user's break."),
+        async (req, res) => {
+            const classId = Number(req.params.id);
+            const targetUserId = Number(req.params.userId);
 
-        req.infoEvent("class.break.deny.attempt", "Attempting to deny class break", { classId, targetUserId });
-        const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
-            throw new ForbiddenError("You do not have permission to approve this user's break.");
-        }
+            requireQueryParam(classId, "id");
+            requireQueryParam(targetUserId, "userId");
 
-        const result = await approveBreak(false, targetUserId, { ...req.user, classId });
-        if (result === true) {
-            req.infoEvent("class.break.deny.success", "Class break denied", { classId, targetUserId });
-            res.status(200).json({
-                success: true,
-                data: {},
-            });
-        } else {
-            throw new AppError(result, { statusCode: 500 });
+            req.infoEvent("class.break.deny.attempt", "Attempting to deny user's break", { classId, targetUserId });
+
+            const classroom = classStateStore.getClassroom(classId);
+            if (classroom && !classroom.students[req.user.email]) {
+                throw new ForbiddenError("You do not have permission to approve this user's break.");
+            }
+
+            const result = await approveBreak(false, targetUserId, req.user, classId);
+            if (result === true) {
+                req.infoEvent("class.break.deny.success", "User's break denied", { classId, targetUserId });
+                res.status(200).json({
+                    success: true,
+                    data: {},
+                });
+            } else {
+                throw new AppError(result, { statusCode: 500 });
+            }
         }
-    });
+    );
 };

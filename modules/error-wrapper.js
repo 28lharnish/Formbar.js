@@ -2,20 +2,33 @@ const ValidationError = require("@errors/validation-error");
 const AppError = require("@errors/app-error");
 
 /**
- * Require Query Param.
+ * Requires a query parameter to be present.
  *
  * @param {*} param - param.
  * @param {*} name - name.
  * @returns {*}
  */
 function requireQueryParam(param, name) {
-    if (param === undefined || param === null || Number.isNaN(param)) {
+    if (param === undefined || param === null) {
         throw new ValidationError(`Required query parameter '${name}' is missing.`);
     }
 }
 
 /**
- * Require Body Param.
+ * Requires a url parameter to be present
+ *
+ * @param {*} param - param.
+ * @param {*} name - name.
+ * @returns {*}
+ */
+function requireParam(param, name) {
+    if (param === undefined || param === null) {
+        throw new ValidationError(`Required parameter '${name}' is missing.`);
+    }
+}
+
+/**
+ * Requires a body parameter to be present.
  *
  * @param {*} param - param.
  * @param {*} name - name.
@@ -28,7 +41,7 @@ function requireBodyParam(param, name) {
 }
 
 /**
- * Require Internal Param.
+ * Requires a param to be provided internally, primarily used for services.
  *
  * @param {*} param - param.
  * @param {*} name - name.
@@ -42,6 +55,7 @@ function requireInternalParam(param, name) {
 
 module.exports = {
     requireQueryParam,
+    requireParam,
     requireBodyParam,
     requireInternalParam,
 };

@@ -6,7 +6,7 @@ module.exports = {
     run(socket, socketUpdates) {
         // Sends a help ticket
         onSocketEvent(socket, "help", hasClassScope(SCOPES.CLASS.HELP.REQUEST), async (socketContext, reason) => {
-            const result = await sendHelpTicket(reason, socketContext.session);
+            const result = await sendHelpTicket(reason, socketContext.session, socketContext.classId);
             if (result !== true) {
                 socket.emit("message", result);
             }
@@ -14,7 +14,7 @@ module.exports = {
 
         // Deletes help ticket
         onSocketEvent(socket, "deleteTicket", hasClassScope(SCOPES.CLASS.HELP.APPROVE), async (socketContext, studentId) => {
-            await deleteHelpTicket(studentId, socketContext.session);
+            await deleteHelpTicket(studentId, socketContext.session, socketContext.classId);
         });
     },
 };

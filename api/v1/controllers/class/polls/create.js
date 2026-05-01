@@ -1,8 +1,9 @@
 const { createPoll } = require("@services/poll-service");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { parseJson } = require("@middleware/parse-json");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
+const membershipService = require("@services/class-membership-service");
 
 /**
  * Register create controller routes.
@@ -94,33 +95,43 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/create", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.CREATE), parseJson, async (req, res) => {
-        const classId = req.params.id;
-        const body = req.body || {};
-        req.infoEvent("class.poll.create.attempt", "Attempting to create poll", { classId });
-        const isLegacy =
-            body.pollPrompt != null || body.responseNumber != null || body.polls != null || body.responseTextBox != null || body.multiRes != null;
+    router.post(
+        "/class/:id/polls/create",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.POLL.CREATE,
+            "You don't have permission to create polls for this class."
+        ),
+        parseJson,
+        async (req, res) => {
+            const classId = req.params.id;
+            const body = req.body || {};
+            req.infoEvent("class.poll.create.attempt", "Attempting to create poll", { classId });
+            const isLegacy =
+                body.pollPrompt != null || body.responseNumber != null || body.polls != null || body.responseTextBox != null || body.multiRes != null;
 
-        // Check if the request is legacy and remap them if so
-        const pollData = isLegacy
-            ? {
-                  prompt: body.pollPrompt,
-                  answers: Array.isArray(body.polls) ? body.polls : [],
-                  blind: body.blind,
-                  weight: body.weight,
-                  tags: Array.isArray(body.tags) ? body.tags : (body.tags ?? []),
-                  excludedRespondents: Array.isArray(body.boxes) ? body.boxes : undefined,
-                  indeterminate: Array.isArray(body.indeterminate) ? body.indeterminate : [],
-                  allowTextResponses: !!body.responseTextBox,
-                  allowMultipleResponses: !!body.multiRes,
-              }
-            : body;
+            // Check if the request is legacy and remap them if so
+            const pollData = isLegacy
+                ? {
+                      prompt: body.pollPrompt,
+                      answers: Array.isArray(body.polls) ? body.polls : [],
+                      blind: body.blind,
+                      weight: body.weight,
+                      tags: Array.isArray(body.tags) ? body.tags : (body.tags ?? []),
+                      excludedRespondents: Array.isArray(body.boxes) ? body.boxes : undefined,
+                      indeterminate: Array.isArray(body.indeterminate) ? body.indeterminate : [],
+                      allowTextResponses: !!body.responseTextBox,
+                      allowMultipleResponses: !!body.multiRes,
+                  }
+                : body;
 
-        await createPoll(classId, pollData, req.user);
-        req.infoEvent("class.poll.create.success", "Poll created", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+            await createPoll(classId, pollData, req.user);
+            req.infoEvent("class.poll.create.success", "Poll created", { classId });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
+        }
+    );
 };

@@ -1,10 +1,11 @@
 const { dbGet, dbGetAll } = require("@modules/database");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { classStateStore } = require("@services/classroom-service");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
 const NotFoundError = require("@errors/not-found-error");
+const membershipService = require("@services/class-membership-service");
 
 const DEFAULT_BANNED_LIMIT = 20;
 const MAX_BANNED_LIMIT = 100;
@@ -109,25 +110,33 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/banned", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("class.banned.view", "Viewing banned users for class", { classId });
+    router.get(
+        "/class/:id/banned",
+        isAuthenticated,
+        isOwnerOrHasScopes(
+            membershipService.classroomOwnerCheck,
+            SCOPES.CLASS.STUDENTS.BAN,
+            "You do not have permission to view banned students for this class."
+        ),
+        async (req, res) => {
+            const classId = req.params.id;
+            req.infoEvent("class.banned.view", "Viewing banned users for class", { classId });
 
-        // Ensure class exists
-        if (!classStateStore.getClassroom(classId)) {
-            throw new NotFoundError("Class not started");
-        }
+            // Ensure class exists
+            if (!classStateStore.getClassroom(classId)) {
+                throw new NotFoundError("Class not started");
+            }
 
-        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_BANNED_LIMIT, MAX_BANNED_LIMIT);
-        const totalRow = await dbGet(
-            `SELECT COUNT(*) AS count
+            const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_BANNED_LIMIT, MAX_BANNED_LIMIT);
+            const totalRow = await dbGet(
+                `SELECT COUNT(*) AS count
              FROM user_roles
              JOIN roles ON roles.id = user_roles.roleId
              WHERE user_roles.classId = ? AND INSTR(roles.scopes, ?) > 0`,
-            [classId, SCOPES.CLASS.SYSTEM.BLOCKED]
-        );
-        const rows = await dbGetAll(
-            `SELECT users.id, users.email, users.displayName
+                [classId, SCOPES.CLASS.SYSTEM.BLOCKED]
+            );
+            const rows = await dbGetAll(
+                `SELECT users.id, users.email, users.displayName
              FROM user_roles
              JOIN roles ON roles.id = user_roles.roleId
              JOIN users ON users.id = user_roles.userId
@@ -135,14 +144,15 @@ module.exports = (router) => {
                AND INSTR(roles.scopes, ?) > 0
              ORDER BY LOWER(COALESCE(users.displayName, users.email)) ASC, users.id ASC
              LIMIT ? OFFSET ?`,
-            [classId, SCOPES.CLASS.SYSTEM.BLOCKED, limit, offset]
-        );
-        res.status(200).json({
-            success: true,
-            data: {
-                banned: rows || [],
-                pagination: buildPagination(totalRow ? totalRow.count : 0, limit, offset, (rows || []).length),
-            },
-        });
-    });
+                [classId, SCOPES.CLASS.SYSTEM.BLOCKED, limit, offset]
+            );
+            res.status(200).json({
+                success: true,
+                data: {
+                    banned: rows || [],
+                    pagination: buildPagination(totalRow ? totalRow.count : 0, limit, offset, (rows || []).length),
+                },
+            });
+        }
+    );
 };

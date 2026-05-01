@@ -32,13 +32,13 @@ jest.mock("@services/digipog-service", () => ({
 }));
 
 jest.mock("@services/inventory-service", () => ({
-    createItem: jest.fn(() => 7),
+    registerItem: jest.fn(() => 7),
     addItemToInventory: jest.fn(),
 }));
 
 const { createApp } = require("@services/app-service");
 const { createPool } = require("@services/digipog-service");
-const { createItem, addItemToInventory } = require("@services/inventory-service");
+const { registerItem, addItemToInventory } = require("@services/inventory-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -91,10 +91,10 @@ describe("createApp()", () => {
         });
     });
 
-    it("calls createItem with share item name", async () => {
+    it("calls registerItem with share item name", async () => {
         await createApp(APP_INPUT);
 
-        expect(createItem).toHaveBeenCalledWith(expect.objectContaining({ name: "TestApp Share" }));
+        expect(registerItem).toHaveBeenCalledWith(expect.objectContaining({ name: "TestApp Share" }));
     });
 
     it("calls addItemToInventory with ownerId and shareItemId", async () => {

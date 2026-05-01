@@ -110,7 +110,7 @@ async function isAuthenticated(req, res, next) {
         req.user = {
             email: apiUser.email,
             ...user,
-            id: user.id || apiUser.id,
+            id: Number(user.id) || Number(apiUser.id),
             userId: user.id || apiUser.id,
         };
 
@@ -147,6 +147,7 @@ async function isAuthenticated(req, res, next) {
         req.user = {
             email,
             ...user,
+            id: Number(user.id),
             userId: user.id,
         };
 
@@ -168,6 +169,7 @@ async function isAuthenticated(req, res, next) {
     req.user = {
         email: email,
         ...user,
+        id: Number(user.id),
         userId: user.id,
     };
 
