@@ -23,6 +23,7 @@ const { app, io, http } = require("@modules/web-server.js");
 const { settings } = require("@modules/config.js");
 const { socketStateStore, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
 const NotFoundError = require("@errors/not-found-error");
+const AuthError = require("@errors/auth-error");
 
 const { logout } = require("@services/user-service");
 const { rateLimiter } = require("@middleware/rate-limiter");
@@ -57,7 +58,7 @@ app.set("trust proxy", parseTrustProxySetting(process.env.TRUST_PROXY));
 app.use(requestLoggerMiddleware);
 
 // Connect rate limiter middleware
-// app.use(rateLimiter);
+app.use(rateLimiter);
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
@@ -224,9 +225,11 @@ http.listen(settings.port, async () => {
         console.error("Failed to ensure Formbar Developer Pool exists:", err);
     }
 
-    const ipAccess = await authentication.getIPAccess();
-    authentication.whitelistedIps = ipAccess.whitelistedIps;
-    authentication.blacklistedIps = ipAccess.blacklistedIps;
+    try {
+        await authentication.refreshIPAccessCache();
+    } catch (err) {
+        console.error("Failed to initialize IP access cache:", err);
+    }
 
     console.log(`Running on port: ${settings.port}`);
 

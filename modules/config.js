@@ -92,6 +92,15 @@ function getConfig() {
             // Set > 1 (e.g. 10) to relax limits during automated testing.
             rateLimitMultiplier: Math.max(0.1, parseFloat(process.env.RATE_LIMIT_MULTIPLIER ?? "1")) || 1,
         },
+
+        // Rate limit for digipogs setitngs
+        digipogRateLimit: {
+            maxAttempts: parseInt(process.env.DIGIPOG_RATE_LIMIT_MAX_ATTEMPTS, 10) || 5,
+            lockoutDuration: parseInt(process.env.DIGIPOG_RATE_LIMIT_LOCKOUT_DURATION, 10) || 15 * 60 * 1000, // 15 minutes in milliseconds
+            attemptWindow: parseInt(process.env.DIGIPOG_RATE_LIMIT_ATTEMPT_WINDOW, 10) || 5 * 60 * 1000, // 5 minute sliding window
+            minDelayBetweenAttempts: parseInt(process.env.DIGIPOG_RATE_LIMIT_MIN_DELAY_BETWEEN_ATTEMPTS, 10) || 500, // 500ms minimum delay
+        },
+
         publicKey: publicKey,
         privateKey: privateKey,
         frontendUrl: process.env.FRONTEND_URL,

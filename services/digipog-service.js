@@ -3,7 +3,7 @@ const { SCOPES, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = 
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
 const { compareBcrypt } = require("@modules/crypto");
-const { rateLimit } = require("@modules/config");
+const { digipogRateLimit } = require("@modules/config");
 const AppError = require("@errors/app-error");
 
 // Rate limiting
@@ -34,7 +34,7 @@ function cleanupOldAttempts() {
     const now = Date.now();
     for (const [userId, data] of failedAttempts.entries()) {
         if (data.attempts) {
-            data.attempts = data.attempts.filter((attempt) => now - attempt.timestamp < rateLimit.attemptWindow);
+            data.attempts = data.attempts.filter((attempt) => now - attempt.timestamp < digipogRateLimit.attemptWindow);
         }
         if ((!data.attempts || data.attempts.length === 0) && (!data.lockedUntil || data.lockedUntil < now)) {
             failedAttempts.delete(userId);
@@ -78,23 +78,23 @@ function checkRateLimit(accountId) {
     if (userAttempts.attempts.length > 0) {
         const lastAttempt = userAttempts.attempts[userAttempts.attempts.length - 1];
         const timeSinceLastAttempt = now - lastAttempt.timestamp;
-        if (timeSinceLastAttempt < rateLimit.minDelayBetweenAttempts) {
+        if (timeSinceLastAttempt < digipogRateLimit.minDelayBetweenAttempts) {
             return {
                 allowed: false,
                 message: "Please wait before attempting another transfer.",
-                waitTime: Math.ceil((rateLimit.minDelayBetweenAttempts - timeSinceLastAttempt) / 1000),
+                waitTime: Math.ceil((digipogRateLimit.minDelayBetweenAttempts - timeSinceLastAttempt) / 1000),
             };
         }
     }
 
-    const recentAttempts = userAttempts.attempts.filter((attempt) => now - attempt.timestamp < rateLimit.attemptWindow);
+    const recentAttempts = userAttempts.attempts.filter((attempt) => now - attempt.timestamp < digipogRateLimit.attemptWindow);
     userAttempts.attempts = recentAttempts;
 
     const failedCount = recentAttempts.filter((attempt) => !attempt.success).length;
 
-    if (failedCount >= rateLimit.maxAttempts) {
-        userAttempts.lockedUntil = now + rateLimit.lockoutDuration;
-        const waitTime = Math.ceil(rateLimit.lockoutDuration / 1000);
+    if (failedCount >= digipogRateLimit.maxAttempts) {
+        userAttempts.lockedUntil = now + digipogRateLimit.lockoutDuration;
+        const waitTime = Math.ceil(digipogRateLimit.lockoutDuration / 1000);
         return {
             allowed: false,
             message: `Too many failed attempts. Account temporarily locked for ${Math.ceil(waitTime / 60)} minutes.`,

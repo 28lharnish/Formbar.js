@@ -8,12 +8,8 @@ const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
 const AuthError = require("@errors/auth-error");
 
-let whitelistedIps = [];
-let blacklistedIps = [];
-getIPAccess().then((ipAccess) => {
-    whitelistedIps = ipAccess.whitelistedIps;
-    blacklistedIps = ipAccess.blacklistedIps;
-});
+const whitelistedIps = [];
+const blacklistedIps = [];
 
 /**
  * Removes expired refresh tokens and authorization codes from the database
@@ -258,6 +254,32 @@ async function getIPAccess() {
 }
 
 /**
+ * Replace the in-memory IP access cache without changing exported array references.
+ * @param {Object} ipAccess - IP access lists.
+ * @param {string[]} ipAccess.whitelistedIps - whitelisted IPs.
+ * @param {string[]} ipAccess.blacklistedIps - blacklisted IPs.
+ * @returns {Object}
+ */
+function setIPAccess(ipAccess = {}) {
+    whitelistedIps.splice(0, whitelistedIps.length, ...(ipAccess.whitelistedIps || []));
+    blacklistedIps.splice(0, blacklistedIps.length, ...(ipAccess.blacklistedIps || []));
+
+    return {
+        whitelistedIps,
+        blacklistedIps,
+    };
+}
+
+/**
+ * Refresh the in-memory IP access cache from the database.
+ * @returns {Promise<Object>}
+ */
+async function refreshIPAccessCache() {
+    const ipAccess = await getIPAccess();
+    return setIPAccess(ipAccess);
+}
+
+/**
  * Check if the IP is allowed.
  * @param {string} ip - IP address.
  * @returns {boolean}
@@ -267,11 +289,11 @@ function checkIPAllowed(ip) {
     if (ip.startsWith("::ffff:")) ip = ip.slice(7);
 
     let allow = true;
-    if (settings.ipAccess.whitelistEnabled) {
+    if (settings.ipAccess?.whitelistEnabled) {
         allow = whitelistedIps.includes(ip);
     }
 
-    if (settings.ipAccess.blacklistEnabled && allow) {
+    if (settings.ipAccess?.blacklistEnabled && allow) {
         allow = !blacklistedIps.includes(ip);
     }
 
@@ -304,6 +326,8 @@ module.exports = {
 
     // Whitelisted/Blacklisted IP addresses
     getIPAccess,
+    setIPAccess,
+    refreshIPAccessCache,
     checkIPAllowed,
     whitelistedIps,
     blacklistedIps,

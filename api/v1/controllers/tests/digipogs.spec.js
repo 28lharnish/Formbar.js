@@ -35,7 +35,7 @@ jest.mock("@modules/config", () => {
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",
-        rateLimit: {
+        digipogRateLimit: {
             maxAttempts: 5,
             lockoutDuration: 15 * 60 * 1000,
             attemptWindow: 5 * 60 * 1000,
