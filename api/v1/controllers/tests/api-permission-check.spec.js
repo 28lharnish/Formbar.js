@@ -87,7 +87,7 @@ function seedClassroom(classId = 42) {
         poll: null,
         settings: {},
         timer: {},
-        permissions: { games: 2, auxiliary: 3 },
+        permissions: { auxiliary: 3 },
     });
 }
 
@@ -105,7 +105,7 @@ function mockLoggedInUser(overrides = {}) {
 
 describe("GET /api/v1/apiPermissionCheck", () => {
     it("returns 400 when api query param is missing", async () => {
-        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ permissionType: "games", classId: 42 });
+        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ permissionType: "auxiliary", classId: 42 });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -119,7 +119,7 @@ describe("GET /api/v1/apiPermissionCheck", () => {
     });
 
     it("returns 400 when classId is missing", async () => {
-        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "games" });
+        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "auxiliary" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -135,7 +135,7 @@ describe("GET /api/v1/apiPermissionCheck", () => {
     it("returns 403 when user is not logged in", async () => {
         getUser.mockResolvedValue({ loggedIn: false, classId: null, email: null, id: 1 });
 
-        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "games", classId: 42 });
+        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "auxiliary", classId: 42 });
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
@@ -144,7 +144,7 @@ describe("GET /api/v1/apiPermissionCheck", () => {
     it("returns 403 when user is not in any class", async () => {
         mockLoggedInUser({ classId: null });
 
-        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "games", classId: 42 });
+        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "auxiliary", classId: 42 });
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
@@ -154,7 +154,7 @@ describe("GET /api/v1/apiPermissionCheck", () => {
         mockLoggedInUser({ classId: 99 });
         seedClassroom(99);
 
-        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "games", classId: 42 });
+        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "auxiliary", classId: 42 });
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
@@ -165,7 +165,7 @@ describe("GET /api/v1/apiPermissionCheck", () => {
         seedClassroom();
         userHasScope.mockReturnValue(false);
 
-        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "games", classId: 42 });
+        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "auxiliary", classId: 42 });
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
@@ -175,7 +175,7 @@ describe("GET /api/v1/apiPermissionCheck", () => {
         mockLoggedInUser();
         seedClassroom();
 
-        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "games", classId: 42 });
+        const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "auxiliary", classId: 42 });
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
