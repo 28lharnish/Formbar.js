@@ -259,4 +259,4 @@ module.exports = {
     isOwnerOrHasScopes,
     isClassMember,
     normalizeClassId,
-}
+};
