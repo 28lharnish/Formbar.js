@@ -46,46 +46,40 @@ async function resolveAPIKey(rawAPIKey) {
     }
 
     // Check the cache for this API key before hitting the database
-    const cachedEntityId = apiKeyCacheStore.get(apiKey);
-    if (cachedEntityId) {
-        const apiKeyHash = hashAPIKey(apiKey);
-        const entity = await dbGet("SELECT entity_id, entity_type FROM api_keys WHERE api_key_hash = ?", [apiKeyHash]);
-        if (entity) {
-            const resolver = entityResolvers[entity.entity_type];
-            if (resolver) {
-                return resolver(entity.entity_id);
-            }
+    const cachedEntity = apiKeyCacheStore.get(apiKey);
+    if (cachedEntity) {
+        const resolver = entityResolvers[cachedEntity.type];
+
+        if (resolver) {
+            const resolvedEntity = await resolver(cachedEntity.id);
+            return resolvedEntity ? { ...resolvedEntity, cached: true, migrated: false } : null;
         }
+        // If the cache had an entry but we couldn't resolve it, remove the stale cache entry
         apiKeyCacheStore.delete(apiKey);
     }
 
-    const apiKeyHash = hashAPIKey(ApiKey);
-    const shaUser = await dbGet("SELECT id, email, API FROM users WHERE API = ?", [apiKeyHash]);
-    if (shaUser) {
-        apiKeyCacheStore.set(apiKey, shaUser.id);
-        return { ...shaUser, migrated: false };
+    const apiKeyHash = hashAPIKey(apiKey);
+    const shaEntity = await dbGet("SELECT * FROM api_keys WHERE api_key_hash = ?", [apiKeyHash]);
+    if (shaEntity) {
+        const resolvedEntity = await entityResolvers[shaEntity.entity_type](shaEntity.entity_id);
+        apiKeyCacheStore.set(apiKey, shaEntity.entity_id, shaEntity.entity_type);
+        return { ...resolvedEntity, cached: false, migrated: false };
     }
 
-    const legacyUsers = await dbGetAll("SELECT id, email, API FROM users WHERE API IS NOT NULL AND API LIKE '$2%'");
-   
-    await dbRun("BEGIN TRANSACTION");
-    for (const user of legacyUsers) {
-        if (!isBcryptHash(user.API)) {
-            continue;
-        }
-
-        const matches = await compareBcrypt(apiKey, user.API);
-        if (!matches) {
-            continue;
-        }
-
-        await dbRun("UPDATE users SET API = ? WHERE id = ? AND API = ?", [apiKeyHash, user.id, user.API]);
-        apiKeyCacheStore.set(apiKey, user.email);
-        return { ...user, API: apiKeyHash, migrated: true };
+    // if the API key is a bcrypt hash and matches 
+    if (isBcryptHash(apiKey) && compareBcrypt(apiKey, )) {
+        
     }
-    await dbRun("COMMIT");
 
     return null;
+}
+
+async function isLegacyUserAPIKey(apiKey, userId) {
+    if (!isBcryptHash(apiKey)) {
+        return false;
+    }
+
+
 }
 
 /**

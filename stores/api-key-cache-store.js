@@ -23,7 +23,7 @@ class ApiKeyCacheStore {
             return undefined;
         }
 
-        return entry.entityId;
+        return {type: entry.entityType, id: entry.entityId};
     }
 
     /**
@@ -31,12 +31,13 @@ class ApiKeyCacheStore {
      *
      * @param {*} apiKey - apiKey.
      * @param {*} entityId - entityId.
+     * @param {*} entityType - entityType.
      * @param {*} ttlMs - ttlMs.
      * @returns {*}
      */
-    set(apiKey, entityId, ttlMs = this._defaultTtlMs) {
+    set(apiKey, entityId, entityType, ttlMs = this._defaultTtlMs) {
         const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : null;
-        this._cache.set(apiKey, { entityId, expiresAt });
+        this._cache.set(apiKey, { entityId, entityType, expiresAt });
     }
 
     /**
