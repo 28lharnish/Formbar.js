@@ -1,4 +1,4 @@
--- 29_add_app_redirect_uris.sql
+-- 30_add_app_redirect_uris.sql
 -- Registered OAuth redirect URIs for third-party apps.
 
 CREATE TABLE IF NOT EXISTS app_redirect_uris (

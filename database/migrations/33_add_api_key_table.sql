@@ -1,4 +1,4 @@
--- 32_add_api_key_table.sql
+-- 33_add_api_keys_table.sql
 CREATE TABLE IF NOT EXISTS api_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_type TEXT NOT NULL, -- 'user' or 'app'

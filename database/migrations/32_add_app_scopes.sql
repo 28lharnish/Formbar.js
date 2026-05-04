@@ -1,2 +1,2 @@
--- 30_add_app_scopes.sql
+-- 32_add_app_scopes.sql
 ALTER TABLE apps ADD COLUMN scopes TEXT;

@@ -1,4 +1,4 @@
--- 27_allow_duplicate_app_names.sql
+-- 28_allow_duplicate_app_names.sql
 -- Rebuilds the apps table without a UNIQUE constraint on name so apps can
 -- legitimately share the same display name.
 
