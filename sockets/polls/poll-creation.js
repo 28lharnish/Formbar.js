@@ -23,7 +23,6 @@ module.exports = {
                         polls,
                         blind,
                         weight,
-                        tags,
                         boxes,
                         indeterminate,
                         lastResponse,
@@ -38,7 +37,6 @@ module.exports = {
                         allowTextResponses: !!responseTextBox,
                         allowMultipleResponses: !!multiRes,
                         weight: Number(weight ?? 1),
-                        tags: Array.isArray(tags) ? tags : [],
                         indeterminate: Array.isArray(indeterminate) ? indeterminate : [],
                         excludedRespondents: Array.isArray(boxes) ? boxes : [],
                     };
@@ -54,7 +52,6 @@ module.exports = {
                         allowTextResponses: !!pollData.allowTextResponses,
                         allowMultipleResponses: !!pollData.allowMultipleResponses,
                         weight: Number(pollData.weight ?? 1),
-                        tags: Array.isArray(pollData.tags) ? pollData.tags : [],
                         excludedRespondents: Array.isArray(pollData.excludedRespondents) ? pollData.excludedRespondents : [],
                         indeterminate: Array.isArray(pollData.indeterminate) ? pollData.indeterminate : [],
                     },

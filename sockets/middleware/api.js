@@ -45,12 +45,14 @@ function ensureStudentExists(userData) {
  * Sets up socket session data for an authenticated user.
  */
 function setupSocketSession(socket, userData, includeApi = false) {
+    const activeClassId = getUserClass(userData.email) ?? null;
     if (includeApi) {
         socket.request.session.api = userData.API;
     }
+
     socket.request.session.userId = userData.id;
     socket.request.session.email = userData.email;
-    socket.request.session.classId = getUserClass(userData.email);
+    socket.request.session.classId = activeClassId;
 }
 
 /**

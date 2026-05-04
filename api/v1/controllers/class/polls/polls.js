@@ -2,9 +2,10 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const { getPreviousPolls } = require("@services/poll-service");
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const { hasClassScope } = require("@middleware/permission-check");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
+const membershipService = require("@services/class-membership-service");
 
 const DEFAULT_POLL_LIMIT = 20;
 const MAX_POLL_LIMIT = 100;
@@ -143,32 +144,38 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/polls", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.READ), async (req, res) => {
-        const classId = req.params.id;
-        requireQueryParam(classId, "classId");
+    router.get(
+        "/class/:id/polls",
+        isAuthenticated,
+        isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.POLL.READ, "You do not have permission to view polls for this class."),
+        async (req, res) => {
+            const classId = req.params.id;
+            requireQueryParam(classId, "classId");
 
-        // Ensure the authenticated user is logged into / associated with this class.
-        const userClassId = req.user?.classId ?? req.user?.activeClass ?? classStateStore.getUser(req.user?.email)?.activeClass;
-        if (!userClassId || String(userClassId) !== String(classId)) {
-            return res.status(403).json({
-                success: false,
-                error: "User is not logged into the selected class or lacks permission",
+            // Ensure the authenticated user is logged into / associated with this class.
+            const userClassId = req.user?.classId ?? req.user?.activeClass ?? classStateStore.getUser(req.user?.email)?.activeClass;
+            if (!userClassId || String(userClassId) !== String(classId)) {
+                return res.status(403).json({
+                    success: false,
+                    error: "User is not logged into the selected class or lacks permission",
+                });
+            }
+
+            req.infoEvent("class.polls.view", "Viewing class polls", { classId });
+
+            const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_POLL_LIMIT, MAX_POLL_LIMIT);
+
+            const { polls, total } = await getPreviousPolls(classId, limit, offset);
+
+            req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, offset });
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    polls,
+                    pagination: buildPagination(total, limit, offset, polls.length),
+                },
             });
         }
-
-        req.infoEvent("class.polls.view", "Viewing class polls", { classId });
-
-        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_POLL_LIMIT, MAX_POLL_LIMIT);
-        const { polls, total } = await getPreviousPolls(classId, limit, offset);
-
-        req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, offset });
-
-        res.status(200).json({
-            success: true,
-            data: {
-                polls,
-                pagination: buildPagination(total, limit, offset, polls.length),
-            },
-        });
-    });
+    );
 };

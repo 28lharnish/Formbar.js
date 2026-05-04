@@ -4,14 +4,13 @@ const { buildRoleReferences } = require("@modules/role-reference");
 
 // This class is used to create a student to be stored in the sessions data
 class Student {
-    constructor(email, id, API, ownedPolls = [], sharedPolls = [], tags, displayName, isGuest = false) {
+    constructor(email, id, API, ownedPolls = [], sharedPolls = [], displayName, isGuest = false) {
         this.email = email;
         this.id = id;
         this.activeClass = null;
         this.role = null;
         this.roles = { global: [], class: [] };
         this.permissions = null;
-        this.tags = tags || [];
         this.ownedPolls = ownedPolls || [];
         this.sharedPolls = sharedPolls || [];
         this.pollRes = {
@@ -21,36 +20,13 @@ class Student {
         };
         this.help = false;
         this.break = false;
+        this.isOffline = false;
         this.API = API;
         this.digipogs = 0;
         this.pogMeter = 0;
         this.displayName = displayName;
         this.isGuest = isGuest;
     }
-}
-
-/**
- * Normalizes user tags into an array of strings.
- * Accepts either comma-delimited strings or arrays.
- * @param {string|string[]|null|undefined} tags
- * @returns {string[]}
- */
-function normalizeTags(tags) {
-    if (Array.isArray(tags)) {
-        return tags
-            .filter((tag) => typeof tag === "string")
-            .map((tag) => tag.trim())
-            .filter(Boolean);
-    }
-
-    if (typeof tags !== "string" || !tags.trim()) {
-        return [];
-    }
-
-    return tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
 }
 
 /**
@@ -87,7 +63,6 @@ function createStudentFromUserData(userData, options = {}) {
         userData.API,
         parseArrayField(userData.ownedPolls),
         parseArrayField(userData.sharedPolls),
-        normalizeTags(userData.tags),
         userData.displayName,
         isGuest
     );
@@ -113,8 +88,9 @@ function createStudentFromUserData(userData, options = {}) {
         student.permissions = userData.permissions;
     }
 
-    if (userData.pogMeter != null) {
-        student.pogMeter = userData.pogMeter;
+    // Pog meter is stored as pog_meter in the database, but we store it as pogMeter in the student object
+    if (userData.pogMeter != null || userData.pog_meter != null) {
+        student.pogMeter = userData.pogMeter ?? userData.pog_meter;
     }
 
     if (userData.digipogs != null) {
@@ -127,6 +103,10 @@ function createStudentFromUserData(userData, options = {}) {
 
     if (userData.break !== undefined) {
         student.break = userData.break;
+    }
+
+    if (userData.isOffline !== undefined) {
+        student.isOffline = userData.isOffline;
     }
 
     if (userData.pollRes && typeof userData.pollRes === "object") {

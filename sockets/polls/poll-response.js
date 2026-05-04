@@ -9,7 +9,7 @@ module.exports = {
         onSocketEvent(socket, "pollResp", hasClassScope(SCOPES.CLASS.POLL.VOTE), async (socketContext, res, textRes) => {
             try {
                 const classId = await socketContext.resolveClassId();
-                sendPollResponse(classId, res, textRes, socketContext.session);
+                await sendPollResponse(classId, res, textRes, socketContext.session);
             } catch (err) {
                 handleSocketError(err, socket, "pollResp");
             }

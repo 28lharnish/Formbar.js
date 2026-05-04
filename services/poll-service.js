@@ -2,7 +2,7 @@ const { classStateStore } = require("@services/classroom-service");
 
 const { generateColors } = require("@modules/util");
 const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
-const { database, dbGet, dbGetAll, dbRun } = require("@modules/database");
+const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
 const { userSocketUpdates } = require("../sockets/init");
@@ -49,12 +49,6 @@ function isUserExcludedFromVoting(classroom, user, student) {
     // Check if user is excluded from voting using poll.excludedRespondents
     if (classroom.poll.excludedRespondents && classroom.poll.excludedRespondents.includes(user.id)) {
         logger.log("info", `[pollResponse] User ${user.id} is excluded from voting`);
-        return true;
-    }
-
-    // Check if user has the "Excluded" tag
-    if (student && student.tags && Array.isArray(student.tags) && student.tags.includes("Excluded")) {
-        logger.log("info", `[pollResponse] User ${user.id} is excluded from voting due to Excluded tag`);
         return true;
     }
 
@@ -456,7 +450,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
  * @param {Object} userSession - The user session object.
  * @returns {void}
  */
-function sendPollResponse(classId, res, textRes, userSession) {
+async function sendPollResponse(classId, res, textRes, userSession) {
     const resLength = textRes != null ? textRes.length : 0;
 
     const email = userSession.email;
@@ -516,18 +510,17 @@ function sendPollResponse(classId, res, textRes, userSession) {
         const resWeight = calculateResponseWeight(classroom.poll, res);
 
         // Increase pog meter by 100 times the weight of the response
-        // If pog meter reaches 500, increase digipogs by 1 and reset pog meter to 0
-        const pogMeterIncrease = Math.floor(100 * resWeight);
+        // If pog meter reaches 100, increase digipogs by 1 and reset pog meter to 0
+        const pogMeterIncrease = Math.floor((process.env.POG_METER_INCREMENT || 20) * resWeight);
         student.pogMeter += pogMeterIncrease;
-        if (student.pogMeter >= 500) {
-            student.pogMeter -= 500;
+        if (student.pogMeter >= 100) {
+            student.pogMeter -= 100;
             let addPogs = Math.floor(Math.random() * 10) + 1; // Randomly add between 1 and 10 digipogs
-            database.run("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [addPogs, user.id], (err) => {
-                if (err) {
-                } else {
-                }
-            });
+            await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [addPogs, student.id]);
         }
+
+        await dbRun("UPDATE users SET pog_meter = ? WHERE id = ?", [student.pogMeter, student.id]);
+
         pollRuntimeStore.markPogMeterIncreased(classId, email);
     }
 

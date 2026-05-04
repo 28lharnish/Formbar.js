@@ -1,19 +1,18 @@
 const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
-const { dbGet, dbRun } = require("@modules/database");
+const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
 const AuthError = require("@errors/auth-error");
 
-const whitelistedIps = {};
-const blacklistedIps = {};
+const whitelistedIps = [];
+const blacklistedIps = [];
 
-// Removes expired refresh tokens and authorization codes from the database
 /**
- * Clean Refresh Tokens.
+ * Removes expired refresh tokens and authorization codes from the database
  *
  * @returns {Promise<*>}
  */
@@ -110,7 +109,7 @@ async function isAuthenticated(req, res, next) {
         req.user = {
             email: apiUser.email,
             ...user,
-            id: user.id || apiUser.id,
+            id: Number(user.id) || Number(apiUser.id),
             userId: user.id || apiUser.id,
         };
 
@@ -147,6 +146,7 @@ async function isAuthenticated(req, res, next) {
         req.user = {
             email,
             ...user,
+            id: Number(user.id),
             userId: user.id,
         };
 
@@ -168,11 +168,37 @@ async function isAuthenticated(req, res, next) {
     req.user = {
         email: email,
         ...user,
+        id: Number(user.id),
         userId: user.id,
     };
 
     next();
 }
+
+// make it do
+// async function authenticateApp(req, res, next) {
+//     const auth = req.headers.authorization;
+//     if (!auth) throw new AuthError("No authentication provided", { event: "auth.missing_token", reason: "no_token" });
+
+//     const [scheme, credentials] = auth.split(' ');
+//     if (scheme !== 'ApiKey' || !credentials) {
+//         throw new AuthError("Invalid authentication format", { event: "auth.invalid_auth_format", reason: "invalid_format" });
+//     }
+
+//     const [key, secret] = credentials.split(':');
+//     if (!key || !secret) {
+//         throw new AuthError("Invalid authentication credentials", { event: "auth.invalid_auth_credentials", reason: "invalid_credentials" });
+//     }
+
+//     const app = await // not done yet
+//     if (!app) throw new AuthError("Invalid application key", { event: "auth.invalid_app_key", reason: "invalid_key" });
+
+//     const valid = await bcrypt.compare(secret, app.secretHash);
+//     if (!valid) return res.status(401).end();
+
+//     req.app = app;
+//     next();
+// }
 
 // Create a function to check if the user's email is verified
 /**
@@ -241,14 +267,100 @@ async function isVerified(req, res, next) {
     throw new AuthError("User email is not verified.");
 }
 
+/**
+ * Get the IP access list.
+ * @returns {Promise<Object>}
+ */
+async function getIPAccess() {
+    const ips = await dbGetAll("SELECT ip, is_whitelist FROM ip_access_list");
+
+    return {
+        whitelistedIps: ips.filter((ip) => ip.is_whitelist).map((ip) => ip.ip),
+        blacklistedIps: ips.filter((ip) => !ip.is_whitelist).map((ip) => ip.ip),
+    };
+}
+
+/**
+ * Replace the in-memory IP access cache without changing exported array references.
+ * @param {Object} ipAccess - IP access lists.
+ * @param {string[]} ipAccess.whitelistedIps - whitelisted IPs.
+ * @param {string[]} ipAccess.blacklistedIps - blacklisted IPs.
+ * @returns {Object}
+ */
+function setIPAccess(ipAccess = {}) {
+    whitelistedIps.splice(0, whitelistedIps.length, ...(ipAccess.whitelistedIps || []));
+    blacklistedIps.splice(0, blacklistedIps.length, ...(ipAccess.blacklistedIps || []));
+
+    return {
+        whitelistedIps,
+        blacklistedIps,
+    };
+}
+
+/**
+ * Refresh the in-memory IP access cache from the database.
+ * @returns {Promise<Object>}
+ */
+async function refreshIPAccessCache() {
+    const ipAccess = await getIPAccess();
+    return setIPAccess(ipAccess);
+}
+
+/**
+ * Check if the IP is allowed.
+ * @param {string} ip - IP address.
+ * @returns {boolean}
+ */
+function checkIPAllowed(ip) {
+    // Remove the ::ffff: prefix from the IP address
+    if (ip.startsWith("::ffff:")) ip = ip.slice(7);
+
+    let allow = true;
+    if (settings.ipAccess?.whitelistEnabled) {
+        allow = whitelistedIps.includes(ip);
+    }
+
+    if (settings.ipAccess?.blacklistEnabled && allow) {
+        allow = !blacklistedIps.includes(ip);
+    }
+
+    return allow;
+}
+
+/**
+ * Middleware to check if the IP is banned.
+ * @param {import("express").Request} req - req.
+ * @param {import("express").Response} res - res.
+ * @param {import("express").NextFunction} next - next.
+ * @returns {void}
+ */
+function isIPBanned(req, res, next) {
+    let ip = req.ip;
+    if (!ip) return next();
+
+    const ipAllowed = checkIPAllowed(ip);
+    if (!ipAllowed) {
+        req.warnEvent("auth.ip_banned", `IP address is not allowed: ${ip}`, { ip });
+        throw new AuthError("Your IP address is not allowed to access this resource.");
+    }
+
+    next();
+    return;
+}
+
 module.exports = {
     cleanRefreshTokens,
 
     // Whitelisted/Blacklisted IP addresses
+    getIPAccess,
+    setIPAccess,
+    refreshIPAccessCache,
+    checkIPAllowed,
     whitelistedIps,
     blacklistedIps,
 
     // Authentication functions
     isAuthenticated,
     isVerified,
+    isIPBanned,
 };

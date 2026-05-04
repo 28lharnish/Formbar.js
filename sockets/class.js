@@ -62,7 +62,7 @@ module.exports = {
          */
         socket.on("leaveRoom", async () => {
             try {
-                await unenrollFromClass(socket.request.session);
+                await unenrollFromClass(socket.request.session, socket.request.session.classId);
             } catch (err) {
                 handleSocketError(err, socket, "leaveRoom", "There was a server error. Please try again");
             }
@@ -280,10 +280,7 @@ module.exports = {
                     const studentId = student.id;
 
                     // If the student doesn't exist, is offline/excluded, or is on break, add them to excluded list
-                    if (
-                        (!student || (student.tags && (student.tags.includes("Offline") || student.tags.includes("Excluded"))) || student.onBreak) &&
-                        !excludedRespondents.includes(studentId)
-                    ) {
+                    if ((!student || student.isOffline || student.onBreak) && !excludedRespondents.includes(studentId)) {
                         excludedRespondents.push(studentId);
                     }
                 }

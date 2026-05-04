@@ -1,6 +1,6 @@
 const { classStateStore, getClassroomFromDb } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { getUserDataFromDb } = require("@services/user-service");
@@ -60,7 +60,7 @@ module.exports = (router) => {
     router.get(
         "/user/:id/class",
         isAuthenticated,
-        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to view this user's active class."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to view this user's active class."),
         async (req, res) => {
             const userId = req.params.id;
             requireQueryParam(userId, "id");

@@ -1,7 +1,7 @@
 const { dbGet, dbGetAll } = require("@modules/database");
 const { getUserOwnedClasses } = require("@services/user-service");
 const { getUserJoinedClasses } = require("@services/class-service");
-const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES, computeClassPermissionLevel, MANAGER_PERMISSIONS, parseScopesField } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
@@ -105,7 +105,7 @@ module.exports = (router) => {
     router.get(
         "/user/:id/classes",
         isAuthenticated,
-        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to view this user's classes."),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to view this user's classes."),
         async (req, res) => {
             const userId = req.params.id;
             req.infoEvent("user.classes.view.attempt", "Attempting to view user classes", { targetUserId: userId });
@@ -156,7 +156,6 @@ module.exports = (router) => {
                     isOwner: true,
                     permissions: MANAGER_PERMISSIONS,
                     classPermissions: MANAGER_PERMISSIONS,
-                    tags: ownedClass.tags,
                 });
             }
 
