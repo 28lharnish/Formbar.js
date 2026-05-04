@@ -17,11 +17,13 @@ if (!fs.existsSync("database/database.db")) {
 }
 
 // Custom modules
+const authentication = require("@middleware/authentication.js");
 const { initSocketRoutes } = require("./sockets/init.js");
 const { app, io, http } = require("@modules/web-server.js");
 const { settings } = require("@modules/config.js");
 const { socketStateStore, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
 const NotFoundError = require("@errors/not-found-error");
+const AuthError = require("@errors/auth-error");
 
 const { logout } = require("@services/user-service");
 const { rateLimiter } = require("@middleware/rate-limiter");
@@ -74,10 +76,10 @@ io.use((socket, next) => {
         let ip = socket.handshake.address;
         if (ip && ip.startsWith("::ffff:")) ip = ip.slice(7);
 
-        // @TODO fix
-        // if (authentication.checkIPBanned(ip)) {
-        //     return next(new Error("IP banned"));
-        // }
+        if (!authentication.checkIPAllowed(ip)) {
+            return next(new AuthError("Your IP address is not allowed to access this resource."));
+        }
+
         next();
     } catch (err) {
         next(err);
@@ -125,29 +127,9 @@ setInterval(() => {
 //     authentication.cleanRefreshTokens();
 // }, REFRESH_TOKEN_CHECK_TIME);
 
-// Check if an IP is banned
-app.use((req, res, next) => {
-    let ip = req.ip;
-    if (!ip) return next();
-    if (ip.startsWith("::ffff:")) ip = ip.slice(7);
-
-    // @TODO: fix
-    // Check if the user is ip banned
-    // If the user is not ip banned and is on the ip-banned page, redirect them to the home page
-    // const isIPBanned = authentication.checkIPBanned(ip);
-    if (req.path === "/ip-banned" && isIPBanned) {
-        return next();
-    } else if (req.path === "/ip-banned" && !isIPBanned) {
-        return res.redirect("/");
-    }
-
-    // Redirect to the IP banned page if they are banned
-    // if (isIPBanned) {
-    //     return res.redirect("/ip-banned");
-    // }
-
-    next();
-});
+// Check if the user is ip banned
+// If the user is not ip banned and is on the ip-banned page, redirect them to the home page
+app.use(authentication.isIPBanned);
 
 function getJSFiles(dir, base = dir) {
     let results = [];
@@ -243,8 +225,12 @@ http.listen(settings.port, async () => {
         console.error("Failed to ensure Formbar Developer Pool exists:", err);
     }
 
-    // Object.assign(authentication.whitelistedIps, await getIpAccess("whitelist"));
-    // Object.assign(authentication.blacklistedIps, await getIpAccess("blacklist"));
+    try {
+        await authentication.refreshIPAccessCache();
+    } catch (err) {
+        console.error("Failed to initialize IP access cache:", err);
+    }
+
     console.log(`Running on port: ${settings.port}`);
 
     const availableOIDCProviders = getAvailableProviders();

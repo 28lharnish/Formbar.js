@@ -123,7 +123,7 @@ describe("class socket", () => {
             const handler = socket.on.mock.calls.find((call) => call[0] === "leaveRoom")[1];
             await handler();
 
-            expect(unenrollFromClass).toHaveBeenCalledWith(socket.request.session);
+            expect(unenrollFromClass).toHaveBeenCalledWith(socket.request.session, socket.request.session.classId);
         });
     });
 

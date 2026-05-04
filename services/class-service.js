@@ -95,23 +95,6 @@ function validateClassroomName(className) {
 }
 
 /**
- * Normalizes classroom data fetched from database
- * Parses JSON fields and normalizes tags and poll history
- * @param {Object} classroom - The classroom object from database
- * @returns {Object} The normalized classroom object (mutates in place)
- */
-function normalizeClassroomData(classroom) {
-    // Normalize tags to array
-    if (classroom.tags) {
-        classroom.tags = classroom.tags.split(",");
-    } else {
-        classroom.tags = [];
-    }
-
-    return classroom;
-}
-
-/**
  * Creates a new classroom with the given name and owner
  * @async
  * @param {string} className - The name of the class to create
@@ -131,7 +114,7 @@ async function createClass(className, ownerId, ownerEmail) {
     const key = generateKey(4);
 
     // Add classroom to the database
-    const insertResult = await dbRun("INSERT INTO classroom(name, owner, key, tags) VALUES(?, ?, ?, ?)", [className, ownerId, key, null]);
+    const insertResult = await dbRun("INSERT INTO classroom(name, owner, key) VALUES(?, ?, ?)", [className, ownerId, key]);
 
     // Use the ID of the newly created classroom returned by dbRun
     const classId = insertResult;
@@ -145,7 +128,6 @@ async function createClass(className, ownerId, ownerEmail) {
         id: classId,
         name: className,
         key: key,
-        tags: null,
     };
 
     // Initialize the classroom in memory
@@ -167,14 +149,11 @@ async function createClass(className, ownerId, ownerEmail) {
  */
 async function initializeClassroom(id) {
     // Fetch classroom data from database
-    const classroom = await dbGet("SELECT id, name, key, owner, tags FROM classroom WHERE id = ?", [id]);
+    const classroom = await dbGet("SELECT id, name, key, owner FROM classroom WHERE id = ?", [id]);
 
     if (!classroom) {
         throw new NotFoundError(`Class with id ${id} does not exist`);
     }
-
-    // Normalize classroom data (JSON parsing, tags, poll history)
-    normalizeClassroomData(classroom);
 
     // Create or update classroom in memory
     const customRoles = await loadCustomRoles(id);
@@ -187,13 +166,11 @@ async function initializeClassroom(id) {
                 className: classroom.name,
                 key: classroom.key,
                 owner: classroom.owner,
-                tags: classroom.tags,
                 customRoles,
                 availableRoles,
             })
         );
     } else {
-        classStateStore.getClassroom(id).tags = classroom.tags;
         classStateStore.getClassroom(id).customRoles = customRoles;
         classStateStore.getClassroom(id).availableRoles = availableRoles;
     }
@@ -206,22 +183,7 @@ async function initializeClassroom(id) {
 
         const student = classStudents[studentEmail];
 
-        // Normalize student.tags to an array of strings
-        if (!Array.isArray(student.tags)) {
-            if (typeof student.tags === "string" && student.tags.trim() !== "") {
-                student.tags = student.tags
-                    .split(",")
-                    .map((t) => t.trim())
-                    .filter(Boolean);
-            } else {
-                student.tags = [];
-            }
-        }
-
-        // Ensure 'Offline' is present exactly once at the front
-        if (!student.tags.includes("Offline")) {
-            student.tags.unshift("Offline");
-        }
+        student.isOffline = true;
 
         student.displayName = student.displayName || student.email;
         classStateStore.setUser(studentEmail, student);
@@ -294,7 +256,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
     // If the user is the owner of the classroom, ensure they have a classUser entry
     if (classroomDb.owner === user.id) {
         if (!classUser) {
-            classUser = { tags: "" };
+            classUser = { };
         }
     }
 
@@ -308,17 +270,13 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const roleRefs = buildRoleReferences(roleAssignments);
         currentUser.roles = { global: currentUser.roles?.global || [], class: roleRefs };
         currentUser.isClassOwner = classroomDb.owner === user.id;
+		currentUser.isOffline = false;
 
         // If the user is banned, don't let them join
         if (getAssignedClassScopes(currentUser, classroom).includes(SCOPES.CLASS.SYSTEM.BLOCKED) && !currentUser.isClassOwner) {
             throw new ForbiddenError("You are banned from that class");
         }
         currentUser.activeClass = classId;
-
-        // Load tags from classusers table
-        currentUser.tags = classUser.tags ? classUser.tags.split(",").filter(Boolean) : [];
-        currentUser.tags = currentUser.tags.filter((tag) => tag !== "Offline");
-        classStateStore.getUser(email).tags = currentUser.tags;
 
         // Add the student to the class
         classStateStore.setClassroomStudent(classId, email, currentUser);
@@ -353,7 +311,6 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         currentUser.roles = { global: currentUser.roles?.global || [], class: [] };
         currentUser.isClassOwner = isOwner;
         currentUser.activeClass = classId;
-        currentUser.tags = [];
 
         // Add the student to the class
         classStateStore.setClassroomStudent(classId, email, currentUser);
@@ -542,7 +499,7 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
         student.activeClass = null;
         student.break = false;
         student.help = false;
-        student.tags = ["Offline"];
+        student.isOffline = true;
         if (classStateStore.getUser(email)) {
             classStateStore.setUser(email, student);
         }
@@ -665,10 +622,10 @@ function broadcastClassUpdate(classId, preferredEmail) {
  * Requests a break for a student.
  * @param {string} reason - Break reason.
  * @param {Object} userData - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {void}
  */
-function requestBreak(reason, userData) {
-    const classId = userData.classId;
+function requestBreak(reason, userData, classId) {
     const email = userData.email;
     if (!classStateStore.getClassroom(classId)?.isActive) {
         return "This class is not currently active.";
@@ -688,12 +645,12 @@ function requestBreak(reason, userData) {
  * @param {boolean} breakApproval - Whether the break is approved.
  * @param {number} userId - Student user ID.
  * @param {Object} userData - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {Promise<boolean|string>}
  */
-async function approveBreak(breakApproval, userId, userData) {
+async function approveBreak(breakApproval, userId, userData, classId) {
     const email = await getEmailFromId(userId);
 
-    const classId = userData.classId;
     const student = classStateStore.getClassroomStudent(classId, email);
     classStateStore.updateClassroomStudent(classId, email, { break: breakApproval });
 
@@ -707,14 +664,14 @@ async function approveBreak(breakApproval, userId, userData) {
 
 /**
  * Ends a student's active break.
- * @param {Object} userData - Session user data.
+ * @param {Object} userId - Session user id.
+ * @param {number} classId - Student's current class ID.
  * @returns {void}
  */
-function endBreak(userData) {
-    const email = userData.email;
-    const classId = userData.classId;
+async function endBreak(userId, classId) {
+    const email = await getEmailFromId(userId);
     const student = classStateStore.getClassroomStudent(classId, email);
-    classStateStore.updateClassroomStudent(classId, userData.email, { break: false });
+    classStateStore.updateClassroomStudent(classId, email, { break: false });
 
     io.to(`user-${email}`).emit("break", false);
     if (student && student.API) {
@@ -729,10 +686,10 @@ function endBreak(userData) {
  * Sends a help ticket for a student.
  * @param {string} reason - Help reason.
  * @param {Object} userSession - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {void}
  */
-function sendHelpTicket(reason, userSession) {
-    const classId = userSession.classId;
+function sendHelpTicket(reason, userSession, classId) {
     const email = userSession.email;
     if (!classStateStore.getClassroom(classId)?.isActive) {
         return "This class is not currently active.";
@@ -757,10 +714,10 @@ function sendHelpTicket(reason, userSession) {
  * Deletes a help ticket for a student.
  * @param {number} studentId - Student user ID.
  * @param {Object} userData - Session user data.
+ * @param {number} classId - Student's current class ID.
  * @returns {Promise<void>}
  */
-async function deleteHelpTicket(studentId, userData) {
-    const classId = userData.classId;
+async function deleteHelpTicket(studentId, userData, classId) {
     const email = userData.email;
     const studentEmail = await getEmailFromId(studentId);
 
@@ -768,106 +725,6 @@ async function deleteHelpTicket(studentId, userData) {
 
     broadcastClassUpdate(classId, email);
     return true;
-}
-
-// Tags
-
-/**
- * Sets the allowed tags for a class and normalizes existing student tags.
- * @param {Object} userSession - Session user data.
- * @returns {Promise<void>}
- */
-function resolveClassIdFromSession(userSession) {
-    const classId = userSession?.classId ?? userSession?.activeClass;
-    const normalizedClassId = Number(classId);
-    return Number.isFinite(normalizedClassId) && normalizedClassId > 0 ? normalizedClassId : null;
-}
-
-/**
- * Replace the class tag list and prune student tags that are no longer allowed.
- *
- * @param {*} tags - tags.
- * @param {*} userSession - userSession.
- * @returns {Promise<*>}
- */
-async function setTags(tags, userSession) {
-    if (!Array.isArray(tags)) return;
-
-    tags = tags
-        .filter((tag) => typeof tag === "string")
-        .map((tag) => tag.trim())
-        .map((tag) => tag.replace(/[\r\n\t]/g, ""))
-        .filter((tag) => tag !== "")
-        .sort();
-    if (!tags.includes("Offline")) tags.push("Offline");
-
-    const classId = resolveClassIdFromSession(userSession);
-    const classroom = classStateStore.getClassroom(classId);
-    if (!classId || !classroom) return;
-    classStateStore.updateClassroom(classId, { tags });
-
-    for (const student of Object.values(classroom.students)) {
-        const accessProfile = getClassAccessProfile(student, classroom);
-        if (accessProfile.isBlocked || accessProfile.isManager) continue;
-        if (!student.tags) student.tags = [];
-
-        let studentTags = [];
-        studentTags = student.tags.filter(Boolean);
-        studentTags = studentTags.filter((tag) => tags.includes(tag));
-        student.tags = studentTags;
-
-        try {
-            await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [studentTags.join(","), student.id, classId]);
-        } catch (err) {}
-    }
-
-    await dbRun("UPDATE classroom SET tags = ? WHERE id = ?", [tags.toString(), classId]);
-}
-
-/**
- * Saves the tags for a specific student in the class.
- * @param {number} studentId - Student user ID.
- * @param {Object} userSession - Session user data.
- * @returns {Promise<void>}
- */
-async function saveTags(studentId, tags, userSession) {
-    const email = await getEmailFromId(studentId);
-    if (!Array.isArray(tags)) return;
-
-    const classId = resolveClassIdFromSession(userSession);
-    if (!classId) return;
-
-    const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === classId;
-    let normalized = tags
-        .filter((tag) => typeof tag === "string")
-        .map((tag) => tag.trim())
-        .map((tag) => tag.replace(/[\r\n\t]/g, ""))
-        .filter((tag) => tag !== "");
-
-    if (isActiveInClass) {
-        normalized = normalized.filter((tag) => tag !== "Offline");
-    } else if (!normalized.includes("Offline")) {
-        normalized.push("Offline");
-    }
-
-    normalized = normalized.filter((tag) => tag !== "Offline");
-
-    const student = classStateStore.getClassroom(classId)?.students[email];
-    if (!student) return;
-    const oldTags = student.tags || [];
-
-    classStateStore.updateClassroomStudent(classId, email, { tags: normalized });
-
-    const wasExcluded = oldTags.includes("Excluded");
-    const isNowExcluded = normalized.includes("Excluded");
-
-    if (!wasExcluded && isNowExcluded && student.pollRes) {
-        student.pollRes.buttonRes = "";
-        student.pollRes.textRes = "";
-        student.pollRes.date = null;
-    }
-
-    await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, classId]);
 }
 
 // Class Users
@@ -1104,7 +961,7 @@ function clearTimer(classId) {
 
 /**
  * Clears poll votes from students who should be excluded based on class settings,
- * tags, permission levels, break status, and offline status.
+ * permission levels, break status, and offline status.
  * @param {string|number} classId
  * @returns {void}
  */
@@ -1119,10 +976,6 @@ function clearVotesFromExcludedStudents(classId) {
         const accessProfile = getClassAccessProfile(student, classData);
 
         if (classData.poll && classData.poll.excludedRespondents && classData.poll.excludedRespondents.includes(student.id)) {
-            shouldExclude = true;
-        }
-
-        if (student.tags && student.tags.includes("Excluded")) {
             shouldExclude = true;
         }
 
@@ -1142,7 +995,7 @@ function clearVotesFromExcludedStudents(classId) {
             shouldExclude = true;
         }
 
-        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
+        if (student.isOffline || accessProfile.isTeacher || accessProfile.isManager) {
             shouldExclude = true;
         }
 
@@ -1219,8 +1072,6 @@ module.exports = {
     endBreak,
     sendHelpTicket,
     deleteHelpTicket,
-    setTags,
-    saveTags,
     getClassUsers,
     getTimer,
     startTimer,

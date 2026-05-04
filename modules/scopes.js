@@ -25,13 +25,9 @@ const SCOPES = {
         SYSTEM: {
             ADMIN: "class.system.admin",
             PANEL_ACCESS: "class.system.panel_access",
+            CAN_DELETE_CLASS: "class.system.can_delete_class",
+            CAN_RENAME_CLASS: "class.system.can_rename_class",
             BLOCKED: "class.system.blocked",
-        },
-
-        ROLES: {
-            ASSIGN: "class.roles.assign",
-            READ: "class.roles.read",
-            MANAGE: "class.roles.manage",
         },
 
         POLL: {
@@ -43,11 +39,16 @@ const SCOPES = {
             SHARE: "class.poll.share",
         },
 
+        ROLES: {
+            ASSIGN: "class.roles.assign",
+            READ: "class.roles.read",
+            MANAGE: "class.roles.manage",
+        },
+
         STUDENTS: {
             READ: "class.students.read",
             KICK: "class.students.kick",
             BAN: "class.students.ban",
-            PERM_CHANGE: "class.students.perm_change",
         },
 
         SESSION: {
@@ -61,6 +62,7 @@ const SCOPES = {
         BREAK: {
             REQUEST: "class.break.request",
             APPROVE: "class.break.approve",
+            END: "class.break.end",
         },
 
         HELP: {
@@ -69,19 +71,12 @@ const SCOPES = {
         },
 
         TIMER: {
+            READ: "class.timer.read",
             CONTROL: "class.timer.control",
         },
 
         AUXILIARY: {
             CONTROL: "class.auxiliary.control",
-        },
-
-        GAMES: {
-            ACCESS: "class.games.access",
-        },
-
-        TAGS: {
-            MANAGE: "class.tags.manage",
         },
 
         DIGIPOGS: {

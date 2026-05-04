@@ -96,9 +96,9 @@ const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 
 async function seedClassroom(overrides = {}) {
-    const defaults = { name: "Test Class", owner: 1, key: "ABC123", tags: null };
+    const defaults = { name: "Test Class", owner: 1, key: "ABC123" };
     const c = { ...defaults, ...overrides };
-    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", [c.name, c.owner, c.key, c.tags]);
+    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", [c.name, c.owner, c.key]);
     return { id, ...c };
 }
 

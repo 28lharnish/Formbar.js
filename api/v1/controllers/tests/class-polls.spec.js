@@ -136,7 +136,7 @@ describe("POST /api/v1/class/:id/polls/create", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not in state store", async () => {
+    it("returns 404 when class is not in state store", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "lonely@test.com",
             displayName: "Lonely",
@@ -148,7 +148,7 @@ describe("POST /api/v1/class/:id/polls/create", () => {
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ prompt: "Test?" });
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 
@@ -160,7 +160,6 @@ describe("POST /api/v1/class/:id/polls/create", () => {
             prompt: "What is 2+2?",
             answers: ["3", "4", "5"],
             weight: 1,
-            tags: [],
             excludedRespondents: [],
             indeterminate: [],
             allowTextResponses: false,
@@ -190,7 +189,7 @@ describe("POST /api/v1/class/:id/polls/end", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not in state store", async () => {
+    it("returns 404 when class is not in state store", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "lonely@test.com",
             displayName: "Lonely",
@@ -199,7 +198,7 @@ describe("POST /api/v1/class/:id/polls/end", () => {
 
         const res = await request(app).post("/api/v1/class/9999/polls/end").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 
@@ -223,7 +222,7 @@ describe("POST /api/v1/class/:id/polls/clear", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not in state store", async () => {
+    it("returns 404 when class is not in state store", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "lonely@test.com",
             displayName: "Lonely",
@@ -232,7 +231,7 @@ describe("POST /api/v1/class/:id/polls/clear", () => {
 
         const res = await request(app).post("/api/v1/class/9999/polls/clear").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 
@@ -320,7 +319,7 @@ describe("GET /api/v1/class/:id/polls", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when user is not in the class", async () => {
+    it("returns 404 when user is not in the class", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "outsider@test.com",
             displayName: "Outsider",
@@ -329,7 +328,7 @@ describe("GET /api/v1/class/:id/polls", () => {
 
         const res = await request(app).get("/api/v1/class/9999/polls").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 

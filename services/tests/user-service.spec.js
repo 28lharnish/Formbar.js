@@ -211,6 +211,16 @@ describe("getUserDataFromDb()", () => {
         expect(result.permissions).toBe(5);
     });
 
+    it("maps pog_meter from the database to pogMeter", async () => {
+        const seeded = await seedUser({ email: "pogmeter@test.com" });
+        await mockDatabase.dbRun("UPDATE users SET pog_meter = ? WHERE id = ?", [37, seeded.id]);
+
+        const result = await getUserDataFromDb(seeded.id);
+
+        expect(result.pogMeter).toBe(37);
+        expect(result).not.toHaveProperty("pog_meter");
+    });
+
     it("returns undefined for a non-existent id", async () => {
         const result = await getUserDataFromDb(99999);
         expect(result).toBeUndefined();
@@ -561,6 +571,7 @@ describe("getUserClass()", () => {
             id: 42,
             students: { "student@test.com": { email: "student@test.com" } },
         };
+        classStateStore.setUser("student@test.com", { email: "student@test.com", activeClass: 42 });
         const result = getUserClass("student@test.com");
         expect(result).toBe(42);
     });
@@ -599,6 +610,7 @@ describe("getUser()", () => {
             id: classRow.id,
             students: { "inclazz@test.com": { email: "inclazz@test.com", help: true, break: false, pogMeter: 50 } },
         };
+        classStateStore.setUser("inclazz@test.com", { email: "inclazz@test.com", activeClass: classRow.id });
 
         const result = await getUser({ email: "inclazz@test.com" });
         // Owner gets classPermissions = 5

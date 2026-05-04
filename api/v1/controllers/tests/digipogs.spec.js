@@ -35,7 +35,7 @@ jest.mock("@modules/config", () => {
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",
-        rateLimit: {
+        digipogRateLimit: {
             maxAttempts: 5,
             lockoutDuration: 15 * 60 * 1000,
             attemptWindow: 5 * 60 * 1000,
@@ -123,7 +123,6 @@ describe("POST /api/v1/digipogs/award", () => {
             key: "TEST1",
             owner: 99999,
             permissions: null,
-            tags: null,
             settings: null,
         });
         classStateStore.setClassroom(1, classroom);
@@ -164,7 +163,6 @@ describe("POST /api/v1/digipogs/award", () => {
             key: "TEST1",
             owner: teacher.id,
             permissions: null,
-            tags: null,
         });
         classStateStore.setClassroom(1, classroom);
 

@@ -148,7 +148,7 @@ describe("DELETE /api/v1/class/:id/students/:userId/help", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 403 when class not in classStateStore", async () => {
+    it("returns 404 when class not in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "user@test.com",
             permissions: 4,
@@ -156,7 +156,7 @@ describe("DELETE /api/v1/class/:id/students/:userId/help", () => {
 
         const res = await request(app).delete("/api/v1/class/9999/students/1/help").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
     });
 
     it("returns 200 on success", async () => {

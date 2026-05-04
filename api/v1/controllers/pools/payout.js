@@ -76,7 +76,7 @@ module.exports = (router) => {
         "/pools/:id/payout",
         isAuthenticated,
         hasScope(SCOPES.GLOBAL.POOLS.MANAGE),
-        isOwnerOrHasScopes(digipogService.poolOwnerCheck, [SCOPES.GLOBAL.SYSTEM.ADMIN], "You do not own this pool."),
+        isOwnerOrHasScopes(digipogService.poolOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not own this pool."),
         async (req, res) => {
             const poolId = Number(req.params.id);
 

@@ -52,7 +52,6 @@ module.exports = {
                     socket.request.session.userId = user.id;
                     socket.request.session.displayName = user.displayName;
                     socket.request.session.verified = user.verified;
-                    socket.request.session.tags = user.tags;
                     socket.request.session.classId = user.activeClass || null;
 
                     next();

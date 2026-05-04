@@ -672,7 +672,7 @@ async function removeStudentRole(classId, userId, roleId) {
     }
 
     const existing = await dbGet(
-        `SELECT 1
+        `SELECT *
          FROM user_roles ur
          WHERE ur.userId = ?
            AND ur.roleId = ?
@@ -682,7 +682,8 @@ async function removeStudentRole(classId, userId, roleId) {
                     ur.classId IS NULL
                     AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = ur.roleId AND cr.classId = ?)
                 )
-           )`,
+           )
+		LIMIT 1`,
         [userId, role.id, classId, classId]
     );
     const classroomObj = classStateStore.getClassroom(classId);

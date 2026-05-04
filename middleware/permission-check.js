@@ -142,17 +142,16 @@ function isSelfOrHasScopes(scopes, message) {
         });
     };
 }
-
 /**
  * Middleware: allows access if the user owns the resource or has the specified scope.
  * The ownerCheck function receives (req) and must return a boolean (or promise of boolean).
  * @param {Function} ownerCheck - Async function (req) => boolean indicating ownership.
- * @param {string | string[]} scope - The scope(s) required if the user is not the owner.
+ * @param {string | string[]} scopes - The scope(s) required if the user is not the owner.
  * @param {string} [message] - Optional custom error message.
  * @returns {Function} Express middleware function.
  */
 
-function isOwnerOrHasScopes(ownerCheck, scope, message) {
+function isOwnerOrHasScopes(ownerCheck, scopes, message) {
     return async function (req, res, next) {
         if (!req.user || !req.user.email) {
             throw new AuthError("User is not authenticated");
@@ -163,7 +162,7 @@ function isOwnerOrHasScopes(ownerCheck, scope, message) {
             return next();
         }
 
-        const requiredScopes = Array.isArray(scope) ? scope : [scope];
+        const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
         const user = classStateStore.getUser(req.user.email) || req.user;
 
         let classroom = null;
@@ -180,7 +179,7 @@ function isOwnerOrHasScopes(ownerCheck, scope, message) {
             }
         }
 
-        const hasRequiredScope = requiredScopes.some((requiredScope) => {
+        const hasRequiredScope = requiredScopes.every((requiredScope) => {
             if (typeof requiredScope !== "string") {
                 return false;
             }
@@ -260,4 +259,4 @@ module.exports = {
     isOwnerOrHasScopes,
     isClassMember,
     normalizeClassId,
-}
+};

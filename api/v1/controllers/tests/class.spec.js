@@ -73,7 +73,6 @@ const activeController = require("../class/active");
 const enrollController = require("../class/enroll");
 const unenrollController = require("../class/unenroll");
 const deleteController = require("../class/delete");
-const tagsController = require("../class/tags");
 const linksController = require("../class/links/links");
 const addLinkController = require("../class/links/add");
 const changeLinkController = require("../class/links/change");
@@ -83,11 +82,10 @@ const kickController = require("../class/kick");
 const regenerateCodeController = require("../class/regenerate-code");
 
 const { classStateStore, Classroom } = require("@services/classroom-service");
-const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS, GUEST_PERMISSIONS, SCOPES } = require("@modules/permissions");
 
 const app = createTestApp(
     createController,
-    tagsController,
     classController,
     joinController,
     leaveController,
@@ -138,7 +136,6 @@ async function seedClassroom(ownerId, { key = "TEST1", className = "Test Class" 
         key: row.key,
         owner: row.owner,
         permissions: null,
-        tags: null,
     });
     classStateStore.setClassroom(row.id, classroom);
     return row.id;
@@ -254,12 +251,12 @@ describe("GET /api/v1/class/:id", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 404 when class is not started (not in classStateStore)", async () => {
+    it("returns 403 when class is not started (not in classStateStore)", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app).get("/api/v1/class/9999").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 
@@ -276,7 +273,6 @@ describe("GET /api/v1/class/:id", () => {
             students: {},
             key: "ABCD",
             poll: null,
-            tags: [],
             settings: {},
             timer: {},
         });
@@ -285,6 +281,119 @@ describe("GET /api/v1/class/:id", () => {
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
+    });
+
+    it("returns a restricted class payload for users without class read scopes", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-class-view@example.com",
+            displayName: "Teacher View",
+            permissions: 4,
+        });
+        const { tokens: studentTokens, user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-class-view@example.com",
+            displayName: "Student View",
+            permissions: 2,
+        });
+
+        const classId = await seedClassroom(teacher.id, { key: "SCP01", className: "Scope Class" });
+        await seedClassMembership(mockDatabase, student.id, classId, 2);
+
+        classStateStore.setClassroom(classId, {
+            classId,
+            className: "Scope Class",
+            isActive: true,
+            owner: teacher.id,
+            key: "SCP01",
+            poll: {
+                active: true,
+                responses: [],
+            },
+            settings: { emailEnabled: false },
+            timer: { active: false },
+            availableRoles: [{ id: 99, name: "Custom", scopes: [] }],
+            students: {
+                [teacher.email]: {
+                    id: teacher.id,
+                    email: teacher.email,
+                    roles: { global: [], class: [] },
+                },
+                [student.email]: {
+                    id: student.id,
+                    email: student.email,
+                    roles: { global: [], class: [] },
+                },
+            },
+        });
+
+        const res = await request(app).get(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.students).toBeUndefined();
+        expect(res.body.data.poll).toBeUndefined();
+        expect(res.body.data.settings).toBeUndefined();
+        expect(res.body.data.roles).toBeUndefined();
+    });
+
+    it("returns expanded class sections when the user has matching class scopes", async () => {
+        const { user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-class-scope@example.com",
+            displayName: "Teacher Scope",
+            permissions: 4,
+        });
+        const { tokens: studentTokens, user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-class-scope@example.com",
+            displayName: "Student Scope",
+            permissions: 2,
+        });
+
+        const classId = await seedClassroom(teacher.id, { key: "SCP02", className: "Scoped Access Class" });
+        await seedClassMembership(mockDatabase, student.id, classId, 2);
+
+        classStateStore.setClassroom(classId, {
+            classId,
+            className: "Scoped Access Class",
+            isActive: true,
+            owner: teacher.id,
+            key: "SCP02",
+            poll: {
+                active: true,
+                responses: [{ answer: "Yes", responses: 0 }],
+            },
+            settings: { emailEnabled: false },
+            timer: { active: true, startTime: Date.now(), endTime: Date.now() + 1000 },
+            availableRoles: [{ id: 100, name: "Custom Reader", scopes: [SCOPES.CLASS.STUDENTS.READ] }],
+            students: {
+                [teacher.email]: {
+                    id: teacher.id,
+                    email: teacher.email,
+                    roles: { global: [], class: [] },
+                },
+                [student.email]: {
+                    id: student.id,
+                    email: student.email,
+                    roles: { global: [], class: [] },
+                    scopes: {
+                        global: [],
+                        class: [
+                            SCOPES.CLASS.STUDENTS.READ,
+                            SCOPES.CLASS.POLL.READ,
+                            SCOPES.CLASS.SESSION.SETTINGS,
+                            SCOPES.CLASS.ROLES.READ,
+                        ],
+                    },
+                },
+            },
+        });
+
+        const res = await request(app).get(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.students).toEqual(expect.objectContaining({ [teacher.email]: expect.any(Object), [student.email]: expect.any(Object) }));
+        expect(res.body.data.poll).toEqual(expect.objectContaining({ active: true }));
+        expect(res.body.data.settings).toEqual({ emailEnabled: false });
+        expect(res.body.data.roles).toEqual(expect.arrayContaining([expect.objectContaining({ id: 100 })]));
     });
 });
 
@@ -323,12 +432,12 @@ describe("POST /api/v1/class/:id/join", () => {
         expect(res.body.success).toBe(true);
     });
 
-    it("returns 404 when class does not exist", async () => {
+    it("returns 403 when class does not exist", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app).post("/api/v1/class/9999/join").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 
@@ -404,12 +513,12 @@ describe("POST /api/v1/class/:id/leave", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 404 when user is not in the specified class", async () => {
+    it("returns 403 when user is not in the specified class", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app).post("/api/v1/class/9999/leave").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
 });
@@ -422,7 +531,7 @@ describe("POST /api/v1/class/:id/start", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not active in classStateStore", async () => {
+    it("returns 404 when class is not active in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             displayName: "Teacher",
@@ -431,7 +540,7 @@ describe("POST /api/v1/class/:id/start", () => {
 
         const res = await request(app).post("/api/v1/class/9999/start").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 });
@@ -444,7 +553,7 @@ describe("POST /api/v1/class/:id/end", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not active in classStateStore", async () => {
+    it("returns 404 when class is not active in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             displayName: "Teacher",
@@ -453,7 +562,7 @@ describe("POST /api/v1/class/:id/end", () => {
 
         const res = await request(app).post("/api/v1/class/9999/end").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 });
@@ -466,7 +575,7 @@ describe("GET /api/v1/class/:id/students", () => {
         expect(res.body.success).toBe(false);
     });
 
-    it("returns 403 when class is not active in classStateStore", async () => {
+    it("returns 404 when class is not active in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             displayName: "Teacher",
@@ -475,7 +584,7 @@ describe("GET /api/v1/class/:id/students", () => {
 
         const res = await request(app).get("/api/v1/class/9999/students").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 
@@ -572,7 +681,7 @@ describe("GET /api/v1/class/:id/active", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests merged from room.spec.js (enroll, unenroll, delete, tags, links, banned)
+// Tests merged from room.spec.js (enroll, unenroll, delete, links, banned)
 // ---------------------------------------------------------------------------
 
 describe("POST /api/v1/class/enroll/:code", () => {
@@ -612,11 +721,39 @@ describe("DELETE /api/v1/class/:id", () => {
         const { tokens: otherTokens, user: otherUser } = await seedAuthenticatedUser(mockDatabase, {
             email: "other@example.com",
             displayName: "Other",
-            permissions: TEACHER_PERMISSIONS,
+            permissions: GUEST_PERMISSIONS,
         });
 
         const res = await request(app).delete(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${otherTokens.accessToken}`);
         expect(res.status).toBe(403);
+    });
+
+    it("returns 200 when a user with class.system.can_delete_class deletes the class", async () => {
+        const { user: owner } = await seedAuthenticatedUser(mockDatabase, {
+            email: "owner@example.com",
+            displayName: "Owner",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(owner.id);
+
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "class-admin@example.com",
+            displayName: "Class Admin",
+            permissions: GUEST_PERMISSIONS,
+        });
+
+        const classAdmin = classStateStore.getUser(user.email);
+        classStateStore.setUser(user.email, {
+            ...classAdmin,
+            scopes: {
+                global: [],
+                class: [SCOPES.CLASS.SYSTEM.CAN_DELETE_CLASS],
+            },
+        });
+
+        const res = await request(app).delete(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
     });
 
     it("returns 200 when the class owner deletes the class", async () => {
@@ -661,93 +798,6 @@ describe("DELETE /api/v1/class/:id", () => {
 
         const res = await request(app).delete("/api/v1/class/99999").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(404);
-    });
-});
-
-describe("GET /api/v1/class/:id/tags", () => {
-    it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/class/1/tags");
-        expect(res.status).toBe(401);
-    });
-
-    it("returns 404 when class is not loaded", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-        const res = await request(app).get("/api/v1/class/9999/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
-        expect(res.status).toBe(404);
-    });
-
-    it("returns 200 with tags for a loaded class", async () => {
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher@example.com",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const classId = await seedClassroom(user.id);
-        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
-
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app).get(`/api/v1/class/${classId}/tags`).set("Authorization", `Bearer ${tokens.accessToken}`);
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data.tags)).toBe(true);
-    });
-});
-
-describe("PUT /api/v1/class/:id/tags", () => {
-    it("returns 401 without authentication", async () => {
-        const res = await request(app)
-            .put("/api/v1/class/1/tags")
-            .send({ tags: ["math"] });
-        expect(res.status).toBe(401);
-    });
-
-    it("returns 403 when user lacks class.tags.manage scope", async () => {
-        const { user: owner } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher@example.com",
-            displayName: "Tag Owner",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "student@example.com",
-            displayName: "Tag Student",
-            permissions: 2,
-        });
-
-        const classId = await seedClassroom(owner.id);
-        await enrollUserInClass(user, classId, 2);
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app)
-            .put(`/api/v1/class/${classId}/tags`)
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ tags: ["math"] });
-        expect(res.status).toBe(403);
-    });
-
-    it("persists tags for a loaded class when the teacher is active in that class", async () => {
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher-tags@example.com",
-            displayName: "Tag Teacher",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const classId = await seedClassroom(user.id);
-        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
-
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app)
-            .put(`/api/v1/class/${classId}/tags`)
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ tags: ["math", "science"] });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-
-        const classroom = classStateStore.getClassroom(classId);
-        expect(classroom.tags).toEqual(["math", "science", "Offline"]);
-
-        const persisted = await mockDatabase.dbGet("SELECT tags FROM classroom WHERE id = ?", [classId]);
-        expect(persisted.tags).toBe("math,science,Offline");
     });
 });
 
@@ -893,28 +943,6 @@ describe("DELETE /api/v1/class/:id/links", () => {
 // Deprecated endpoints (use /class/ paths)
 // ---------------------------------------------------------------------------
 
-describe("POST /api/v1/class/:id/tags (deprecated)", () => {
-    it("returns 200 with deprecation headers when a teacher sets tags", async () => {
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
-            email: "teacher@example.com",
-            permissions: TEACHER_PERMISSIONS,
-        });
-        const classId = await seedClassroom(user.id);
-        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
-        classStateStore.updateUser(user.email, { activeClass: classId });
-
-        const res = await request(app)
-            .post(`/api/v1/class/${classId}/tags`)
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ tags: ["science"] });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
-
 describe("POST /api/v1/class/:id/links/change (deprecated)", () => {
     it("returns 200 with deprecation headers when a teacher changes a link", async () => {
         const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
@@ -967,7 +995,7 @@ describe("GET /api/v1/class/:id/banned", () => {
         expect(res.status).toBe(401);
     });
 
-    it("returns 403 when class not in classStateStore", async () => {
+    it("returns 404 when class not in classStateStore", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             permissions: TEACHER_PERMISSIONS,
@@ -975,7 +1003,7 @@ describe("GET /api/v1/class/:id/banned", () => {
 
         const res = await request(app).get("/api/v1/class/9999/banned").set("Authorization", `Bearer ${tokens.accessToken}`);
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(404);
     });
 
     it("returns 200 with empty array when no banned users", async () => {
