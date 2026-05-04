@@ -173,8 +173,6 @@ describe("SocketUpdates classUpdate visibility", () => {
                         displayName: "Student",
                     }),
                 }),
-                myId: 11,
-                myRoles: [],
                 poll: expect.objectContaining({
                     totalResponses: 1,
                     totalResponders: 1,
