@@ -1,4 +1,4 @@
--- 31_add_correct_poll_answer.sql
+-- 37_add_correct_poll_answer.sql
 -- Adds an isCorrect flag to each poll response option without changing the table schema.
 
 UPDATE poll_history
