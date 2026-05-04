@@ -1,4 +1,4 @@
--- 29_add_user_tokens.sql
+-- 28_add_user_tokens.sql
 -- Purpose-bound, expiring, single-use account tokens for password resets,
 -- PIN resets, and email verification.
 

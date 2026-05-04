@@ -1,4 +1,4 @@
--- 27_add_performance_indexes.sql
+-- 25_add_performance_indexes.sql
 -- Adds non-breaking performance indexes to common lookup and join columns.
 
 -- Classroom lookups

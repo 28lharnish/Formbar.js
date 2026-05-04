@@ -1,4 +1,4 @@
--- 28_allow_null_api_key
+-- 26_allow_null_api_key
 -- Allows null API keys while keeping API values unique for indexed lookups.
 
 ALTER TABLE users RENAME TO users_temp;
