@@ -56,8 +56,10 @@ module.exports = (router) => {
      *         schema:
      *           type: string
      *         description: CSRF protection token, returned unchanged in the redirect
-     *     responses:
-     *       302:
+    *     responses:
+    *       200:
+    *         description: Returns the redirect URL as JSON when requested with application/json
+    *       302:
      *         description: Redirects to redirect_uri with authorization code and state
      *       400:
      *         description: Missing required parameters or unsupported response_type
@@ -75,6 +77,7 @@ module.exports = (router) => {
     router.get("/oauth/authorize", isAuthenticated, async (req, res) => {
         const { response_type, client_id, redirect_uri, scope, state } = req.query;
         const { authorization } = req.headers;
+        const wantsJson = req.accepts("json") === "json" || req.query.response_mode === "json" || req.query.format === "json";
 
         // If response_type is provided, validate it
         // If not, we can assume default behavior
@@ -110,6 +113,17 @@ module.exports = (router) => {
         url.searchParams.append("state", state);
 
         req.infoEvent("oauth.authorize.success", "Authorization code generated", { client_id });
+
+        if (wantsJson) {
+            res.json({
+                success: true,
+                data: {
+                    redirectUrl: url.toString(),
+                },
+            });
+            return;
+        }
+
         res.status(302).redirect(url.toString());
     });
 };

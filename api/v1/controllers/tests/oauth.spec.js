@@ -163,6 +163,28 @@ describe("GET /api/v1/oauth/authorize", () => {
         expect(location.searchParams.get("state")).toBe("xyz");
         expect(location.searchParams.get("code")).toBeTruthy();
     });
+
+    it("returns a JSON redirect URL when application/json is requested", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        await seedOAuthClient();
+
+        const res = await request(app)
+            .get("/api/v1/oauth/authorize")
+            .set("Authorization", tokens.accessToken)
+            .set("Accept", "application/json")
+            .query({
+                client_id: OAUTH_CLIENT_ID,
+                redirect_uri: OAUTH_REDIRECT_URI,
+                scope: "read",
+                state: "xyz",
+            });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.redirectUrl).toContain(OAUTH_REDIRECT_URI);
+        expect(res.body.data.redirectUrl).toContain("code=");
+        expect(res.body.data.redirectUrl).toContain("state=xyz");
+    });
 });
 
 describe("POST /api/v1/oauth/token", () => {

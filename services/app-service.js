@@ -4,6 +4,7 @@ const { sha256 } = require("@modules/crypto");
 const { createPool } = require("@services/digipog-service");
 const { registerItem, addItemToInventory } = require("@services/inventory-service");
 const ValidationError = require("@errors/validation-error");
+const { get } = require("http");
 
 const SHARES_PER_APP = 100;
 
@@ -92,6 +93,11 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
     }
 }
 
+async function getAppById(appId) {
+    const app = await dbGet("SELECT id, name, description, owner_user_id AS ownerId FROM apps WHERE id = ?", [appId]);
+    return app || null;
+}
+
 /**
  * Validate OAuth Client Redirect.
  *
@@ -129,6 +135,7 @@ async function validateOAuthClientSecret({ clientId, redirectUri, clientSecret }
 
 module.exports = {
     createApp,
+    getAppById,
     normalizeRedirectUris,
     validateOAuthClientRedirect,
     validateOAuthClientSecret,
