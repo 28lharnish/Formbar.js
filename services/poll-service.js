@@ -159,7 +159,18 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
  * @throws {ValidationError} If class is not active
  */
 async function createPoll(classId, pollData, userData) {
-    const { prompt, answers, blind, weight, excludedRespondents, allowVoteChanges, allowTextResponses, allowMultipleResponses, autoEndTimer, autoEndThreshold } = pollData;
+    const {
+        prompt,
+        answers,
+        blind,
+        weight,
+        excludedRespondents,
+        allowVoteChanges,
+        allowTextResponses,
+        allowMultipleResponses,
+        autoEndTimer,
+        autoEndThreshold,
+    } = pollData;
     const numberOfResponses = Object.keys(answers).length;
 
     requireInternalParam(classId, "classId");
@@ -645,27 +656,32 @@ const watchedPolls = new Map();
 function watchPoll(classId, pollData) {
     const { autoEndTimer, autoEndThreshold } = pollData;
     if (autoEndTimer) {
-        watchedPolls.set(classId, setTimeout(() => {
-            const classroom = classStateStore.getClassroom(classId);
-            if (!classroom || !classroom.poll || !classroom.poll.status || classroom.poll.startTime !== pollData.startTime) {
-                watchedPolls.delete(classId);
-                return;
-            }
+        watchedPolls
+            .set(
+                classId,
+                setTimeout(() => {
+                    const classroom = classStateStore.getClassroom(classId);
+                    if (!classroom || !classroom.poll || !classroom.poll.status || classroom.poll.startTime !== pollData.startTime) {
+                        watchedPolls.delete(classId);
+                        return;
+                    }
 
-            const pollTime = Date.now() - classroom.poll.startTime;
-            if (pollTime >= autoEndTimer) {
-                if (!autoEndThreshold) {
-                    clearPoll(classId, null, false);
-                    return;
-                }
+                    const pollTime = Date.now() - classroom.poll.startTime;
+                    if (pollTime >= autoEndTimer) {
+                        if (!autoEndThreshold) {
+                            clearPoll(classId, null, false);
+                            return;
+                        }
 
-                const onlineStudents = Object.keys(classroom.students).filter((student) => !classroom.students[student].isOffline).length;
-                const responsePercentage = classroom.poll.responses.length / onlineStudents;
-                if (responsePercentage >= autoEndThreshold) {
-                    clearPoll(classId, null, false);
-                }
-            }
-        }, autoEndTimer);
+                        const onlineStudents = Object.keys(classroom.students).filter((student) => !classroom.students[student].isOffline).length;
+                        const responsePercentage = classroom.poll.responses.length / onlineStudents;
+                        if (responsePercentage >= autoEndThreshold) {
+                            clearPoll(classId, null, false);
+                        }
+                    }
+                }, autoEndTimer)
+            )
+            .unref();
     }
 }
 
