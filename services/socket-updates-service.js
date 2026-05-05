@@ -459,9 +459,7 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
         key: access.canReadKey ? classData.key : undefined,
         settings: access.canReadSettings ? classData.settings : undefined,
         roles: access.canReadRoles ? classData.availableRoles || [] : undefined,
-        students: studentEntries.length
-            ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)]))
-            : undefined,
+        students: access.canReadStudents ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)])) : undefined,
     };
 
     // If studentEmail is provided, include personalized data for that student
