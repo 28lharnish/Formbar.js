@@ -407,6 +407,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
         return;
     }
 
+    const rows = [];
     for (const student of Object.values(classroom.students)) {
         if (!userHasScope(student, SCOPES.CLASS.SYSTEM.ADMIN, classroom)) {
             const buttonRes = student.pollRes.buttonRes;
@@ -426,11 +427,19 @@ async function clearPoll(classId, userSession, updateClass = true) {
             if (buttonResponse === null && textResponse === null) continue;
 
             const studentId = student.id;
-            await dbRun(
-                "INSERT OR REPLACE INTO poll_answers(pollId, classId, userId, responseIds, buttonResponse, textResponse, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)",
-                [currentPollId, classId, studentId, responseIds, buttonResponse, textResponse, Date.now()]
-            );
+            rows.push([currentPollId, classId, studentId, responseIds, buttonResponse, textResponse, Date.now()]);
         }
+    }
+
+    // Insert all of the poll answers into the database at once
+    if (rows.length > 0) {
+        const placeholders = rows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
+        const values = rows.flat();
+
+        await dbRun(
+            `INSERT OR REPLACE INTO poll_answers(pollId, classId, userId, responseIds, buttonResponse, textResponse, createdAt) VALUES ${placeholders}`,
+            values
+        );
     }
 
     if (updateClass && userSession) {

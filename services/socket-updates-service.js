@@ -128,7 +128,8 @@ function getClassUpdateAccess(viewer, classroom, controlPanelOverride = false) {
 
     return {
         hasControlPanel,
-        canReadCorrectPollAnswers: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.POLL.READ_CORRECT_ANSWERS, classroom) || classroom.poll.status === false,
+        canReadCorrectPollAnswers:
+            hasControlPanel || userHasScope(viewer, SCOPES.CLASS.POLL.READ_CORRECT_ANSWERS, classroom) || classroom.poll.status === false,
         canReadStudents: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.STUDENTS.READ, classroom),
         canReadPoll: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.POLL.READ, classroom),
         canReadRoles: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.ROLES.READ, classroom),
@@ -153,7 +154,7 @@ function getClassStudentSnapshot(student) {
         pollRes: student.pollRes,
         help: student.help,
         break: student.break,
-		isOffline: student.isOffline,
+        isOffline: student.isOffline,
         pogMeter: student.pogMeter,
         isGuest: student.isGuest,
     };
@@ -451,12 +452,14 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
     const studentEntries = access.canReadStudents ? Object.entries(classData.students) : viewerStudent ? [[options.studentEmail, viewerStudent]] : [];
 
     const pollData = access.canReadPoll ? poll : undefined;
-    pollData.responses = pollData.responses.map((response) => {
-        return {
-            ...response,
-            isCorrect: access.canReadCorrectPollAnswers ? response.isCorrect : undefined,
-        };
-    });
+    if (pollData) {
+        pollData.responses = pollData.responses.map((response) => {
+            return {
+                ...response,
+                isCorrect: access.canReadCorrectPollAnswers ? response.isCorrect : undefined,
+            };
+        });
+    }
 
     const result = {
         id: classData.id,
@@ -468,7 +471,9 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
         key: access.canReadKey ? classData.key : undefined,
         settings: access.canReadSettings ? classData.settings : undefined,
         roles: access.canReadRoles ? classData.availableRoles || [] : undefined,
-        students: access.canReadStudents ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)])) : undefined,
+        students: access.canReadStudents
+            ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)]))
+            : undefined,
     };
 
     // If studentEmail is provided, include personalized data for that student

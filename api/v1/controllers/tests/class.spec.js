@@ -375,12 +375,7 @@ describe("GET /api/v1/class/:id", () => {
                     roles: { global: [], class: [] },
                     scopes: {
                         global: [],
-                        class: [
-                            SCOPES.CLASS.STUDENTS.READ,
-                            SCOPES.CLASS.POLL.READ,
-                            SCOPES.CLASS.SESSION.SETTINGS,
-                            SCOPES.CLASS.ROLES.READ,
-                        ],
+                        class: [SCOPES.CLASS.STUDENTS.READ, SCOPES.CLASS.POLL.READ, SCOPES.CLASS.SESSION.SETTINGS, SCOPES.CLASS.ROLES.READ],
                     },
                 },
             },
