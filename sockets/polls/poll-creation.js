@@ -1,4 +1,3 @@
-const { classStateStore } = require("@services/classroom-service");
 const { createPoll } = require("@services/poll-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { SCOPES } = require("@modules/permissions");
@@ -39,6 +38,8 @@ module.exports = {
                         weight: Number(weight ?? 1),
                         indeterminate: Array.isArray(indeterminate) ? indeterminate : [],
                         excludedRespondents: Array.isArray(boxes) ? boxes : [],
+                        autoEndTimer: Number(time),
+                        autoEndThreshold: autoEndThreshold,
                     };
                 }
 
@@ -54,6 +55,8 @@ module.exports = {
                         weight: Number(pollData.weight ?? 1),
                         excludedRespondents: Array.isArray(pollData.excludedRespondents) ? pollData.excludedRespondents : [],
                         indeterminate: Array.isArray(pollData.indeterminate) ? pollData.indeterminate : [],
+                        autoEndTimer: pollData.autoEndTimer,
+                        autoEndThreshold: pollData.autoEndThreshold,
                     },
                     socketContext.session
                 );

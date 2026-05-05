@@ -159,7 +159,7 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
  * @throws {ValidationError} If class is not active
  */
 async function createPoll(classId, pollData, userData) {
-    const { prompt, answers, blind, weight, excludedRespondents, allowVoteChanges, allowTextResponses, allowMultipleResponses } = pollData;
+    const { prompt, answers, blind, weight, excludedRespondents, allowVoteChanges, allowTextResponses, allowMultipleResponses, autoEndTimer, autoEndThreshold } = pollData;
     const numberOfResponses = Object.keys(answers).length;
 
     requireInternalParam(classId, "classId");
@@ -221,11 +221,19 @@ async function createPoll(classId, pollData, userData) {
 
     // Set the poll's data in the classroom
     pollRuntimeStore.setPollStartTime(classId, pollStartTime);
-    classroom.poll.startTime = pollStartTime;
-    classroom.poll.weight = weight;
-    classroom.poll.allowTextResponses = allowTextResponses;
-    classroom.poll.prompt = prompt;
-    classroom.poll.allowMultipleResponses = allowMultipleResponses;
+    classroom.poll = {
+        ...classroom.poll,
+        startTime: pollStartTime,
+        weight: weight,
+        allowTextResponses: allowTextResponses,
+        prompt: prompt,
+        allowMultipleResponses: allowMultipleResponses,
+        time: time,
+        autoEndThreshold: autoEndThreshold,
+        autoEndTimer: autoEndTimer,
+    };
+
+    watchPoll(classId, classroom.poll);
 
     resetStudentPollResponses(classroom);
     userUpdateSocket(userData.email, "classUpdate", classId, { global: true });
@@ -359,10 +367,12 @@ async function savePollToHistory(classId) {
     const allowMultipleResponses = classroom.poll.allowMultipleResponses ? 1 : 0;
     const blind = classroom.poll.blind ? 1 : 0;
     const allowTextResponses = classroom.poll.allowTextResponses ? 1 : 0;
+    const autoEndTimer = classroom.poll.autoEndTimer;
+    const autoEndThreshold = classroom.poll.autoEndThreshold;
 
     return dbRun(
-        "INSERT INTO poll_history(class, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)",
-        [classId, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt]
+        "INSERT INTO poll_history(class, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt, auto_end_timer, auto_end_threshold) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [classId, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt, autoEndTimer, autoEndThreshold]
     );
 }
 
@@ -623,6 +633,50 @@ async function deleteCustomPolls(userId) {
     }
 }
 
+// Map of classId to timeout id
+// Used to clear the timeout when the poll is cleared
+const watchedPolls = new Map();
+
+/**
+ * Watches the poll for certain conditions which will trigger an automatic end of the poll.
+ * @param {number} classId - The ID of the class.
+ * @returns {Promise<void>}
+ */
+function watchPoll(classId, pollData) {
+    const { autoEndTimer, autoEndThreshold } = pollData;
+    if (autoEndTimer) {
+        watchedPolls.set(classId, setTimeout(() => {
+            const classroom = classStateStore.getClassroom(classId);
+            if (!classroom || !classroom.poll || !classroom.poll.status || classroom.poll.startTime !== pollData.startTime) {
+                watchedPolls.delete(classId);
+                return;
+            }
+
+            const pollTime = Date.now() - classroom.poll.startTime;
+            if (pollTime >= autoEndTimer) {
+                if (!autoEndThreshold) {
+                    clearPoll(classId, null, false);
+                    return;
+                }
+
+                const onlineStudents = Object.keys(classroom.students).filter((student) => !classroom.students[student].isOffline).length;
+                const responsePercentage = classroom.poll.responses.length / onlineStudents;
+                if (responsePercentage >= autoEndThreshold) {
+                    clearPoll(classId, null, false);
+                }
+            }
+        }, autoEndTimer);
+    }
+}
+
+function deleteWatchedPoll(classId) {
+    const timer = watchedPolls.get(classId);
+    if (!timer) return;
+
+    clearTimeout(watchedPolls.get(classId));
+    watchedPolls.delete(classId);
+}
+
 module.exports = {
     createPoll,
     updatePoll,
@@ -634,4 +688,5 @@ module.exports = {
     getPollResponses,
     deleteCustomPolls,
     pollRuntimeStore,
+    deleteWatchedPoll,
 };
