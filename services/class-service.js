@@ -256,7 +256,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
     // If the user is the owner of the classroom, ensure they have a classUser entry
     if (classroomDb.owner === user.id) {
         if (!classUser) {
-            classUser = { };
+            classUser = {};
         }
     }
 
@@ -270,7 +270,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const roleRefs = buildRoleReferences(roleAssignments);
         currentUser.roles = { global: currentUser.roles?.global || [], class: roleRefs };
         currentUser.isClassOwner = classroomDb.owner === user.id;
-		currentUser.isOffline = false;
+        currentUser.isOffline = false;
 
         // If the user is banned, don't let them join
         if (getAssignedClassScopes(currentUser, classroom).includes(SCOPES.CLASS.SYSTEM.BLOCKED) && !currentUser.isClassOwner) {

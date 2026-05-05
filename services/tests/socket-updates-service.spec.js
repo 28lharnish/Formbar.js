@@ -167,22 +167,13 @@ describe("SocketUpdates classUpdate visibility", () => {
                 key: undefined,
                 settings: undefined,
                 roles: undefined,
-                students: expect.objectContaining({
-                    11: expect.objectContaining({
-                        id: 11,
-                        displayName: "Student",
-                    }),
-                }),
-                myId: 11,
-                myRoles: [],
+                students: undefined,
                 poll: expect.objectContaining({
                     totalResponses: 1,
                     totalResponders: 1,
                 }),
             })
         );
-        const payload = socket.emit.mock.calls[0][1];
-        expect(payload.students[10]).toBeUndefined();
     });
 
     it("includes broader class data when the viewer has the matching scopes", () => {

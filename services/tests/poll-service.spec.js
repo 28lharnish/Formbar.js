@@ -223,12 +223,12 @@ describe("getPollResponses", () => {
     it("preserves extra properties on response objects", () => {
         const result = getPollResponses(
             makeClassData({
-                responses: [{ answer: "Yes", weight: 1, color: "#0F0", correct: true }],
+                responses: [{ answer: "Yes", weight: 1, color: "#0F0", isCorrect: true }],
                 students: {},
             })
         );
 
-        expect(result["Yes"].correct).toBe(true);
+        expect(result["Yes"].isCorrect).toBe(true);
     });
 });
 

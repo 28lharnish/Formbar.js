@@ -37,6 +37,7 @@ const SCOPES = {
             END: "class.poll.end",
             DELETE: "class.poll.delete",
             SHARE: "class.poll.share",
+            READ_CORRECT_ANSWERS: "class.poll.read_correct_answers",
         },
 
         ROLES: {
