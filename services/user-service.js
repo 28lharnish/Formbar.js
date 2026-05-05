@@ -18,7 +18,6 @@ const { endClass } = require("@services/class-service");
 const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { hashBcrypt, compareBcrypt, sha256 } = require("@modules/crypto");
-const { hashAPIKey, getEmailFromAPIKey: resolveEmailFromAPIKey } = require("@services/api-key-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
@@ -468,36 +467,6 @@ async function updatePassword(userId, oldPassword, newPassword) {
     return true;
 }
 
-/**
- * Create and save a new API key for a user.
- * @param {number} userId - userId.
- * @returns {Promise<string>}
- */
-async function regenerateAPIKey(userId) {
-    requireInternalParam(userId, "userId");
-
-    const user = await getUserDataFromDb(userId);
-    if (!user) {
-        throw new NotFoundError("User not found for API key regeneration.", {
-            event: "user.api_key.regenerate.failed",
-            reason: "user_not_found",
-        });
-    }
-
-    const apiKey = crypto.randomBytes(32).toString("hex");
-    const hashedAPIKey = hashAPIKey(apiKey);
-    await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
-
-    // Invalidate the cache for the user's email
-    if (user.email) {
-        apiKeyCacheStore.invalidateByEmail(user.email);
-    } else {
-        apiKeyCacheStore.clear();
-    }
-
-    return apiKey;
-}
-
 // User lookup
 
 /**
@@ -534,8 +503,8 @@ async function getEmailFromAPIKey(api) {
     try {
         if (!api) return { error: "Missing API key" };
 
-        const email = await resolveEmailFromAPIKey(api);
-        return email || { error: "Not a valid API key" };
+        const user = await resolveAPIKey(api);
+        return user ? user.email : null;
     } catch (err) {
         return err;
     }
@@ -547,6 +516,7 @@ async function getEmailFromAPIKey(api) {
  * @returns {Promise<Object|Error>}
  */
 async function getUser(userIdentifier) {
+    // OH THE HORROR. PLEASE SOMEBODY REFACTOR THIS RELIC 😭
     try {
         const email = userIdentifier.email || (await getEmailFromId(userIdentifier.id)) || (await getEmailFromAPIKey(userIdentifier.api));
         if (email instanceof Error) throw email;
@@ -756,7 +726,6 @@ module.exports = {
     verifyEmailFromCode,
     resetPassword,
     updatePassword,
-    regenerateAPIKey,
     requestPinReset,
     resetPin,
     updatePin,

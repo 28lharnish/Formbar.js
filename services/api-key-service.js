@@ -1,12 +1,12 @@
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { compareBcrypt, isBcryptHash, sha256 } = require("@modules/crypto");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
-const { getUserById } = require("@services/user-service");
+const { getUser } = require("@services/user-service");
 const { getAppById} = require("@services/app-service");
 
 // maps entity types to functions that can resolve them by ID
 const entityResolvers = {
-    "user": getUserById,
+    "user": async (userId) => getUser.bind(null, { id: userId }), // I'm so sorry
     "app": getAppById,
 }
 
@@ -34,6 +34,32 @@ function hashAPIKey(apiKey) {
 }
 
 /**
+ * Create and save a new API key for a user.
+ * @param {number} userId - userId.
+ * @returns {Promise<string>}
+ */
+async function regenerateAPIKey(entityId, entityType) {
+    requireInternalParam(entityId, "entityId");
+    requireInternalParam(entityType, "entityType");
+
+    const entity = await entityResolvers[entityType](entityId);
+    if (!entity) {
+        throw new NotFoundError(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} not found for API key regeneration.`, {
+            event: `${entityType}.api_key.regenerate.failed`,
+            reason: `${entityType}_not_found`,
+        });
+    }
+
+    const apiKey = crypto.randomBytes(32).toString("hex");
+    const hashedAPIKey = hashAPIKey(apiKey);
+    await dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [hashedAPIKey, entityId, entityType]);
+
+    apiKeyCacheStore.deleteByEntity(entityId, entityType);
+    apiKeyCacheStore.set(apiKey, entityId, entityType);
+    return apiKey;
+}
+
+/**
  * Find an entity by API key. SHA-256 keys are resolved by direct lookup; legacy
  * bcrypt keys are checked only as a fallback and migrated after a successful match.
  * @param {string} rawAPIKey - Plaintext API key.
@@ -55,7 +81,7 @@ async function resolveAPIKey(rawAPIKey) {
             return resolvedEntity ? { ...resolvedEntity, cached: true, migrated: false } : null;
         }
         // If the cache had an entry but we couldn't resolve it, remove the stale cache entry
-        apiKeyCacheStore.delete(apiKey);
+        apiKeyCacheStore.invalidateByAPIKey(apiKey);
     }
 
     const apiKeyHash = hashAPIKey(apiKey);
@@ -66,35 +92,12 @@ async function resolveAPIKey(rawAPIKey) {
         return { ...resolvedEntity, cached: false, migrated: false };
     }
 
-    // if the API key is a bcrypt hash and matches 
-    if (isBcryptHash(apiKey) && compareBcrypt(apiKey, )) {
-        
-    }
-
     return null;
-}
-
-async function isLegacyUserAPIKey(apiKey, userId) {
-    if (!isBcryptHash(apiKey)) {
-        return false;
-    }
-
-
-}
-
-/**
- * Resolve only the email address for an API key when that is all the caller needs.
- * @param {string} apiKey - Plaintext API key.
- * @returns {Promise<string|null>}
- */
-async function getEmailFromAPIKey(apiKey) {
-    const user = await resolveAPIKey(apiKey);
-    return user ? user.email : null;
 }
 
 module.exports = {
     normalizeAPIKey,
     hashAPIKey,
     resolveAPIKey,
-    getEmailFromAPIKey,
+    regenerateAPIKey,
 };
