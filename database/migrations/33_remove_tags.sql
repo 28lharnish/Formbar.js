@@ -1,4 +1,4 @@
--- 31_remove_tags.sql
+-- 33_remove_tags.sql
 -- Removes the "tags" column from the "users" table, and the class-level "tags" column from the "classroom" table
 
 ALTER TABLE users DROP COLUMN tags;

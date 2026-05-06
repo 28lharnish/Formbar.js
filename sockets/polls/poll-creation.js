@@ -34,11 +34,11 @@ module.exports = {
                         answers: Array.isArray(polls) ? polls : [],
                         blind: !!blind,
                         allowVoteChanges: !!allowVoteChanges,
+                        allowTextResponses: !!responseTextBox,
+                        allowMultipleResponses: !!multiRes,
                         weight: Number(weight ?? 1),
                         indeterminate: Array.isArray(indeterminate) ? indeterminate : [],
                         excludedRespondents: Array.isArray(boxes) ? boxes : [],
-                        allowTextResponses: !!responseTextBox,
-                        allowMultipleResponses: !!multiRes,
                     };
                 }
 
@@ -49,11 +49,11 @@ module.exports = {
                         answers: Array.isArray(pollData.answers) ? pollData.answers : [],
                         blind: !!pollData.blind,
                         allowVoteChanges: !!pollData.allowVoteChanges,
+                        allowTextResponses: !!pollData.allowTextResponses,
+                        allowMultipleResponses: !!pollData.allowMultipleResponses,
                         weight: Number(pollData.weight ?? 1),
                         excludedRespondents: Array.isArray(pollData.excludedRespondents) ? pollData.excludedRespondents : [],
                         indeterminate: Array.isArray(pollData.indeterminate) ? pollData.indeterminate : [],
-                        allowTextResponses: !!pollData.allowTextResponses,
-                        allowMultipleResponses: !!pollData.allowMultipleResponses,
                     },
                     socketContext.session
                 );

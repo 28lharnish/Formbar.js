@@ -128,6 +128,8 @@ function getClassUpdateAccess(viewer, classroom, controlPanelOverride = false) {
 
     return {
         hasControlPanel,
+        canReadCorrectPollAnswers:
+            hasControlPanel || userHasScope(viewer, SCOPES.CLASS.POLL.READ_CORRECT_ANSWERS, classroom) || classroom.poll.status === false,
         canReadStudents: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.STUDENTS.READ, classroom),
         canReadPoll: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.POLL.READ, classroom),
         canReadRoles: hasControlPanel || userHasScope(viewer, SCOPES.CLASS.ROLES.READ, classroom),
@@ -152,7 +154,7 @@ function getClassStudentSnapshot(student) {
         pollRes: student.pollRes,
         help: student.help,
         break: student.break,
-		isOffline: student.isOffline,
+        isOffline: student.isOffline,
         pogMeter: student.pogMeter,
         isGuest: student.isGuest,
     };
@@ -449,17 +451,27 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
 
     const studentEntries = access.canReadStudents ? Object.entries(classData.students) : viewerStudent ? [[options.studentEmail, viewerStudent]] : [];
 
+    const pollData = access.canReadPoll ? poll : undefined;
+    if (pollData) {
+        pollData.responses = pollData.responses.map((response) => {
+            return {
+                ...response,
+                isCorrect: access.canReadCorrectPollAnswers ? response.isCorrect : undefined,
+            };
+        });
+    }
+
     const result = {
         id: classData.id,
         className: classData.className,
         isActive: classData.isActive,
         owner: classData.owner,
         timer: access.canReadTimer ? classData.timer : undefined,
-        poll: access.canReadPoll ? poll : undefined,
+        poll: pollData,
         key: access.canReadKey ? classData.key : undefined,
         settings: access.canReadSettings ? classData.settings : undefined,
         roles: access.canReadRoles ? classData.availableRoles || [] : undefined,
-        students: studentEntries.length
+        students: access.canReadStudents
             ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)]))
             : undefined,
     };
@@ -467,8 +479,6 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
     // If studentEmail is provided, include personalized data for that student
     if (viewerStudent) {
         const student = viewerStudent;
-        result.myId = student.id;
-        result.myRoles = student.roles?.class || [];
     }
 
     return result;
