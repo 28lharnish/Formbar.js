@@ -4,8 +4,8 @@
  */
 class ApiKeyCacheStore {
     constructor(defaultTtlMs = 10 * 60 * 1000) {
-        this._cache = new Map();
-        this._entityMap = new Map();
+        this._cache = new Map(); // by api key
+        this._entityMap = new Map(); // by entity id
         this._defaultTtlMs = defaultTtlMs;
     }
 
@@ -40,11 +40,13 @@ class ApiKeyCacheStore {
         const expiresAt = ttlMs > 0 ? Date.now() + ttlMs : null;
         const cacheEntry = { entityId, entityType, expiresAt };
         this._cache.set(apiKey, cacheEntry);
+
         const entityKey = `${entityType}:${entityId}`;
         if (!this._entityMap.has(entityKey)) {
-            this._entityMap.set(entityKey, new Set());
+            this._entityMap.set(entityKey, {
+                apiKey: apiKey
+            });
         }
-        this._entityMap.get(entityKey).add(apiKey);
     }
 
     /**
@@ -58,6 +60,7 @@ class ApiKeyCacheStore {
         this._entityMap.delete(`${entry.entityType}:${entry.entityId}`);
         this._cache.delete(apiKey);
     }
+    
 
     /**
      * Clear every cached API key lookup.
@@ -66,6 +69,7 @@ class ApiKeyCacheStore {
      */
     clear() {
         this._cache.clear();
+        this._entityMap.clear();
     }
 
     /**
@@ -76,12 +80,14 @@ class ApiKeyCacheStore {
      * @returns {*}
      */
     invalidateByEntity(entityId, entityType) {
-        for (const [apiKey, entry] of this._cache.entries()) {
-            if (entry.entityId === entityId && entry.entityType === entityType) {
-                this._cache.delete(apiKey);
-            }
+        const entityKey = `${entityType}:${entityId}`;
+        if (this._entityMap.has(entityKey)) {
+            const apiKey = this._entityMap.get(entityKey).apiKey;
+            this._cache.delete(apiKey);
+            this._entityMap.delete(entityKey);
         }
     }
+
 }
 
 const apiKeyCacheStore = new ApiKeyCacheStore();

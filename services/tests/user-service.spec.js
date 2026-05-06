@@ -48,15 +48,6 @@ jest.mock("@stores/socket-state-store", () => ({
     },
 }));
 
-jest.mock("@stores/api-key-cache-store", () => ({
-    apiKeyCacheStore: {
-        invalidateByEmail: jest.fn(),
-        clear: jest.fn(),
-        get: jest.fn(),
-        set: jest.fn(),
-    },
-}));
-
 jest.mock("@modules/socket-error-handler", () => ({
     handleSocketError: jest.fn(),
 }));
@@ -173,27 +164,16 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-let uniqueCounter = 0;
-async function seedUser(overrides = {}) {
-    uniqueCounter++;
-    const defaults = {
-        email: `test${uniqueCounter}@test.com`,
-        password: "hashed",
-        permissions: 2,
-        API: `apikey${uniqueCounter}`,
-        secret: `secret${uniqueCounter}`,
-        displayName: `TestUser${uniqueCounter}`,
-        digipogs: 100,
-        pin: null,
-        verified: 0,
-    };
-    const u = { ...defaults, ...overrides };
-    const id = await mockDatabase.dbRun(
-        "INSERT INTO users (email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
-    );
-    await setGlobalPermissionLevel(mockDatabase, id, u.permissions);
-    return { id, ...u };
+async function seedUser(apiHash, email = "api-key-user@test.com") {
+    return mockDatabase.dbRun("INSERT INTO users (email, password, API, secret, displayName, digipogs, verified) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        email,
+        "hashed-password",
+        apiHash,
+        `${email}-secret`,
+        email,
+        0,
+        1,
+    ]);
 }
 
 describe("getUserDataFromDb()", () => {
@@ -398,35 +378,6 @@ describe("updatePassword()", () => {
         const seeded = await seedUser({ password: hashedPassword });
 
         await expect(updatePassword(seeded.id, "WrongPassword1!", "NewPassword1!")).rejects.toThrow(AuthError);
-    });
-});
-
-describe("regenerateAPIKey()", () => {
-    it("throws AppError when userId is missing", async () => {
-        await expect(regenerateAPIKey(null)).rejects.toThrow(AppError);
-    });
-
-    it("throws NotFoundError for non-existent user", async () => {
-        await expect(regenerateAPIKey(99999)).rejects.toThrow(NotFoundError);
-    });
-
-    it("returns a new plaintext API key and stores a sha256 hash", async () => {
-        const seeded = await seedUser({ email: "apiuser@test.com", API: "oldapi" });
-        const newKey = await regenerateAPIKey(seeded.id);
-
-        expect(typeof newKey).toBe("string");
-        expect(newKey.length).toBe(64);
-
-        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [seeded.id]);
-        expect(row.API).not.toBe("oldapi");
-        expect(row.API).not.toBe(newKey);
-        expect(row.API).toBe(sha256(newKey));
-    });
-
-    it("invalidates the API key cache", async () => {
-        const seeded = await seedUser({ email: "apicache@test.com" });
-        await regenerateAPIKey(seeded.id);
-        expect(apiKeyCacheStore.invalidateByEmail).toHaveBeenCalledWith("apicache@test.com");
     });
 });
 

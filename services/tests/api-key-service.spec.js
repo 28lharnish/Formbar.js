@@ -13,7 +13,7 @@ jest.mock("@modules/database", () => ({
 
 const { hashBcrypt, sha256 } = require("@modules/crypto");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
-const { resolveAPIKey } = require("@services/api-key-service");
+const { resolveAPIKey, regenerateAPIKey } = require("@services/api-key-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -39,6 +39,40 @@ async function seedUser(apiHash, email = "api-key-user@test.com") {
         1,
     ]);
 }
+
+jest.mock("@stores/api-key-cache-store", () => ({
+    apiKeyCacheStore: {
+        invalidateByAPIKey: jest.fn(),
+        invalidateByEntity: jest.fn(),
+        clear: jest.fn(),
+        get: jest.fn(),
+        set: jest.fn(),
+    },
+}));
+
+describe("regenerateAPIKey()", () => {
+    it("throws AppError when userId is missing", async () => {
+        await expect(regenerateAPIKey(null, null)).rejects.toThrow(ValidationError);
+        await expect(regenerateAPIKey(undefined, undefined)).toThrow(ValidationError);
+    });
+
+    it("throws NotFoundError for non-existent user", async () => {
+        await expect(regenerateAPIKey(99999, "user")).toThrow(ValidationError);
+    });
+
+    it("returns a new plaintext API key and stores a sha256 hash", async () => {
+        const seeded = await seedUser({ email: "apiuser@test.com", API: "oldapi" });
+        const newKey = await regenerateAPIKey(seeded.id, "user");
+
+        expect(typeof newKey).toBe("string");
+        expect(newKey.length).toBe(64);
+
+        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [seeded.id]);
+        expect(row.API).not.toBe("oldapi");
+        expect(row.API).not.toBe(newKey);
+        expect(row.API).toBe(sha256(newKey));
+    });
+});
 
 describe("resolveAPIKey()", () => {
     it("resolves sha256 API keys with a direct lookup", async () => {

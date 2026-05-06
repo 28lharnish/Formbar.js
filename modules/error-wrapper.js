@@ -49,7 +49,7 @@ function requireBodyParam(param, name) {
  */
 function requireInternalParam(param, name) {
     if (param === undefined || param === null) {
-        throw new AppError(`Internal Error: Missing required parameter '${name}'.`, { statusCode: 500 });
+        throw new ValidationError(`Internal Error: Missing required parameter '${name}'.`, { statusCode: 500 });
     }
 }
 

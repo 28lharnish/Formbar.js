@@ -1,5 +1,6 @@
-const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { compareBcrypt, isBcryptHash, sha256 } = require("@modules/crypto");
+const { dbGet, dbRun } = require("@modules/database");
+const {sha256 } = require("@modules/crypto");
+const { requireInternalParam } = require("@modules/error-wrapper");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { getUser } = require("@services/user-service");
 const { getAppById} = require("@services/app-service");
