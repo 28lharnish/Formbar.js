@@ -170,6 +170,7 @@ async function createPoll(classId, pollData, userData) {
         allowMultipleResponses,
         autoEndTimer,
         autoEndThreshold,
+        blindUntilEnded,
     } = pollData;
     const numberOfResponses = Object.keys(answers).length;
 
@@ -285,6 +286,11 @@ async function updatePoll(classId, options, userSession) {
 
         // Save to history when ending poll
         if (option === "status" && value === false && classroom.poll.status === true) {
+            // If the poll is set to blind until ended, then unblind the poll
+            if (classroom.poll.blindUntilEnded) {
+                classroom.poll.blind = false;
+            }
+
             const savedPollId = await savePollToHistory(classId);
             pollRuntimeStore.setLastSavedPollId(classId, savedPollId);
         }

@@ -40,6 +40,7 @@ module.exports = {
                         excludedRespondents: Array.isArray(boxes) ? boxes : [],
                         autoEndTimer: Number(time),
                         autoEndThreshold: autoEndThreshold,
+                        blindUntilEnded: !!blindUntilEnded,
                     };
                 }
 
@@ -57,6 +58,7 @@ module.exports = {
                         indeterminate: Array.isArray(pollData.indeterminate) ? pollData.indeterminate : [],
                         autoEndTimer: pollData.autoEndTimer,
                         autoEndThreshold: pollData.autoEndThreshold,
+                        blindUntilEnded: pollData.blindUntilEnded,
                     },
                     socketContext.session
                 );
