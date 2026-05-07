@@ -35,7 +35,7 @@ See [Architecture Diagrams](./architecture.md) for the full Mermaid set. The mai
 
 Versioned endpoints mount at `/api/v1` (source: route mounting loop in `app.js`).
 
-For compatibility, `app.js` also mounts legacy non-versioned `/api/*` paths for v1. Legacy requests receive deprecation headers, including a `Sunset` date of `Tue, 01 Sep 2026 00:00:00 GMT` (source: `app.js:attachLegacyApiDeprecationHeaders`).
+For compatibility, `app.js` also mounts legacy non-versioned `/api/*` paths for v1.
 
 Several route-level legacy aliases also exist for older clients. Treat them as compatibility support, not as patterns for new endpoints.
 
@@ -52,7 +52,10 @@ Several route-level legacy aliases also exist for older clients. Treat them as c
 ## Debugging Checks
 
 - Missing API route: confirm the file is under `api/v1/controllers`, exports a registration function, and is not named `*.spec.js`.
-- Missing socket behavior: confirm the module exports `run(socket, socketUpdates)` and is not under a skipped directory.
+- Missing socket behavior: confirm the module exports `run(socket, socketUpdates)` and is not under a skipped directory (`middleware/`, `tests/`, `init.js`).
 - Auth failure: check whether the route expects a bearer token, API key, verified email, class membership, or scopes.
 - All requests rate-limited as one user/IP: check `TRUST_PROXY` and proxy configuration.
-- Startup fails immediately: confirm `database/database.db` exists and migrations completed.
+- Startup fails immediately: confirm `database/database.db` exists (`npm run init-db`) and migrations completed (`npm run migrate`).
+- Feature works once but breaks after restart: the code is writing to an in-memory store rather than the database.
+
+For a broader list of contributor mistakes and how to avoid them, see [Common Pitfalls](./README.md#common-pitfalls).

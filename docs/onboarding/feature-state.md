@@ -33,7 +33,7 @@ Impact: expired token rows and used authorization code rows may remain until cle
 
 ### Legacy API Compatibility
 
-`app.js` keeps non-versioned `/api/*` compatibility for v1 and adds deprecation headers. The compatibility layer advertises a sunset date of September 1, 2026 (source: `app.js:attachLegacyApiDeprecationHeaders`, `rewriteLegacyApiPaths`).
+`app.js` keeps non-versioned `/api/*` compatibility for v1 and adds deprecation headers.
 
 Impact: new clients and new documentation should use `/api/v1`. Legacy aliases should not be expanded except to preserve existing behavior.
 
@@ -42,9 +42,3 @@ Impact: new clients and new documentation should use `/api/v1`. Legacy aliases s
 Some route files expose older aliases with `Warning` headers, including older user verification, class link changes, and break approval paths (source: `api/v1/controllers/user/verify.js`, `api/v1/controllers/class/links/change.js`, `api/v1/controllers/class/links/remove.js`, `api/v1/controllers/class/break/approve.js`).
 
 Impact: route work should prefer the canonical endpoint named in the warning header. Tests should cover canonical behavior and only cover aliases when compatibility is the behavior under change.
-
-### Tags
-
-Tag-related columns and comments still appear in schema/migration/test files, and migration `31_remove_tags.sql` attempts to remove `users.tags` and `classroom.tags`. There is no dedicated current tag-management controller or service surface in the live API tree (source: `database/init.sql`, `database/migrations/31_remove_tags.sql`, `modules/test-helpers/test-schema.sql`; no `api/v1/controllers/tags*.js` or `services/tag-service.js` exists in the current tree).
-
-Impact: do not treat tags as a complete current user-facing feature unless new implementation work defines the supported API and persistence behavior.

@@ -41,6 +41,97 @@ Current migration history has gaps and duplicate `28_` prefixes. Preserve the cu
 
 By default, the migration runner backs up `database/database.db` before running unless `SKIP_BACKUP` is set (source: `database/migrate.js` backup block).
 
+## Writing Idempotent Migrations
+
+**The migration runner has no tracking table.** It re-runs every migration file from the beginning every time `npm run migrate` is called. This means every migration must be safe to execute on a database where it has already been applied.
+
+There are two acceptable approaches: make the migration truly safe to run multiple times, or make it fail loudly in a way the runner recognises as "already done".
+
+### SQL migrations
+
+The runner wraps each SQL file in `BEGIN TRANSACTION` / `COMMIT`. If any statement in the file errors, the runner rolls back, prints a warning, and **continues to the next migration** — it does not halt. This means a SQL migration that errors on a second run is treated as already applied (source: `database/migrate.js:executeSQLMigration`).
+
+**Use `IF NOT EXISTS` / `IF EXISTS` guards whenever SQLite supports them — this is the preferred style:**
+
+```sql
+-- Tables
+CREATE TABLE IF NOT EXISTS my_table ( ... );
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_my_table_col ON my_table (col);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_my_table_col ON my_table (col);
+
+-- Dropping tables
+DROP TABLE IF EXISTS old_table;
+
+-- Dropping indexes
+DROP INDEX IF EXISTS idx_old;
+```
+
+**`ALTER TABLE ADD COLUMN` has no `IF NOT EXISTS` in SQLite.** Write it without a guard and let the runner catch the duplicate-column error on a second run:
+
+```sql
+-- Safe: errors if column already exists; runner handles the error and continues
+ALTER TABLE users ADD COLUMN display_name TEXT;
+```
+
+**`ALTER TABLE DROP COLUMN` also has no `IF EXISTS`.** Write it without a guard for the same reason.
+
+**The table-swap pattern** (create temp → copy → drop old → rename) is the standard way to change column types or constraints in SQLite. The guard belongs at the very top — make the first `CREATE TABLE` use `IF NOT EXISTS` so subsequent runs fail immediately on an already-renamed table and the runner moves on:
+
+```sql
+-- Migration errors on second run because my_table already exists (old_table is gone)
+-- and temp_table creation also fails — both are handled by the runner.
+CREATE TABLE IF NOT EXISTS temp_table ( ... );
+INSERT INTO temp_table SELECT ... FROM old_table;
+DROP TABLE old_table;
+ALTER TABLE temp_table RENAME TO my_table;
+```
+
+### JS migrations
+
+JS migrations are called as `migrationModule.run(database)`. Two patterns are in use:
+
+**Pattern 1 — truly idempotent (preferred for DDL and data seeding).**
+Use `IF NOT EXISTS`, `INSERT OR IGNORE`, and `PRAGMA table_info()` guards throughout so the migration produces no side effects when run on an already-migrated database (source: `database/migrations/JSMigrations/23_add_roles_and_scopes.js`):
+
+```js
+module.exports = {
+    async run(database) {
+        await dbRun(`CREATE TABLE IF NOT EXISTS my_table ( ... )`, [], database);
+
+        // Check before altering
+        const cols = await dbGetAll('PRAGMA table_info(my_table)', [], database);
+        if (!cols.some(c => c.name === 'new_col')) {
+            await dbRun(`ALTER TABLE my_table ADD COLUMN new_col TEXT`, [], database);
+        }
+
+        // Seed data without duplicating rows
+        await dbRun(`INSERT OR IGNORE INTO my_table (id, name) VALUES (1, 'default')`, [], database);
+    },
+};
+```
+
+**Pattern 2 — state check + `ALREADY_DONE`.**
+When a migration is inherently destructive (e.g., the table-swap pattern or one-time data transformation), check whether it has already been applied and throw `new Error("ALREADY_DONE")` if so. The runner catches this specific message and continues (source: `database/migrate.js:executeJSMigration`, `database/migrations/JSMigrations/14_restructure_transactions.js`):
+
+```js
+module.exports = {
+    async run(database) {
+        // Check for the old schema shape that this migration is supposed to transform
+        const cols = await dbGetAll('PRAGMA table_info(transactions)', [], database);
+        const hasLegacyColumn = cols.some(c => c.name === 'from_user');
+        if (!hasLegacyColumn) {
+            throw new Error('ALREADY_DONE');
+        }
+
+        // ... perform the migration ...
+    },
+};
+```
+
+Only `"ALREADY_DONE"` is treated as a graceful skip. Any other thrown error is logged as a real failure and halts the runner (source: `database/migrate.js:executeJSMigration`).
+
 ## Auth Model
 
 Core auth behavior lives in `services/auth-service.js`.
@@ -91,7 +182,10 @@ Socket middleware handles API socket behavior, authenticated user setup, inactiv
 
 ## Common Pitfalls
 
-- Deleting or regenerating RSA keys invalidates tokens signed with the previous keys.
-- `EMAIL_ENABLED=false` changes verification behavior; tests or local flows may pass without email paths being active.
-- `TRUST_PROXY` matters for correct IP detection and rate limiting behind nginx or another proxy.
-- Updating schema without updating `modules/test-helpers/test-schema.sql` can cause tests to drift from the migrated database.
+- Deleting or regenerating RSA keys immediately invalidates every token signed with the old keys — all users are logged out. Do this only intentionally.
+- `EMAIL_ENABLED=false` (the default for local development) silently bypasses email verification flows. Always test registration, password reset, and PIN reset with `EMAIL_ENABLED=true` against a real or fake SMTP target before shipping.
+- `TRUST_PROXY` must be set when running behind nginx or another reverse proxy. Without it, Express collapses all rate-limiting onto the proxy's IP and breaks IP-based access control.
+- Editing `database/init.sql` or existing migration files breaks any environment that has already applied them. Always add a new migration file instead.
+- Updating schema without also updating `modules/test-helpers/test-schema.sql` causes the test suite to run against a stale schema.
+- Do not issue database queries in a loop. Use a single batched `IN (...)` query instead. See [Common Pitfalls](./README.md#common-pitfalls) for an example.
+- Do not store state only in `stores/**` if it must survive a server restart. In-memory stores reset on every process start.

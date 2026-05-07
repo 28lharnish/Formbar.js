@@ -64,4 +64,4 @@ Current socket modules cover:
 - Digipog socket behavior (source: `sockets/digipogs.js`).
 - Poll creation, updates, responses, saves, shares, and removals (source: `sockets/polls/*.js`, `services/poll-service.js`).
 
-For visual dependency maps, see [Architecture Diagrams](./architecture.md).
+For visual dependency maps, see [Architecture Diagrams](./architecture.md). For a full file inventory of every directory, see [Codebase Map](./codebase-map.md).

@@ -69,12 +69,16 @@ Follow repository rules strictly:
 - Keep migration filenames in sequence with existing history.
 - Update test schema/helpers when tests depend on the changed shape.
 
+**Every migration must be idempotent.** The runner has no tracking table — it re-executes every file on every `npm run migrate` call. SQL migrations should use `IF NOT EXISTS` / `IF EXISTS` guards wherever SQLite supports them, or rely on the runner's error-catch behaviour for statements like `ALTER TABLE ADD COLUMN` that have no such guard. JS migrations should either be genuinely safe to run multiple times, or check whether the work is already done and throw `new Error('ALREADY_DONE')` to signal the runner to skip. Full guidance and examples are in [Data and Auth — Writing Idempotent Migrations](./data-and-auth.md#writing-idempotent-migrations).
+
 When practical, verify persistence by checking the migrated on-disk database, not only isolated unit tests.
 
 ## Debugging Tips
 
 - If routes do not appear in Swagger, check the controller file path and JSDoc annotations.
 - If a route works under `/api` but not `/api/v1`, inspect legacy rewrite assumptions in `app.js`.
-- If a socket connects but events fail, check middleware order and the active user/class state stores.
+- If a socket connects but events fail, check middleware order and the active user/class state stores. Also confirm the module exports `run(socket, socketUpdates)`.
 - If rate limiting looks global, check `TRUST_PROXY` and request IP behavior.
-- If auth suddenly fails locally, check RSA key files and whether `.env` was recreated.
+- If a feature behaves correctly in isolation but fails after restart, it is likely relying on an in-memory store that was not persisted to the database.
+
+See [Common Pitfalls](./README.md#common-pitfalls) in the onboarding home for a fuller list of things that trip up new contributors.
