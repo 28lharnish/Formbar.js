@@ -17,7 +17,6 @@ const LEGACY_API_WARNING =
 function attachLegacyApiDeprecationHeaders(req, res, next) {
     res.setHeader("X-Deprecated", "Use /api/v1 endpoints instead");
     res.setHeader("Deprecation", "true");
-    res.setHeader("Sunset", "Tue, 01 Sep 2026 00:00:00 GMT");
     res.append("Warning", LEGACY_API_WARNING);
     next();
 }
@@ -107,12 +106,6 @@ describe("attachLegacyApiDeprecationHeaders", () => {
         const res = await request(app).get("/api/config");
 
         expect(res.headers["deprecation"]).toBe("true");
-    });
-
-    it("sets Sunset header", async () => {
-        const res = await request(app).get("/api/config");
-
-        expect(res.headers["sunset"]).toBe("Tue, 01 Sep 2026 00:00:00 GMT");
     });
 
     it("sets Warning header with 299 code", async () => {
