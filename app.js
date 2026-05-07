@@ -151,7 +151,6 @@ const LEGACY_API_WARNING =
 function attachLegacyApiDeprecationHeaders(req, res, next) {
     res.setHeader("X-Deprecated", "Use /api/v1 endpoints instead");
     res.setHeader("Deprecation", "true");
-    res.setHeader("Sunset", "Tue, 01 Sep 2026 00:00:00 GMT");
     res.append("Warning", LEGACY_API_WARNING);
     next();
 }
