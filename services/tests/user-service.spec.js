@@ -164,16 +164,28 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-async function seedUser(apiHash, email = "api-key-user@test.com") {
-    return mockDatabase.dbRun("INSERT INTO users (email, password, API, secret, displayName, digipogs, verified) VALUES (?, ?, ?, ?, ?, ?, ?)", [
-        email,
-        "hashed-password",
-        apiHash,
-        `${email}-secret`,
-        email,
-        0,
-        1,
-    ]);
+let uniqueCounter = 0;
+
+async function seedUser(overrides = {}) {
+    uniqueCounter++;
+    const defaults = {
+        email: `test${uniqueCounter}@test.com`,
+        password: "hashed",
+        permissions: 2,
+        API: `apikey${uniqueCounter}`,
+        secret: `secret${uniqueCounter}`,
+        displayName: `TestUser${uniqueCounter}`,
+        digipogs: 100,
+        pin: null,
+        verified: 0,
+    };
+    const u = { ...defaults, ...overrides };
+    const id = await mockDatabase.dbRun(
+        "INSERT INTO users (email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
+    );
+    await setGlobalPermissionLevel(mockDatabase, id, u.permissions);
+    return { id, ...u };
 }
 
 describe("getUserDataFromDb()", () => {

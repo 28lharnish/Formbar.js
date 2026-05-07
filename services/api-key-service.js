@@ -4,6 +4,7 @@ const { requireInternalParam } = require("@modules/error-wrapper");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { getUser } = require("@services/user-service");
 const { getAppById} = require("@services/app-service");
+const {randomBytes} = require("crypto");
 
 // maps entity types to functions that can resolve them by ID
 const entityResolvers = {
@@ -39,7 +40,7 @@ function hashAPIKey(apiKey) {
  * @param {number} userId - userId.
  * @returns {Promise<string>}
  */
-async function regenerateAPIKey(entityId, entityType) {
+async function regenerateAPIKey(entityType, entityId) {
     requireInternalParam(entityId, "entityId");
     requireInternalParam(entityType, "entityType");
 
@@ -51,11 +52,16 @@ async function regenerateAPIKey(entityId, entityType) {
         });
     }
 
-    const apiKey = crypto.randomBytes(32).toString("hex");
+    const existingAPIKey = await dbGet("SELECT api_key_hash FROM api_keys WHERE entity_id = ? AND entity_type = ?", [entityId, entityType]);
+    const apiKey = randomBytes(32).toString("hex");
     const hashedAPIKey = hashAPIKey(apiKey);
-    await dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [hashedAPIKey, entityId, entityType]);
+    if (existingAPIKey) {
+        await dbRun("UPDATE api_keys SET api_key_hash = ?, created_at = CURRENT_TIMESTAMP WHERE entity_id = ? AND entity_type = ?", [hashedAPIKey, entityId, entityType]);
+    } else {
+        await dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [hashedAPIKey, entityId, entityType]);
+    }
 
-    apiKeyCacheStore.deleteByEntity(entityId, entityType);
+    apiKeyCacheStore.invalidateByEntity(entityId, entityType);
     apiKeyCacheStore.set(apiKey, entityId, entityType);
     return apiKey;
 }
