@@ -35,7 +35,7 @@ Migration files are collected from:
 - `database/migrations/*.sql`
 - `database/migrations/JSMigrations/*.js`
 
-SQL and JS migrations are combined and sorted by filename (source: `database/migrate.js` migration collection). Keep new filenames sequenced with the existing history and do not edit existing migrations once they are in the tree (source: repository rules in `AGENTS.md`).
+SQL and JS migrations are combined and sorted by filename (source: `database/migrate.js` migration collection). Keep new filenames sequenced with the existing history and do not edit existing migrations once they are in the tree.
 
 Current migration history has gaps and duplicate `28_` prefixes. Preserve the current files as history; choose the next clear sequence number for new work.
 

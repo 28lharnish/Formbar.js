@@ -86,7 +86,7 @@ npm start
 
 ### HTTP API
 
-- **Local:** https://localhost:420/docs
+- **Local:** http://localhost:420/docs
 - **Live:** https://formbarapi.yorktechapps.com/docs
 
 ### WebSocket API

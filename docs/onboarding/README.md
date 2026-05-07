@@ -87,7 +87,7 @@ Deleting or regenerating `public-key.pem` / `private-key.pem` immediately invali
 
 ### Expanding legacy API aliases
 
-`app.js` keeps backward-compatible `/api/*` paths alive for existing clients and advertises a sunset date of September 1, 2026. Do not add new behavior under the legacy paths. New endpoints must use `/api/v1`.
+`app.js` keeps backward-compatible `/api/*` paths alive for existing clients, but there should not be any additional backwards compatible aliases in the future.
 
 ### Test schema drift after migrations
 

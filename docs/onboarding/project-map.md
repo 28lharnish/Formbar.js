@@ -16,7 +16,6 @@ Back to: [Onboarding Home](./README.md)
 - `errors/`: typed application error classes consumed by middleware and controllers (source: `middleware/error-handler.js`, imports from `@errors/**`).
 - `email-templates/`: Handlebars templates for account, password, and PIN emails (source: `modules/mail.js`, `services/user-service.js`).
 - `docs/components/schemas/`: OpenAPI schema components used by Swagger generation (source: `modules/web-server.js:createServer` `apis` option).
-- `reference/`: source material for these onboarding docs, including previous drafts and Cursor planning notes.
 
 ## Dependency Shape
 
