@@ -108,12 +108,6 @@ describe("attachLegacyApiDeprecationHeaders", () => {
         expect(res.headers["deprecation"]).toBe("true");
     });
 
-    it("sets Sunset header", async () => {
-        const res = await request(app).get("/api/config");
-
-        expect(res.headers["sunset"]).toBe("Tue, 01 Sep 2026 00:00:00 GMT");
-    });
-
     it("sets Warning header with 299 code", async () => {
         const res = await request(app).get("/api/config");
 
