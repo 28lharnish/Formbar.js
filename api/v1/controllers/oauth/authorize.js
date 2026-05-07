@@ -1,7 +1,22 @@
 const authService = require("@services/auth-service");
+const appService = require("@services/app-service");
 const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { isAuthenticated } = require("@middleware/authentication");
+
+function validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope, state }) {
+    if (response_type && response_type !== "code") {
+        throw new ValidationError("Unsupported response_type. Only 'code' is supported.", {
+            event: "oauth.authorize.failed",
+            reason: "unsupported_response_type",
+        });
+    }
+
+    requireQueryParam(client_id, "client_id");
+    requireQueryParam(redirect_uri, "redirect_uri");
+    requireQueryParam(scope, "scope");
+    requireQueryParam(state, "state");
+}
 
 /**
  * Register authorize controller routes.
@@ -9,6 +24,29 @@ const { isAuthenticated } = require("@middleware/authentication");
  * @returns {void}
  */
 module.exports = (router) => {
+    router.get("/oauth/authorize/metadata", isAuthenticated, async (req, res) => {
+        const { response_type, client_id, redirect_uri, scope, state } = req.query;
+        validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope, state });
+
+        const metadata = await appService.getPublicOAuthAppMetadata({
+            clientId: client_id,
+            redirectUri: redirect_uri,
+            requestedScopes: scope,
+        });
+
+        if (!metadata) {
+            throw new ValidationError("OAuth client or redirect_uri is not registered.", {
+                event: "oauth.authorize.metadata.failed",
+                reason: "invalid_client_or_redirect_uri",
+            });
+        }
+
+        res.json({
+            success: true,
+            data: metadata,
+        });
+    });
+
     /**
      * @swagger
      * /api/v1/oauth/authorize:
@@ -77,22 +115,11 @@ module.exports = (router) => {
     router.get("/oauth/authorize", isAuthenticated, async (req, res) => {
         const { response_type, client_id, redirect_uri, scope, state } = req.query;
         const { authorization } = req.headers;
-        const wantsJson = req.accepts("json") === "json" || req.query.response_mode === "json" || req.query.format === "json";
+        const acceptHeader = req.get("accept") || "";
+        const wantsJson =
+            req.query.response_mode === "json" || req.query.format === "json" || /\bapplication\/json\b/i.test(acceptHeader);
 
-        // If response_type is provided, validate it
-        // If not, we can assume default behavior
-        if (response_type && response_type !== "code") {
-            throw new ValidationError("Unsupported response_type. Only 'code' is supported.", {
-                event: "oauth.authorize.failed",
-                reason: "unsupported_response_type",
-            });
-        }
-
-        // Validate required parameters
-        requireQueryParam(client_id, "client_id");
-        requireQueryParam(redirect_uri, "redirect_uri");
-        requireQueryParam(scope, "scope");
-        requireQueryParam(state, "state");
+        validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope, state });
 
         req.infoEvent("oauth.authorize.attempt", "OAuth authorization attempt", { client_id, scope });
 
