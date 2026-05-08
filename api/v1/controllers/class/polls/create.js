@@ -117,8 +117,9 @@ module.exports = (router) => {
                       indeterminate: Array.isArray(body.indeterminate) ? body.indeterminate : [],
                       allowTextResponses: !!body.responseTextBox,
                       allowMultipleResponses: !!body.multiRes,
-                      autoEndTimer: Number(body.time),
+                      autoEndTimer: body.autoEndTimer,
                       autoEndThreshold: body.autoEndThreshold,
+                      blindUntilEnded: body.blindUntilEnded,
                   }
                 : body;
 
