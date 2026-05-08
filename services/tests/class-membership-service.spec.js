@@ -67,6 +67,7 @@ jest.mock("@services/class-service", () => ({
 
 jest.mock("@services/student-service", () => ({
     getIdFromEmail: jest.fn(() => 1),
+    getEmailFromId: jest.fn(() => "student@test.com"),
 }));
 
 jest.mock("../../sockets/init", () => ({
@@ -310,7 +311,7 @@ describe("setClassroomBanStatus", () => {
     it("returns false when user does not exist", async () => {
         getIdFromEmail.mockResolvedValueOnce(null);
 
-        const result = await setClassroomBanStatus(10, "missing@test.com", true);
+        const result = await setClassroomBanStatus(10, 5, true);
 
         expect(result).toBe(false);
         expect(findRoleByPermissionLevel).not.toHaveBeenCalled();
@@ -336,7 +337,7 @@ describe("setClassroomBanStatus", () => {
             availableRoles: [{ id: 8, name: "Blocked Alias", scopes: [SCOPES.CLASS.SYSTEM.BLOCKED] }],
         };
 
-        const result = await setClassroomBanStatus(room.id, "student@test.com", true);
+        const result = await setClassroomBanStatus(room.id, 1, true);
 
         const roles = await mockDatabase.dbGetAll("SELECT userId, roleId, classId FROM user_roles WHERE userId=? AND classId=?", [1, room.id]);
         expect(result).toBe(true);
@@ -358,7 +359,7 @@ describe("setClassroomBanStatus", () => {
             roles: { global: [{ id: 3, name: "Mod" }], class: [{ id: 1, name: "Banned" }] },
         });
 
-        const result = await setClassroomBanStatus(room.id, "student@test.com", false);
+        const result = await setClassroomBanStatus(room.id, 1, false);
 
         const roles = await mockDatabase.dbGetAll("SELECT userId, roleId, classId FROM user_roles WHERE userId=? AND classId=?", [1, room.id]);
         expect(result).toBe(true);
@@ -372,8 +373,8 @@ describe("setClassroomBanStatus", () => {
         expect(classService.classKickStudent).toHaveBeenCalledWith(1, room.id, { exitRoom: true, ban: false });
     });
 
-    it("throws AppError when classroomId or email are missing", async () => {
-        await expect(setClassroomBanStatus(null, "student@test.com", true)).rejects.toThrow(AppError);
+    it("throws AppError when classroomId or userId are missing", async () => {
+        await expect(setClassroomBanStatus(null, 1, true)).rejects.toThrow(AppError);
         await expect(setClassroomBanStatus(1, null, true)).rejects.toThrow(AppError);
     });
 });

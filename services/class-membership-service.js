@@ -13,7 +13,7 @@ const { classStateStore, getClassIDFromCode } = require("@services/classroom-ser
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { advancedEmitToClass, emitToUser, invalidateClassPollCache } = require("@services/socket-updates-service");
-const { getIdFromEmail } = require("@services/student-service");
+const { getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { SCOPES, BANNED_PERMISSIONS } = require("@modules/permissions");
 const { buildRoleReferences } = require("@modules/role-reference");
 const { userSocketUpdates } = require("../sockets/init");
@@ -108,18 +108,19 @@ function getClassroomById(classroomId) {
 /**
  * Apply or remove a classroom ban for a user.
  * @param {number} classroomId - classroomId.
- * @param {string} email - email.
+ * @param {string} userId - userId.
  * @param {boolean} isBanned - isBanned.
  * @returns {Promise<boolean>}
  */
-async function setClassroomBanStatus(classroomId, email, isBanned) {
+async function setClassroomBanStatus(classroomId, userId, isBanned) {
     requireInternalParam(classroomId, "classroomId");
-    requireInternalParam(email, "email");
+	requireInternalParam(userId, "userId");
 
-    const userId = await getIdFromEmail(email);
-    if (!userId) {
-        return false;
-    }
+	const email = await getEmailFromId(userId);
+
+	if (!email) {
+		throw new NotFoundError("User not found");
+	}
 
     let bannedRole = null;
     if (isBanned) {
