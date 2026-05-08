@@ -748,7 +748,7 @@ const watchedPolls = new Map();
 /**
  * Watches the poll for certain conditions which will trigger an automatic end of the poll.
  * @param {number} classId - The ID of the class.
- * @returns {Promise<void>}
+ * @returns {boolean} True if the poll is being watched, false otherwise.
  */
 function watchPoll(classId, pollData) {
     const classroom = classStateStore.getClassroom(classId);
