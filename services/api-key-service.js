@@ -8,7 +8,7 @@ const {randomBytes} = require("crypto");
 
 // maps entity types to functions that can resolve them by ID
 const entityResolvers = {
-    "user": async (userId) => getUser.bind(null, { id: userId }), // I'm so sorry
+    "user": async (userId) => getUser.bind(null, { id: userId })(), // I'm so sorry
     "app": getAppById,
 }
 

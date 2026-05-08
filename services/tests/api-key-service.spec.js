@@ -73,10 +73,10 @@ describe("regenerateAPIKey()", () => {
         expect(typeof newKey).toBe("string");
         expect(newKey.length).toBe(64);
 
-        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [userId]);
-        expect(row.API).not.toBe("oldapi");
-        expect(row.API).not.toBe(newKey);
-        expect(row.API).toBe(sha256(newKey));
+        const row = await mockDatabase.dbGet("SELECT api_key_hash FROM api_keys WHERE entity_id = ? AND entity_type = ?", [userId, "user"]);
+        expect(row.api_key_hash).not.toBe("oldapi");
+        expect(row.api_key_hash).not.toBe(newKey);
+        expect(row.api_key_hash).toBe(sha256(newKey));
     });
 });
 
