@@ -1,7 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 
 const { generateColors } = require("@modules/util");
-const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
+const { advancedEmitToClass } = require("@services/socket-updates-service");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
@@ -195,8 +195,15 @@ function isAutoEndThresholdMet(classroom) {
 }
 
 function emitClassUpdate(classId, userSession) {
-    if (userSession?.email && userUpdateSocket(userSession.email, "classUpdate", classId, { global: true })) {
-        return;
+    if (userSession?.email) {
+        const userSockets = userSocketUpdates.get(userSession.email);
+        if (userSockets && userSockets.size > 0) {
+            const firstSocketUpdates = userSockets.values().next().value;
+            if (firstSocketUpdates && typeof firstSocketUpdates.classUpdate === "function") {
+                firstSocketUpdates.classUpdate(classId, { global: true });
+                return;
+            }
+        }
     }
 
     for (const socketUpdatesSet of userSocketUpdates.values()) {
@@ -458,19 +465,21 @@ async function getPreviousPolls(classId, limit = 20, offset = 0) {
  * @param {number} classId - The ID of the class whose poll should be saved.
  * @returns {Promise<void>}
  */
-async function savePollToHistory(classId) {
+async function savePollToHistory(classId, pollSnapshot = null) {
     const classroom = classStateStore.getClassroom(classId);
-    if (!classroom) return;
+    if (!classroom && !pollSnapshot) return;
+
+    const pollToSave = pollSnapshot || classroom.poll;
 
     const createdAt = Date.now();
-    const prompt = classroom.poll.prompt;
-    const responses = JSON.stringify(classroom.poll.responses);
-    const allowMultipleResponses = classroom.poll.allowMultipleResponses ? 1 : 0;
-    const blind = classroom.poll.blind ? 1 : 0;
-    const allowTextResponses = classroom.poll.allowTextResponses ? 1 : 0;
-    const autoEndTimer = classroom.poll.autoEndTimer;
-    const autoEndThreshold = classroom.poll.autoEndThreshold;
-    const blindUntilEnded = classroom.poll.blindUntilEnded ? 1 : 0;
+    const prompt = pollToSave.prompt;
+    const responses = JSON.stringify(pollToSave.responses);
+    const allowMultipleResponses = pollToSave.allowMultipleResponses ? 1 : 0;
+    const blind = pollToSave.blind ? 1 : 0;
+    const allowTextResponses = pollToSave.allowTextResponses ? 1 : 0;
+    const autoEndTimer = pollToSave.autoEndTimer;
+    const autoEndThreshold = pollToSave.autoEndThreshold;
+    const blindUntilEnded = pollToSave.blindUntilEnded ? 1 : 0;
 
     return dbRun(
         "INSERT INTO poll_history(class, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt, auto_end_timer, auto_end_threshold, blind_until_ended) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -534,8 +543,14 @@ async function clearPoll(classId, userSession, updateClass = true) {
     const classroom = classStateStore.getClassroom(classId);
     deleteWatchedPoll(classId);
 
-    const currentPollId = pollRuntimeStore.getLastSavedPollId(classId);
-    const savedPollResponses = classroom.poll.responses;
+    const pollSnapshot = structuredClone(classroom.poll);
+    let currentPollId = pollRuntimeStore.getLastSavedPollId(classId);
+    const savedPollResponses = pollSnapshot.responses;
+
+    // If this poll was never ended, create a history row now so clear-without-end still archives.
+    if (!currentPollId) {
+        currentPollId = await savePollToHistory(classId, pollSnapshot);
+    }
 
     classroom.poll.responses = [];
     classroom.poll.prompt = "";
@@ -553,21 +568,9 @@ async function clearPoll(classId, userSession, updateClass = true) {
         excludedRespondents: [],
     };
 
-    // If there is no current poll ID, clear the poll and return
-    if (!currentPollId) {
-        if (updateClass && userSession) {
-            emitClassUpdate(classId, userSession);
-        }
-        pollRuntimeStore.clearPogMeterTracker(classId);
-        pollRuntimeStore.clearLastSavedPollId(classId);
-        pollRuntimeStore.clearPollStartTime(classId);
-        return;
+    if (currentPollId) {
+        await savePollAnswersToHistory(classroom, currentPollId, classId, savedPollResponses);
     }
-
-    // Save poll to history
-    await savePollAnswersToHistory(classroom, currentPollId, classId, savedPollResponses);
-    await savePollToHistory(classId);
-    pollRuntimeStore.setLastSavedPollId(classId, currentPollId);
 
     if (updateClass && userSession) {
         emitClassUpdate(classId, userSession);
