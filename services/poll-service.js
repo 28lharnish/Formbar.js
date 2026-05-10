@@ -361,7 +361,7 @@ async function updatePoll(classId, options, userSession) {
     // If an empty object is sent, clear the current poll
     const optionsKeys = Object.keys(options);
     if (optionsKeys.length === 0) {
-        await clearPoll(classId, userSession);
+        await clearPoll(classId, userSession, false);
         return true;
     }
 
@@ -479,6 +479,49 @@ async function savePollToHistory(classId) {
 }
 
 /**
+ * Persists student responses into poll_answers when clearing/archiving the active poll.
+ * @param {Object} classroom - The classroom object (students and scoped admins unchanged).
+ * @param {number} currentPollId - The runtime-tracked poll id for inserted answers.
+ * @param {number} classId - The ID of the class.
+ * @param {Array<Object>} savedPollResponses - Response definitions captured before the poll metadata was cleared.
+ * @returns {Promise<void>}
+ */
+async function savePollAnswersToHistory(classroom, currentPollId, classId, savedPollResponses) {
+    const rows = [];
+    for (const student of Object.values(classroom.students)) {
+        if (!userHasScope(student, SCOPES.CLASS.SYSTEM.ADMIN, classroom)) {
+            const buttonRes = student.pollRes.buttonRes;
+            let buttonResponse = null;
+            if (Array.isArray(buttonRes) && buttonRes.length > 0) {
+                // Multi-response: store the full array
+                buttonResponse = JSON.stringify(buttonRes);
+            } else if (!Array.isArray(buttonRes) && buttonRes !== "" && buttonRes !== null && buttonRes !== undefined) {
+                // Single response: wrap in an array
+                buttonResponse = JSON.stringify([buttonRes]);
+            }
+
+            const textResponse = student.pollRes.textRes || null;
+            const responseIds = getSelectedResponseIds(savedPollResponses, buttonRes);
+
+            if (buttonResponse === null && textResponse === null) continue;
+
+            const studentId = student.id;
+            rows.push([currentPollId, classId, studentId, responseIds, buttonResponse, textResponse, Date.now()]);
+        }
+    }
+
+    if (rows.length > 0) {
+        const placeholders = rows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
+        const values = rows.flat();
+
+        await dbRun(
+            `INSERT OR REPLACE INTO poll_answers(pollId, classId, userId, responseIds, buttonResponse, textResponse, createdAt) VALUES ${placeholders}`,
+            values
+        );
+    }
+}
+
+/**
  * Clears the current poll in the specified class, optionally updates the class state,
  * and saves poll answers to the database.
  *
@@ -490,9 +533,6 @@ async function savePollToHistory(classId) {
 async function clearPoll(classId, userSession, updateClass = true) {
     const classroom = classStateStore.getClassroom(classId);
     deleteWatchedPoll(classId);
-    if (classroom.poll.status) {
-        await updatePoll(classId, { status: false }, userSession);
-    }
 
     const currentPollId = pollRuntimeStore.getLastSavedPollId(classId);
     const savedPollResponses = classroom.poll.responses;
@@ -513,7 +553,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
         excludedRespondents: [],
     };
 
-    // Adds data to the previous poll answers table upon clearing the poll
+    // If there is no current poll ID, clear the poll and return
     if (!currentPollId) {
         if (updateClass && userSession) {
             emitClassUpdate(classId, userSession);
@@ -524,40 +564,10 @@ async function clearPoll(classId, userSession, updateClass = true) {
         return;
     }
 
-    const rows = [];
-    for (const student of Object.values(classroom.students)) {
-        if (!userHasScope(student, SCOPES.CLASS.SYSTEM.ADMIN, classroom)) {
-            const buttonRes = student.pollRes.buttonRes;
-            let buttonResponse = null;
-            if (Array.isArray(buttonRes) && buttonRes.length > 0) {
-                // Multi-response: store the full array
-                buttonResponse = JSON.stringify(buttonRes);
-            } else if (!Array.isArray(buttonRes) && buttonRes !== "" && buttonRes !== null && buttonRes !== undefined) {
-                // Single response: wrap in an array
-                buttonResponse = JSON.stringify([buttonRes]);
-            }
-
-            const textResponse = student.pollRes.textRes || null;
-            const responseIds = getSelectedResponseIds(savedPollResponses, buttonRes);
-
-            // Skip students with no response at all
-            if (buttonResponse === null && textResponse === null) continue;
-
-            const studentId = student.id;
-            rows.push([currentPollId, classId, studentId, responseIds, buttonResponse, textResponse, Date.now()]);
-        }
-    }
-
-    // Insert all of the poll answers into the database at once
-    if (rows.length > 0) {
-        const placeholders = rows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
-        const values = rows.flat();
-
-        await dbRun(
-            `INSERT OR REPLACE INTO poll_answers(pollId, classId, userId, responseIds, buttonResponse, textResponse, createdAt) VALUES ${placeholders}`,
-            values
-        );
-    }
+    // Save poll to history
+    await savePollAnswersToHistory(classroom, currentPollId, classId, savedPollResponses);
+    await savePollToHistory(classId);
+    pollRuntimeStore.setLastSavedPollId(classId, currentPollId);
 
     if (updateClass && userSession) {
         emitClassUpdate(classId, userSession);
