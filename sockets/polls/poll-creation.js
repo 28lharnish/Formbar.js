@@ -1,4 +1,3 @@
-const { classStateStore } = require("@services/classroom-service");
 const { createPoll } = require("@services/poll-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { SCOPES } = require("@modules/permissions");
@@ -28,6 +27,9 @@ module.exports = {
                         lastResponse,
                         multiRes,
                         allowVoteChanges,
+                        autoEndTimer,
+                        autoEndThreshold,
+                        blindUntilEnded,
                     ] = args;
                     pollData = {
                         prompt: pollPrompt,
@@ -40,23 +42,29 @@ module.exports = {
                         indeterminate: Array.isArray(indeterminate) ? indeterminate : [],
                         excludedRespondents: Array.isArray(boxes) ? boxes : [],
                     };
+
+                    if (autoEndTimer !== undefined) pollData.autoEndTimer = autoEndTimer;
+                    if (autoEndThreshold !== undefined) pollData.autoEndThreshold = autoEndThreshold;
+                    if (blindUntilEnded !== undefined) pollData.blindUntilEnded = !!blindUntilEnded;
                 }
 
-                await createPoll(
-                    classId,
-                    {
-                        prompt: pollData.prompt,
-                        answers: Array.isArray(pollData.answers) ? pollData.answers : [],
-                        blind: !!pollData.blind,
-                        allowVoteChanges: !!pollData.allowVoteChanges,
-                        allowTextResponses: !!pollData.allowTextResponses,
-                        allowMultipleResponses: !!pollData.allowMultipleResponses,
-                        weight: Number(pollData.weight ?? 1),
-                        excludedRespondents: Array.isArray(pollData.excludedRespondents) ? pollData.excludedRespondents : [],
-                        indeterminate: Array.isArray(pollData.indeterminate) ? pollData.indeterminate : [],
-                    },
-                    socketContext.session
-                );
+                const normalizedPollData = {
+                    prompt: pollData.prompt,
+                    answers: Array.isArray(pollData.answers) ? pollData.answers : [],
+                    blind: !!pollData.blind,
+                    allowVoteChanges: !!pollData.allowVoteChanges,
+                    allowTextResponses: !!pollData.allowTextResponses,
+                    allowMultipleResponses: !!pollData.allowMultipleResponses,
+                    weight: Number(pollData.weight ?? 1),
+                    excludedRespondents: Array.isArray(pollData.excludedRespondents) ? pollData.excludedRespondents : [],
+                    indeterminate: Array.isArray(pollData.indeterminate) ? pollData.indeterminate : [],
+                };
+
+                if (pollData.autoEndTimer !== undefined) normalizedPollData.autoEndTimer = pollData.autoEndTimer;
+                if (pollData.autoEndThreshold !== undefined) normalizedPollData.autoEndThreshold = pollData.autoEndThreshold;
+                if (pollData.blindUntilEnded !== undefined) normalizedPollData.blindUntilEnded = pollData.blindUntilEnded;
+
+                await createPoll(classId, normalizedPollData, socketContext.session);
                 socket.emit("startPoll");
             } catch (err) {
                 handleSocketError(err, socket, "startPoll");

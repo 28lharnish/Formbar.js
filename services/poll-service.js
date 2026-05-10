@@ -1,7 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 
 const { generateColors } = require("@modules/util");
-const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
+const { advancedEmitToClass } = require("@services/socket-updates-service");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
@@ -47,8 +47,8 @@ function resetStudentPollResponses(classroom) {
  */
 function isUserExcludedFromVoting(classroom, user, student) {
     // Check if user is excluded from voting using poll.excludedRespondents
-    if (classroom.poll.excludedRespondents && classroom.poll.excludedRespondents.includes(user.id)) {
-        logger.log("info", `[pollResponse] User ${user.id} is excluded from voting`);
+    const userId = user?.id ?? student?.id;
+    if (userId !== undefined && classroom.poll.excludedRespondents && classroom.poll.excludedRespondents.includes(userId)) {
         return true;
     }
 
@@ -128,6 +128,94 @@ function getSelectedResponseIds(pollResponses, buttonRes) {
     return responseIds.length > 0 ? JSON.stringify(responseIds) : null;
 }
 
+function normalizePositiveNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function normalizeThresholdPercent(value) {
+    const threshold = normalizePositiveNumber(value);
+    if (threshold === null) return null;
+    return Math.min(threshold > 1 ? threshold / 100 : threshold, 1);
+}
+
+function hasStudentAnsweredPoll(student) {
+    if (!student || !student.pollRes) return false;
+
+    const buttonRes = student.pollRes.buttonRes;
+    if (Array.isArray(buttonRes)) {
+        return buttonRes.length > 0;
+    }
+
+    if (buttonRes !== "" && buttonRes !== null && buttonRes !== undefined) {
+        return true;
+    }
+
+    const textRes = student.pollRes.textRes;
+    return textRes !== "" && textRes !== null && textRes !== undefined;
+}
+
+function getEligiblePollStudents(classroom) {
+    if (!classroom || !classroom.students) return [];
+
+    const excludedRespondents = Array.isArray(classroom.poll?.excludedRespondents) ? classroom.poll.excludedRespondents.map(Number) : [];
+
+    return Object.values(classroom.students).filter((student) => {
+        if (!student || student.isOffline || student.break === true) return false;
+        if (excludedRespondents.includes(Number(student.id))) return false;
+        if (userHasScope(student, SCOPES.CLASS.SYSTEM.ADMIN, classroom)) return false;
+        return true;
+    });
+}
+
+function getAutoEndDelay(classroom, autoEndTimer) {
+    const configuredDelay = normalizePositiveNumber(autoEndTimer);
+    if (configuredDelay === null) return null;
+
+    const classTimer = classroom?.timer;
+    if (!classTimer || !classTimer.active || !Number.isFinite(Number(classTimer.endTime))) {
+        return configuredDelay;
+    }
+
+    const remainingClassTime = Number(classTimer.endTime) - Date.now();
+    if (remainingClassTime <= 0) return null;
+
+    return Math.min(configuredDelay, remainingClassTime);
+}
+
+function isAutoEndThresholdMet(classroom) {
+    const threshold = normalizeThresholdPercent(classroom.poll?.autoEndThreshold);
+    if (threshold === null) return true;
+
+    const eligibleStudents = getEligiblePollStudents(classroom);
+    if (eligibleStudents.length === 0) return false;
+
+    const answeredStudents = eligibleStudents.filter(hasStudentAnsweredPoll).length;
+    return answeredStudents / eligibleStudents.length >= threshold;
+}
+
+function emitClassUpdate(classId, userSession) {
+    if (userSession?.email) {
+        const userSockets = userSocketUpdates.get(userSession.email);
+        if (userSockets && userSockets.size > 0) {
+            const firstSocketUpdates = userSockets.values().next().value;
+            if (firstSocketUpdates && typeof firstSocketUpdates.classUpdate === "function") {
+                firstSocketUpdates.classUpdate(classId, { global: true });
+                return;
+            }
+        }
+    }
+
+    for (const socketUpdatesSet of userSocketUpdates.values()) {
+        for (const socketUpdates of socketUpdatesSet.values()) {
+            if (socketUpdates && typeof socketUpdates.classUpdate === "function") {
+                socketUpdates.classUpdate(classId, { global: true });
+                return;
+            }
+        }
+    }
+}
+
 /**
  * Updates a student's poll response state.
  * @param {Object} student - The student object.
@@ -159,8 +247,23 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
  * @throws {ValidationError} If class is not active
  */
 async function createPoll(classId, pollData, userData) {
-    const { prompt, answers, blind, weight, excludedRespondents, allowVoteChanges, allowTextResponses, allowMultipleResponses } = pollData;
+    const {
+        prompt,
+        answers,
+        blind,
+        weight,
+        excludedRespondents,
+        allowVoteChanges,
+        allowTextResponses,
+        allowMultipleResponses,
+        autoEndTimer,
+        autoEndThreshold,
+        blindUntilEnded,
+    } = pollData;
     const numberOfResponses = Object.keys(answers).length;
+    const normalizedAutoEndTimer = normalizePositiveNumber(autoEndTimer);
+    const normalizedAutoEndThreshold = normalizePositiveNumber(autoEndThreshold);
+    const shouldBlindUntilEnded = blind ? blindUntilEnded !== false : !!blindUntilEnded;
 
     requireInternalParam(classId, "classId");
     requireInternalParam(pollData, "pollData");
@@ -180,6 +283,7 @@ async function createPoll(classId, pollData, userData) {
 
     classroom.poll.allowVoteChanges = allowVoteChanges;
     classroom.poll.blind = blind;
+    classroom.poll.blindUntilEnded = shouldBlindUntilEnded;
     classroom.poll.status = true;
 
     // If excludedRespondents is provided and is a non-empty array, use it directly
@@ -221,14 +325,22 @@ async function createPoll(classId, pollData, userData) {
 
     // Set the poll's data in the classroom
     pollRuntimeStore.setPollStartTime(classId, pollStartTime);
-    classroom.poll.startTime = pollStartTime;
-    classroom.poll.weight = weight;
-    classroom.poll.allowTextResponses = allowTextResponses;
-    classroom.poll.prompt = prompt;
-    classroom.poll.allowMultipleResponses = allowMultipleResponses;
+    classroom.poll = {
+        ...classroom.poll,
+        startTime: pollStartTime,
+        weight: weight,
+        allowTextResponses: allowTextResponses,
+        prompt: prompt,
+        allowMultipleResponses: allowMultipleResponses,
+        endTime: null,
+        autoEndTimer: normalizedAutoEndTimer,
+        autoEndThreshold: normalizedAutoEndThreshold,
+        blindUntilEnded: shouldBlindUntilEnded,
+    };
 
     resetStudentPollResponses(classroom);
-    userUpdateSocket(userData.email, "classUpdate", classId, { global: true });
+    watchPoll(classId, classroom.poll);
+    emitClassUpdate(classId, userData);
 }
 
 /**
@@ -256,7 +368,7 @@ async function updatePoll(classId, options, userSession) {
     // If an empty object is sent, clear the current poll
     const optionsKeys = Object.keys(options);
     if (optionsKeys.length === 0) {
-        await clearPoll(classId, userSession);
+        await clearPoll(classId, userSession, false);
         return true;
     }
 
@@ -266,6 +378,14 @@ async function updatePoll(classId, options, userSession) {
 
         // Save to history when ending poll
         if (option === "status" && value === false && classroom.poll.status === true) {
+            deleteWatchedPoll(classId);
+
+            // If the poll is set to blind until ended, then unblind the poll
+            if (classroom.poll.blindUntilEnded) {
+                classroom.poll.blind = false;
+            }
+
+            classroom.poll.status = false;
             const savedPollId = await savePollToHistory(classId);
             pollRuntimeStore.setLastSavedPollId(classId, savedPollId);
         }
@@ -282,11 +402,7 @@ async function updatePoll(classId, options, userSession) {
     }
 
     // Broadcast update to all tabs
-    const userSockets = userSocketUpdates.get(userSession.email);
-    if (userSockets && userSockets.size > 0) {
-        const firstSocket = userSockets.values().next().value;
-        firstSocket.classUpdate(classId, { global: true });
-    }
+    emitClassUpdate(classId, userSession);
     return true;
 }
 
@@ -349,64 +465,37 @@ async function getPreviousPolls(classId, limit = 20, offset = 0) {
  * @param {number} classId - The ID of the class whose poll should be saved.
  * @returns {Promise<void>}
  */
-async function savePollToHistory(classId) {
+async function savePollToHistory(classId, pollSnapshot = null) {
     const classroom = classStateStore.getClassroom(classId);
-    if (!classroom) return;
+    if (!classroom && !pollSnapshot) return;
+
+    const pollToSave = pollSnapshot || classroom.poll;
 
     const createdAt = Date.now();
-    const prompt = classroom.poll.prompt;
-    const responses = JSON.stringify(classroom.poll.responses);
-    const allowMultipleResponses = classroom.poll.allowMultipleResponses ? 1 : 0;
-    const blind = classroom.poll.blind ? 1 : 0;
-    const allowTextResponses = classroom.poll.allowTextResponses ? 1 : 0;
+    const prompt = pollToSave.prompt;
+    const responses = JSON.stringify(pollToSave.responses);
+    const allowMultipleResponses = pollToSave.allowMultipleResponses ? 1 : 0;
+    const blind = pollToSave.blind ? 1 : 0;
+    const allowTextResponses = pollToSave.allowTextResponses ? 1 : 0;
+    const autoEndTimer = pollToSave.autoEndTimer;
+    const autoEndThreshold = pollToSave.autoEndThreshold;
+    const blindUntilEnded = pollToSave.blindUntilEnded ? 1 : 0;
 
     return dbRun(
-        "INSERT INTO poll_history(class, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)",
-        [classId, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt]
+        "INSERT INTO poll_history(class, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt, auto_end_timer, auto_end_threshold, blind_until_ended) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [classId, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt, autoEndTimer, autoEndThreshold, blindUntilEnded]
     );
 }
 
 /**
- * Clears the current poll in the specified class, optionally updates the class state,
- * and saves poll answers to the database.
- *
+ * Persists student responses into poll_answers when clearing/archiving the active poll.
+ * @param {Object} classroom - The classroom object (students and scoped admins unchanged).
+ * @param {number} currentPollId - The runtime-tracked poll id for inserted answers.
  * @param {number} classId - The ID of the class.
- * @param {Object} userSession - The user session object.
- * @param {boolean} [updateClass=true] - Whether to update the class state after clearing the poll.
+ * @param {Array<Object>} savedPollResponses - Response definitions captured before the poll metadata was cleared.
  * @returns {Promise<void>}
  */
-async function clearPoll(classId, userSession, updateClass = true) {
-    const classroom = classStateStore.getClassroom(classId);
-    if (classroom.poll.status) {
-        await updatePoll(classId, { status: false }, userSession);
-    }
-
-    const currentPollId = pollRuntimeStore.getLastSavedPollId(classId);
-    const savedPollResponses = classroom.poll.responses;
-
-    classroom.poll.responses = [];
-    classroom.poll.prompt = "";
-    classroom.poll = {
-        status: false,
-        responses: [],
-        allowTextResponses: false,
-        prompt: "",
-        weight: 1,
-        blind: false,
-        excludedRespondents: [],
-    };
-
-    // Adds data to the previous poll answers table upon clearing the poll
-    if (!currentPollId) {
-        if (updateClass && userSession) {
-            userUpdateSocket(userSession.email, "classUpdate", classId, { global: true });
-        }
-        pollRuntimeStore.clearPogMeterTracker(classId);
-        pollRuntimeStore.clearLastSavedPollId(classId);
-        pollRuntimeStore.clearPollStartTime(classId);
-        return;
-    }
-
+async function savePollAnswersToHistory(classroom, currentPollId, classId, savedPollResponses) {
     const rows = [];
     for (const student of Object.values(classroom.students)) {
         if (!userHasScope(student, SCOPES.CLASS.SYSTEM.ADMIN, classroom)) {
@@ -423,7 +512,6 @@ async function clearPoll(classId, userSession, updateClass = true) {
             const textResponse = student.pollRes.textRes || null;
             const responseIds = getSelectedResponseIds(savedPollResponses, buttonRes);
 
-            // Skip students with no response at all
             if (buttonResponse === null && textResponse === null) continue;
 
             const studentId = student.id;
@@ -431,7 +519,6 @@ async function clearPoll(classId, userSession, updateClass = true) {
         }
     }
 
-    // Insert all of the poll answers into the database at once
     if (rows.length > 0) {
         const placeholders = rows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
         const values = rows.flat();
@@ -441,9 +528,52 @@ async function clearPoll(classId, userSession, updateClass = true) {
             values
         );
     }
+}
+
+/**
+ * Clears the current poll in the specified class, optionally updates the class state,
+ * and saves poll answers to the database.
+ *
+ * @param {number} classId - The ID of the class.
+ * @param {Object} userSession - The user session object.
+ * @param {boolean} [updateClass=true] - Whether to update the class state after clearing the poll.
+ * @returns {Promise<void>}
+ */
+async function clearPoll(classId, userSession, updateClass = true) {
+    const classroom = classStateStore.getClassroom(classId);
+    deleteWatchedPoll(classId);
+
+    const pollSnapshot = structuredClone(classroom.poll);
+    let currentPollId = pollRuntimeStore.getLastSavedPollId(classId);
+    const savedPollResponses = pollSnapshot.responses;
+
+    // If this poll was never ended, create a history row now so clear-without-end still archives.
+    if (!currentPollId) {
+        currentPollId = await savePollToHistory(classId, pollSnapshot);
+    }
+
+    classroom.poll.responses = [];
+    classroom.poll.prompt = "";
+    classroom.poll = {
+        status: false,
+        responses: [],
+        allowTextResponses: false,
+        prompt: "",
+        weight: 1,
+        blind: false,
+        blindUntilEnded: false,
+        endTime: null,
+        autoEndTimer: null,
+        autoEndThreshold: null,
+        excludedRespondents: [],
+    };
+
+    if (currentPollId) {
+        await savePollAnswersToHistory(classroom, currentPollId, classId, savedPollResponses);
+    }
 
     if (updateClass && userSession) {
-        userUpdateSocket(userSession.email, "classUpdate", classId, { global: true });
+        emitClassUpdate(classId, userSession);
     }
 
     pollRuntimeStore.clearPogMeterTracker(classId);
@@ -533,7 +663,8 @@ async function sendPollResponse(classId, res, textRes, userSession) {
         pollRuntimeStore.markPogMeterIncreased(classId, email);
     }
 
-    userUpdateSocket(email, "classUpdate", classId, { global: true });
+    watchPoll(classId, classroom.poll);
+    emitClassUpdate(classId, userSession);
 }
 
 /**
@@ -623,6 +754,55 @@ async function deleteCustomPolls(userId) {
     }
 }
 
+// Map of classId to timeout id
+// Used to clear the timeout when the poll is cleared
+const watchedPolls = new Map();
+
+/**
+ * Watches the poll for certain conditions which will trigger an automatic end of the poll.
+ * @param {number} classId - The ID of the class.
+ * @returns {boolean} True if the poll is being watched, false otherwise.
+ */
+function watchPoll(classId, pollData) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom || !classroom.poll || !classroom.poll.status || watchedPolls.has(classId)) return false;
+
+    const autoEndTimer = normalizePositiveNumber(pollData.autoEndTimer);
+    if (autoEndTimer === null || !isAutoEndThresholdMet(classroom)) return false;
+
+    const autoEndDelay = getAutoEndDelay(classroom, autoEndTimer);
+    if (autoEndDelay === null) return false;
+
+    const pollStartTime = classroom.poll.startTime;
+    classroom.poll.endTime = Date.now() + autoEndDelay;
+
+    const timer = setTimeout(async () => {
+        const activeClassroom = classStateStore.getClassroom(classId);
+        watchedPolls.delete(classId);
+
+        if (!activeClassroom || !activeClassroom.poll || !activeClassroom.poll.status || activeClassroom.poll.startTime !== pollStartTime) {
+            return;
+        }
+
+        await updatePoll(classId, { status: false }, null);
+    }, autoEndDelay);
+
+    if (typeof timer.unref === "function") {
+        timer.unref();
+    }
+
+    watchedPolls.set(classId, timer);
+    return true;
+}
+
+function deleteWatchedPoll(classId) {
+    const timer = watchedPolls.get(classId);
+    if (!timer) return;
+
+    clearTimeout(watchedPolls.get(classId));
+    watchedPolls.delete(classId);
+}
+
 module.exports = {
     createPoll,
     updatePoll,
@@ -634,4 +814,5 @@ module.exports = {
     getPollResponses,
     deleteCustomPolls,
     pollRuntimeStore,
+    deleteWatchedPoll,
 };
