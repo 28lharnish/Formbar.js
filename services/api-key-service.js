@@ -2,13 +2,13 @@ const { dbGet, dbRun } = require("@modules/database");
 const {sha256 } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
-const { getUser } = require("@services/user-service");
+const { getUserDataFromDb } = require("@services/user-service");
 const { getAppById} = require("@services/app-service");
 const {randomBytes} = require("crypto");
 
 // maps entity types to functions that can resolve them by ID
 const entityResolvers = {
-    "user": async (userId) => getUser.bind(null, { id: userId })(), // I'm so sorry
+    "user": getUserDataFromDb, // I'm so sorry
     "app": getAppById,
 }
 

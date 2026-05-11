@@ -516,7 +516,6 @@ async function getEmailFromAPIKey(api) {
  * @returns {Promise<Object|Error>}
  */
 async function getUser(userIdentifier) {
-    // OH THE HORROR. PLEASE SOMEBODY REFACTOR THIS RELIC 😭
     try {
         const email = userIdentifier.email || (await getEmailFromId(userIdentifier.id)) || (await getEmailFromAPIKey(userIdentifier.api));
         if (email instanceof Error) throw email;
