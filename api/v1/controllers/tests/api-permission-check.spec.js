@@ -48,9 +48,15 @@ jest.mock("@modules/scope-resolver", () => ({
     userHasScope: jest.fn().mockReturnValue(true),
 }));
 
+jest.mock("@services/api-key-service", () => ({
+    ...jest.requireActual("@services/api-key-service"),
+    resolveAPIKey: jest.fn(),
+}));
+
 const { getUser } = require("@services/user-service");
 const { userHasScope } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
+const { resolveAPIKey } = require("@services/api-key-service");
 
 const apiPermissionCheckController = require("../api-permission-check");
 const app = createTestApp(apiPermissionCheckController);
@@ -100,6 +106,7 @@ function mockLoggedInUser(overrides = {}) {
         ...overrides,
     };
     getUser.mockResolvedValue(user);
+    resolveAPIKey.mockResolvedValue(user);
     return user;
 }
 

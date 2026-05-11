@@ -1,9 +1,10 @@
-const crypto = require("crypto");
 const { dbGet, dbRun } = require("@modules/database");
 const { sha256 } = require("@modules/crypto");
+const { regenerateAPIKey, resolveAPIKey } = require("@services/api-key-service");
 const { createPool } = require("@services/digipog-service");
 const { registerItem, addItemToInventory } = require("@services/inventory-service");
 const ValidationError = require("@errors/validation-error");
+const crypto = require("crypto");
 
 const SHARES_PER_APP = 100;
 
@@ -64,19 +65,24 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
         });
         const poolId = await createPool({ name: `${name} Developer Pool`, description, ownerId });
 
-        const apiKey = crypto.randomBytes(64).toString("hex");
-        const apiSecret = crypto.randomBytes(256).toString("hex");
-        const hashedAPIKey = sha256(apiKey);
-        const hashedAPISecret = sha256(apiSecret);
-
         const appId = await dbRun(
-            "INSERT INTO apps (name, description, owner_user_id, share_item_id, pool_id, api_key_hash, api_secret_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [name, description, ownerId, shareItemId, poolId, hashedAPIKey, hashedAPISecret]
+            "INSERT INTO apps (name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?)",
+            [name, description, ownerId, shareItemId, poolId]
         );
 
         for (const redirectUri of normalizedRedirectUris) {
             await dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [appId, redirectUri]);
         }
+
+        // Generate and store API key for the app (128 hex chars = 64 bytes)
+        const apiKey = crypto.randomBytes(64).toString("hex");
+        const apiSecret = crypto.randomBytes(256).toString("hex");
+        const apiKeyHash = sha256(apiKey);
+        
+        await dbRun(
+            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
+            [apiKeyHash, appId, "app"]
+        );
 
         await addItemToInventory(ownerId, shareItemId, SHARES_PER_APP);
         await dbRun("COMMIT");
@@ -92,6 +98,11 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
     }
 }
 
+async function getAppById(appId) {
+    const app = await dbGet("SELECT id, name, description, owner_user_id AS ownerId FROM apps WHERE id = ?", [appId]);
+    return app || null;
+}
+
 /**
  * Validate OAuth Client Redirect.
  *
@@ -101,7 +112,7 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
 async function validateOAuthClientRedirect({ clientId, redirectUri }) {
     const normalizedRedirectUri = normalizeRedirectUris([redirectUri])[0];
     const app = await dbGet(
-        `SELECT apps.id, apps.api_secret_hash
+        `SELECT apps.id
          FROM apps
          JOIN app_redirect_uris ON app_redirect_uris.app_id = apps.id
          WHERE apps.id = ?
@@ -118,18 +129,23 @@ async function validateOAuthClientRedirect({ clientId, redirectUri }) {
  * @param {Object} params - params.
  * @returns {Promise<*>}
  */
-async function validateOAuthClientSecret({ clientId, redirectUri, clientSecret }) {
-    const app = await validateOAuthClientRedirect({ clientId, redirectUri });
-    if (!app || typeof clientSecret !== "string" || !clientSecret.trim()) {
+async function validateOAuthAPIKey({ clientId, redirectUri, apiKey}) {
+    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+        return null;
+    }
+    
+    const app = await resolveAPIKey(apiKey);
+    if (!app) {
         return null;
     }
 
-    return sha256(clientSecret) === app.api_secret_hash ? app : null;
+    return (app.id === Number(clientId)) ? { ...app, redirectUri } : null;
 }
 
 module.exports = {
     createApp,
+    getAppById,
     normalizeRedirectUris,
     validateOAuthClientRedirect,
-    validateOAuthClientSecret,
+    validateOAuthAPIKey,
 };

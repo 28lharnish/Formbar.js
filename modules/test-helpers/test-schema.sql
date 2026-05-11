@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS "classusers" (
 CREATE INDEX IF NOT EXISTS idx_classusers_class_student ON classusers (classId, studentId);
 CREATE INDEX IF NOT EXISTS idx_classusers_student_class ON classusers (studentId, classId);
 
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL, -- 'user' or 'app'
+    entity_id INTEGER NOT NULL, -- user_id or app_id
+    api_key_hash TEXT NOT NULL UNIQUE, -- SHA-256 hash of the API key
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_entity ON api_keys (entity_type, entity_id);
+
 -- Named roles (final state: includes color column)
 CREATE TABLE IF NOT EXISTS "roles" (
     "id"      INTEGER NOT NULL UNIQUE,
@@ -277,9 +287,7 @@ CREATE TABLE IF NOT EXISTS "apps" (
     "description" TEXT,
     "owner_user_id" INTEGER NOT NULL,
     "share_item_id" INTEGER NOT NULL,
-    "pool_id" INTEGER NOT NULL,
-    "api_key_hash" TEXT NOT NULL UNIQUE,
-    "api_secret_hash" TEXT NOT NULL
+    "pool_id" INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "app_redirect_uris" (

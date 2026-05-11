@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS apps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     description TEXT,
     owner_user_id INTEGER NOT NULL,
     share_item_id INTEGER NOT NULL,

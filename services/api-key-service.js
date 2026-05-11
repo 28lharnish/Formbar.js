@@ -1,6 +1,25 @@
-const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { compareBcrypt, isBcryptHash, sha256 } = require("@modules/crypto");
+const { dbGet, dbRun } = require("@modules/database");
+const {sha256 } = require("@modules/crypto");
+const { requireInternalParam } = require("@modules/error-wrapper");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
+const { getUserDataFromDb } = require("@services/user-service");
+const {randomBytes} = require("crypto");
+const NotFoundError = require("@errors/not-found-error");
+const ValidationError = require("@errors/validation-error");
+
+// maps entity types to functions that can resolve them by ID
+const entityResolvers = {
+    "user": getUserDataFromDb,
+};
+
+// Lazy load app resolver to avoid circular dependency
+Object.defineProperty(entityResolvers, "app", {
+    get() {
+        const { getAppById } = require("@services/app-service");
+        return getAppById;
+    },
+    configurable: true,
+})
 
 /**
  * Normalize a raw API key value from headers, query strings, or request bodies.
@@ -26,6 +45,45 @@ function hashAPIKey(apiKey) {
 }
 
 /**
+ * Create and save a new API key for a user.
+ * @param {number} userId - userId.
+ * @returns {Promise<string>}
+ */
+async function regenerateAPIKey(entityType, entityId) {
+    requireInternalParam(entityId, "entityId");
+    requireInternalParam(entityType, "entityType");
+
+    const resolver = entityResolvers[entityType];
+    if (!resolver) {
+        throw new ValidationError(`Invalid entity type for API key regeneration: ${entityType}`, {
+            event: `api_key.regenerate.failed`,
+            reason: `invalid_entity_type`,
+        });
+    }
+
+    const entity = await resolver(entityId);
+    if (!entity) {
+        throw new NotFoundError(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} not found for API key regeneration.`, {
+            event: `${entityType}.api_key.regenerate.failed`,
+            reason: `${entityType}_not_found`,
+        });
+    }
+
+    const existingAPIKey = await dbGet("SELECT api_key_hash FROM api_keys WHERE entity_id = ? AND entity_type = ?", [entityId, entityType]);
+    const apiKey = randomBytes(32).toString("hex");
+    const hashedAPIKey = hashAPIKey(apiKey);
+    if (existingAPIKey) {
+        await dbRun("UPDATE api_keys SET api_key_hash = ?, created_at = CURRENT_TIMESTAMP WHERE entity_id = ? AND entity_type = ?", [hashedAPIKey, entityId, entityType]);
+    } else {
+        await dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [hashedAPIKey, entityId, entityType]);
+    }
+
+    apiKeyCacheStore.invalidateByEntity(entityId, entityType);
+    apiKeyCacheStore.set(apiKey, entityId, entityType);
+    return apiKey;
+}
+
+/**
  * Find an entity by API key. SHA-256 keys are resolved by direct lookup; legacy
  * bcrypt keys are checked only as a fallback and migrated after a successful match.
  * @param {string} rawAPIKey - Plaintext API key.
@@ -37,55 +95,59 @@ async function resolveAPIKey(rawAPIKey) {
         return null;
     }
 
-    const cachedEmail = apiKeyCacheStore.get(apiKey);
-    if (cachedEmail) {
-        const apiKeyHash = hashAPIKey(apiKey);
-        const cachedUser = await dbGet("SELECT id, email, API FROM users WHERE email = ? AND API = ?", [cachedEmail, apiKeyHash]);
-        if (cachedUser) {
-            return { ...cachedUser, fromCache: true, migrated: false };
-        }
-        apiKeyCacheStore.delete(apiKey);
-    }
-
     const apiKeyHash = hashAPIKey(apiKey);
-    const shaUser = await dbGet("SELECT id, email, API FROM users WHERE API = ?", [apiKeyHash]);
-    if (shaUser) {
-        apiKeyCacheStore.set(apiKey, shaUser.email);
-        return { ...shaUser, migrated: false };
+
+    // Check the cache for this API key before hitting the database
+    const cachedEntity = apiKeyCacheStore.get(apiKey);
+    if (cachedEntity) {
+        const shaEntity = await dbGet(
+            "SELECT entity_id, entity_type FROM api_keys WHERE api_key_hash = ?",
+            [apiKeyHash]
+        );
+
+        if (
+            !shaEntity ||
+            shaEntity.entity_id !== cachedEntity.id ||
+            shaEntity.entity_type !== cachedEntity.type
+        ) {
+            apiKeyCacheStore.invalidateByAPIKey(apiKey);
+        } else {
+            const resolver = entityResolvers[cachedEntity.type];
+            if (!resolver) {
+                return null;
+            }
+
+            const resolvedEntity = await resolver(cachedEntity.id);
+            if (!resolvedEntity) {
+                return null;
+            }
+
+            return { ...resolvedEntity, cached: true, migrated: false };
+        }
     }
 
-    const legacyUsers = await dbGetAll("SELECT id, email, API FROM users WHERE API IS NOT NULL AND API LIKE '$2%'");
-    for (const user of legacyUsers) {
-        if (!isBcryptHash(user.API)) {
-            continue;
+    const shaEntity = await dbGet("SELECT * FROM api_keys WHERE api_key_hash = ?", [apiKeyHash]);
+    if (shaEntity) {
+        const resolver = entityResolvers[shaEntity.entity_type];
+        if (!resolver) {
+            return null;
         }
 
-        const matches = await compareBcrypt(apiKey, user.API);
-        if (!matches) {
-            continue;
+        const resolvedEntity = await resolver(shaEntity.entity_id);
+        if (!resolvedEntity) {
+            return null;
         }
 
-        await dbRun("UPDATE users SET API = ? WHERE id = ? AND API = ?", [apiKeyHash, user.id, user.API]);
-        apiKeyCacheStore.set(apiKey, user.email);
-        return { ...user, API: apiKeyHash, migrated: true };
+        apiKeyCacheStore.set(apiKey, shaEntity.entity_id, shaEntity.entity_type);
+        return { ...resolvedEntity, cached: false, migrated: false };
     }
 
     return null;
-}
-
-/**
- * Resolve only the email address for an API key when that is all the caller needs.
- * @param {string} apiKey - Plaintext API key.
- * @returns {Promise<string|null>}
- */
-async function getEmailFromAPIKey(apiKey) {
-    const user = await resolveAPIKey(apiKey);
-    return user ? user.email : null;
 }
 
 module.exports = {
     normalizeAPIKey,
     hashAPIKey,
     resolveAPIKey,
-    getEmailFromAPIKey,
+    regenerateAPIKey,
 };

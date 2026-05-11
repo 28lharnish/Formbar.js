@@ -4,6 +4,7 @@ const { SCOPES } = require("@modules/permissions");
 const { userHasScope } = require("@modules/scope-resolver");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
+const { resolveAPIKey } = require("@services/api-key-service");
 
 /**
  * Register api-permission-check controller routes.
@@ -98,7 +99,11 @@ module.exports = (router) => {
             throw new ValidationError("Invalid permissionType.", { event: "api.permission.check.failed", reason: "invalid_permission_type" });
         }
 
-        const user = await getUser({ api });
+        const user = await resolveAPIKey(api);
+        if (!user) {
+            throw new ForbiddenError("Invalid API key.", { event: "api.permission.check.failed", reason: "invalid_api_key" });
+        }
+        
         if (!user.loggedIn) {
             throw new ForbiddenError("User is not logged in.", { event: "api.permission.check.failed", reason: "not_logged_in" });
         }
