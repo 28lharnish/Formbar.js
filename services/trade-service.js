@@ -40,11 +40,10 @@ function normalizeItems(items) {
  * @returns {Promise<void>}
  */
 async function checkItemsExistInRegistry(items) {
-    for (const { itemId } of items) {
-        const row = await dbGet("SELECT id FROM item_registry WHERE id = ?", [itemId]);
-        if (!row) {
-            throw new ValidationError(`Item with id ${itemId} does not exist in the registry.`, { reason: "item_not_found", itemId });
-        }
+    const itemIds = items.map(({ itemId }) => itemId);
+    const rows = await dbGetAll("SELECT id FROM item_registry WHERE id IN (?)", [itemIds]);
+    if (rows.length !== itemIds.length) {
+        throw new ValidationError(`One or more items do not exist in the registry.`, { reason: "item_not_found" });
     }
 }
 
