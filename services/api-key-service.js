@@ -3,14 +3,23 @@ const {sha256 } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { getUserDataFromDb } = require("@services/user-service");
-const { getAppById} = require("@services/app-service");
 const {randomBytes} = require("crypto");
+const NotFoundError = require("@errors/not-found-error");
+const ValidationError = require("@errors/validation-error");
 
 // maps entity types to functions that can resolve them by ID
 const entityResolvers = {
-    "user": getUserDataFromDb, // I'm so sorry
-    "app": getAppById,
-}
+    "user": getUserDataFromDb,
+};
+
+// Lazy load app resolver to avoid circular dependency
+Object.defineProperty(entityResolvers, "app", {
+    get() {
+        const { getAppById } = require("@services/app-service");
+        return getAppById;
+    },
+    configurable: true,
+})
 
 /**
  * Normalize a raw API key value from headers, query strings, or request bodies.
@@ -44,7 +53,15 @@ async function regenerateAPIKey(entityType, entityId) {
     requireInternalParam(entityId, "entityId");
     requireInternalParam(entityType, "entityType");
 
-    const entity = await entityResolvers[entityType](entityId);
+    const resolver = entityResolvers[entityType];
+    if (!resolver) {
+        throw new ValidationError(`Invalid entity type for API key regeneration: ${entityType}`, {
+            event: `api_key.regenerate.failed`,
+            reason: `invalid_entity_type`,
+        });
+    }
+
+    const entity = await resolver(entityId);
     if (!entity) {
         throw new NotFoundError(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} not found for API key regeneration.`, {
             event: `${entityType}.api_key.regenerate.failed`,
@@ -94,9 +111,12 @@ async function resolveAPIKey(rawAPIKey) {
     const apiKeyHash = hashAPIKey(apiKey);
     const shaEntity = await dbGet("SELECT * FROM api_keys WHERE api_key_hash = ?", [apiKeyHash]);
     if (shaEntity) {
-        const resolvedEntity = await entityResolvers[shaEntity.entity_type](shaEntity.entity_id);
-        apiKeyCacheStore.set(apiKey, shaEntity.entity_id, shaEntity.entity_type);
-        return { ...resolvedEntity, cached: false, migrated: false };
+        const resolver = entityResolvers[shaEntity.entity_type];
+        if (resolver) {
+            const resolvedEntity = await resolver(shaEntity.entity_id);
+            apiKeyCacheStore.set(apiKey, shaEntity.entity_id, shaEntity.entity_type);
+            return { ...resolvedEntity, cached: false, migrated: false };
+        }
     }
 
     return null;

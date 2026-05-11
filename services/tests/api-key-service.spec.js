@@ -15,8 +15,8 @@ jest.mock("@modules/database", () => ({
 const { sha256 } = require("@modules/crypto");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { resolveAPIKey, regenerateAPIKey } = require("@services/api-key-service");
-const { ValidationError } = require("@errors/validation-error");
-const { NotFoundError } = require("@errors/not-found-error");
+const ValidationError = require("@errors/validation-error");
+const NotFoundError = require("@errors/not-found-error");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -63,11 +63,11 @@ describe("regenerateAPIKey()", () => {
     });
 
     it("throws NotFoundError for non-existent user", async () => {
-        await expect(regenerateAPIKey(99999, "user")).rejects.toThrow(NotFoundError);
+        await expect(regenerateAPIKey("user", 99999)).rejects.toThrow(NotFoundError);
     });
 
     it("returns a new plaintext API key and stores a sha256 hash", async () => {
-        const userId = await seedUser({ email: "apiuser@test.com", API: "oldapi" });
+        const userId = await seedUser(sha256("oldapi"), "api-key-user@test.com");
         const newKey = await regenerateAPIKey("user", userId);
 
         expect(typeof newKey).toBe("string");

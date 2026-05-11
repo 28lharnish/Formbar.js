@@ -7,7 +7,6 @@ const { sendMail } = require("@modules/mail");
 const { dbGet, dbRun, dbGetAll, database } = require("@modules/database");
 const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
-const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { getUserRoles } = require("@services/role-service");
@@ -21,6 +20,7 @@ const { hashBcrypt, compareBcrypt, sha256 } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
+const { error } = require("console");
 
 let passwordResetTemplate;
 let verifyEmailTemplate;
@@ -494,21 +494,7 @@ function getUserClass(email) {
     }
 }
 
-/**
- * Gets the email associated with an API key, with caching.
- * @param {string} api - API key.
- * @returns {Promise<string|Object|Error>}
- */
-async function getEmailFromAPIKey(api) {
-    try {
-        if (!api) return { error: "Missing API key" };
 
-        const user = await resolveAPIKey(api);
-        return user ? user.email : null;
-    } catch (err) {
-        return err;
-    }
-}
 
 /**
  * Gets the current user's data including class/session info.
@@ -517,7 +503,7 @@ async function getEmailFromAPIKey(api) {
  */
 async function getUser(userIdentifier) {
     try {
-        const email = userIdentifier.email || (await getEmailFromId(userIdentifier.id)) || (await getEmailFromAPIKey(userIdentifier.api));
+        const email = userIdentifier.email || (await getEmailFromId(userIdentifier.id));
         if (email instanceof Error) throw email;
         if (email.error) throw email;
 

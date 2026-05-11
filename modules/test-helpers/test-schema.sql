@@ -287,9 +287,7 @@ CREATE TABLE IF NOT EXISTS "apps" (
     "description" TEXT,
     "owner_user_id" INTEGER NOT NULL,
     "share_item_id" INTEGER NOT NULL,
-    "pool_id" INTEGER NOT NULL,
-    "api_key_hash" TEXT NOT NULL UNIQUE,
-    "api_secret_hash" TEXT NOT NULL
+    "pool_id" INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "app_redirect_uris" (

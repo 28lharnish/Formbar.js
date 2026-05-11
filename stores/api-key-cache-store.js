@@ -21,6 +21,7 @@ class ApiKeyCacheStore {
 
         if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
             this._cache.delete(apiKey);
+            this._entityMap.delete(`${entry.entityType}:${entry.entityId}`);
             return undefined;
         }
 
@@ -42,11 +43,9 @@ class ApiKeyCacheStore {
         this._cache.set(apiKey, cacheEntry);
 
         const entityKey = `${entityType}:${entityId}`;
-        if (!this._entityMap.has(entityKey)) {
-            this._entityMap.set(entityKey, {
-                apiKey: apiKey
-            });
-        }
+        this._entityMap.set(entityKey, {
+            apiKey: apiKey
+        });
     }
 
     /**
@@ -57,6 +56,7 @@ class ApiKeyCacheStore {
      */
     invalidateByAPIKey(apiKey) {
         const entry = this._cache.get(apiKey);
+        if (!entry) return;
         this._entityMap.delete(`${entry.entityType}:${entry.entityId}`);
         this._cache.delete(apiKey);
     }

@@ -83,7 +83,7 @@ const VALID_EMAIL = "test@example.com";
 const VALID_PASSWORD = "Pass1234!";
 const VALID_DISPLAY = "TestUser";
 const OAUTH_CLIENT_ID = "1";
-const OAUTH_CLIENT_SECRET = "oauth-secret";
+const OAUTH_API_KEY = "oauth-api-key";
 const OAUTH_REDIRECT_URI = "http://localhost/callback";
 
 async function seedUser(overrides = {}) {
@@ -92,8 +92,13 @@ async function seedUser(overrides = {}) {
 
 async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
     await mockDatabase.dbRun(
-        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id, api_key_hash, api_secret_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1, sha256("api-key"), sha256(OAUTH_CLIENT_SECRET)]
+        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?, ?)",
+        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1]
+    );
+    // Store the API key in the new api_keys table
+    await mockDatabase.dbRun(
+        "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
+        [sha256(OAUTH_API_KEY), Number(OAUTH_CLIENT_ID), "app"]
     );
     await mockDatabase.dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [Number(OAUTH_CLIENT_ID), redirectUri]);
 }
@@ -367,7 +372,7 @@ describe("OAuth authorization code flow", () => {
             code,
             redirect_uri: OAUTH_REDIRECT_URI,
             client_id: OAUTH_CLIENT_ID,
-            client_secret: OAUTH_CLIENT_SECRET,
+            apiKey: OAUTH_API_KEY,
         });
 
         expect(tokenResponse).toHaveProperty("access_token");
@@ -409,7 +414,7 @@ describe("OAuth authorization code flow", () => {
             code,
             redirect_uri: OAUTH_REDIRECT_URI,
             client_id: OAUTH_CLIENT_ID,
-            client_secret: OAUTH_CLIENT_SECRET,
+            apiKey: OAUTH_API_KEY,
         });
         expect(tokenResponse.classPermissions).toBe(4);
 
@@ -434,7 +439,7 @@ describe("OAuth authorization code flow", () => {
             code,
             redirect_uri: OAUTH_REDIRECT_URI,
             client_id: OAUTH_CLIENT_ID,
-            client_secret: OAUTH_CLIENT_SECRET,
+            apiKey: OAUTH_API_KEY,
         });
 
         await expect(
@@ -442,7 +447,7 @@ describe("OAuth authorization code flow", () => {
                 code,
                 redirect_uri: OAUTH_REDIRECT_URI,
                 client_id: OAUTH_CLIENT_ID,
-                client_secret: OAUTH_CLIENT_SECRET,
+                apiKey: OAUTH_API_KEY,
             })
         ).rejects.toThrow(/already been used/i);
     });
@@ -463,7 +468,7 @@ describe("OAuth authorization code flow", () => {
                 code,
                 redirect_uri: "http://localhost/different",
                 client_id: OAUTH_CLIENT_ID,
-                client_secret: OAUTH_CLIENT_SECRET,
+                apiKey: OAUTH_API_KEY,
             })
         ).rejects.toThrow(/redirect_uri/i);
     });
@@ -484,7 +489,7 @@ describe("OAuth authorization code flow", () => {
                 code,
                 redirect_uri: OAUTH_REDIRECT_URI,
                 client_id: "other-app",
-                client_secret: OAUTH_CLIENT_SECRET,
+                apiKey: OAUTH_API_KEY,
             })
         ).rejects.toThrow(/client_id/i);
     });
