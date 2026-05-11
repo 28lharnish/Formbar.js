@@ -123,12 +123,18 @@ function getSocketRateLimitKey(socket) {
  * @param {number} options.rateLimitMultiplier - Multiplier applied to the base limit.
  * @returns {*}
  */
+const { settings, rateLimit: rateLimitConfig } = require("@modules/config.js");
+
 function createRateLimiter(options = {}) {
-    const points = Math.max(1, Math.round(100 * (options.rateLimitMultiplier ?? 1)));
-    const limiter = new RateLimiterMemory({
-        points,
-        duration: RATE_LIMIT_DURATION_SECONDS,
-    });
+    const basePoints = Number.isFinite(options.basePoints) ? options.basePoints : rateLimitConfig?.basePoints ?? 60;
+    const durationSeconds = Number.isFinite(options.durationSeconds) ? options.durationSeconds : rateLimitConfig?.durationSeconds ?? RATE_LIMIT_DURATION_SECONDS;
+    const multiplier = options.rateLimitMultiplier ?? settings?.rateLimitMultiplier ?? 1;
+
+    const points = Math.max(1, Math.round(basePoints * multiplier));
+
+    // Separate in-memory limiters for HTTP and socket traffic so they don't share budgets
+    const httpLimiter = new RateLimiterMemory({ points, duration: durationSeconds });
+    const socketLimiter = new RateLimiterMemory({ points, duration: durationSeconds });
 
     return {
         httpMiddleware: async (req, res, next) => {
@@ -141,7 +147,7 @@ function createRateLimiter(options = {}) {
             }
 
             try {
-                await limiter.consume(rateLimitKey);
+                await httpLimiter.consume(rateLimitKey);
                 next();
             } catch (err) {
                 next(new RateLimitError(RATE_LIMIT_MESSAGE, { event: "rate-limit.exceeded", reason: "rate_limit_exceeded" }));
@@ -150,10 +156,11 @@ function createRateLimiter(options = {}) {
         socketMiddleware: (socket, next) => {
             socket.use(async ([event], nextEvent) => {
                 try {
-                    await limiter.consume(getSocketRateLimitKey(socket));
+                    await socketLimiter.consume(getSocketRateLimitKey(socket));
                     nextEvent();
                 } catch (err) {
-                    socket.emit("error", {
+                    // Emit a user-facing message event (consistent with other socket notifications)
+                    socket.emit("message", {
                         message: RATE_LIMIT_MESSAGE,
                         event,
                     });
@@ -167,4 +174,10 @@ function createRateLimiter(options = {}) {
 
 module.exports = {
     createRateLimiter,
+    getRequestRateLimitKey,
+    getSocketRateLimitKey,
+    normalizeIpAddress,
+    getAccountRateLimitKey,
+    getAuthorizationRateLimitKey,
+    getApiKeyRateLimitKey,
 };

@@ -86,6 +86,12 @@ function getConfig() {
             rateLimitMultiplier: Math.max(0.1, parseFloat(process.env.RATE_LIMIT_MULTIPLIER ?? "1")) || 1,
         },
 
+        // Rate limiter defaults (can be overridden via env)
+        rateLimit: {
+            basePoints: parseInt(process.env.RATE_LIMIT_BASE_POINTS, 10) || 100, // Base points applied before multiplier (default: 100 requests)
+            durationSeconds: parseInt(process.env.RATE_LIMIT_DURATION_SECONDS, 10) || 900, // Window duration in seconds (default: 15m)
+        },
+
         // Rate limit for digipogs setitngs
         digipogRateLimit: {
             maxAttempts: parseInt(process.env.DIGIPOG_RATE_LIMIT_MAX_ATTEMPTS, 10) || 5,
