@@ -81,13 +81,6 @@ function getConfig() {
                 blacklistEnabled: envFlag("BLACKLIST_ENABLED"),
             },
 
-            // Sliding window length in milliseconds for rate limiting.
-            // Reads RATE_LIMIT_WINDOW_SECONDS; falls back to 60 s if absent or invalid.
-            rateLimitWindowMs: (() => {
-                const secs = parseInt(process.env.RATE_LIMIT_WINDOW_SECONDS, 10);
-                return Number.isFinite(secs) && secs >= 1 ? secs * 1000 : 60_000;
-            })(),
-
             // Multiplier applied to all per-user request limits.
             // Set > 1 (e.g. 10) to relax limits during automated testing.
             rateLimitMultiplier: Math.max(0.1, parseFloat(process.env.RATE_LIMIT_MULTIPLIER ?? "1")) || 1,
