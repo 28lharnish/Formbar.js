@@ -58,7 +58,15 @@ jest.mock("@stores/poll-runtime-store", () => ({
     },
 }));
 
-const { getPollResponses, deleteCustomPolls, getPreviousPolls, getCurrentPoll } = require("@services/poll-service");
+const {
+    createPoll,
+    updatePoll,
+    sendPollResponse,
+    getPollResponses,
+    deleteCustomPolls,
+    getPreviousPolls,
+    getCurrentPoll,
+} = require("@services/poll-service");
 const { classStateStore } = require("@services/classroom-service");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -77,6 +85,9 @@ async function migratePollHistoryTable(db) {
                 "blind"                    INTEGER NOT NULL DEFAULT 0,
                 "allowTextResponses"       INTEGER NOT NULL DEFAULT 0,
                 "createdAt"                INTEGER NOT NULL,
+                "auto_end_timer"           INTEGER,
+                "auto_end_threshold"       INTEGER,
+                "blind_until_ended"        INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY ("id" AUTOINCREMENT)
             );
             `,
@@ -112,6 +123,167 @@ function makeClassData({ pollStatus = true, responses = [], students = {} } = {}
 function makeStudent(buttonRes = "", textRes = "") {
     return { pollRes: { buttonRes, textRes } };
 }
+
+describe("poll auto-end options", () => {
+    const teacherSession = { email: "teacher@test.com", id: 1 };
+    const basePollData = {
+        prompt: "Question?",
+        answers: [{ answer: "A" }, { answer: "B" }],
+        blind: false,
+        weight: 1,
+        excludedRespondents: [],
+        allowVoteChanges: true,
+        allowTextResponses: false,
+        allowMultipleResponses: false,
+    };
+
+    function setupActiveClassroom(overrides = {}) {
+        mockClassrooms[1] = {
+            isActive: true,
+            timer: { active: false, endTime: 0 },
+            poll: {
+                status: false,
+                prompt: "",
+                responses: [],
+                allowTextResponses: false,
+                allowMultipleResponses: false,
+                blind: false,
+                blindUntilEnded: false,
+                weight: 1,
+                excludedRespondents: [],
+            },
+            students: {
+                "student1@test.com": { id: 10, email: "student1@test.com", pollRes: { buttonRes: "", textRes: "" }, isOffline: false },
+                "student2@test.com": { id: 11, email: "student2@test.com", pollRes: { buttonRes: "", textRes: "" }, isOffline: false },
+            },
+            ...overrides,
+        };
+        return mockClassrooms[1];
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers({ now: 1_000_000 });
+        const { pollRuntimeStore } = require("@stores/poll-runtime-store");
+        pollRuntimeStore.hasPogMeterIncreased.mockReturnValue(true);
+    });
+
+    afterEach(() => {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    it("defaults blind polls to blind-until-ended and unblinds them when ended", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, blind: true }, teacherSession);
+
+        expect(classroom.poll.blind).toBe(true);
+        expect(classroom.poll.blindUntilEnded).toBe(true);
+
+        await updatePoll(1, { status: false }, teacherSession);
+
+        expect(classroom.poll.status).toBe(false);
+        expect(classroom.poll.blind).toBe(false);
+    });
+
+    it("auto-ends after the configured timer and leaves the ended poll visible", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000 }, teacherSession);
+
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.endTime).toBe(1_001_000);
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(false);
+        expect(classroom.poll.prompt).toBe("Question?");
+        expect(classroom.poll.responses).toHaveLength(2);
+    });
+
+    it("ignores non-number auto-end timer values instead of coercing them to milliseconds", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: true }, teacherSession);
+
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.autoEndTimer).toBeNull();
+        expect(classroom.poll.endTime).toBeNull();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(true);
+    });
+
+    it("ignores numeric string auto-end timer values instead of coercing them", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: "1000" }, teacherSession);
+
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.autoEndTimer).toBeNull();
+        expect(classroom.poll.endTime).toBeNull();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(true);
+    });
+
+    it("caps the auto-end countdown to the remaining active class timer", async () => {
+        const classroom = setupActiveClassroom({
+            timer: { active: true, endTime: 1_000_500 },
+        });
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000 }, teacherSession);
+
+        expect(classroom.poll.endTime).toBe(1_000_500);
+
+        await jest.advanceTimersByTimeAsync(499);
+        expect(classroom.poll.status).toBe(true);
+
+        await jest.advanceTimersByTimeAsync(1);
+        expect(classroom.poll.status).toBe(false);
+    });
+
+    it("starts the auto-end countdown only after the response threshold is met", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000, autoEndThreshold: 50 }, teacherSession);
+
+        await jest.advanceTimersByTimeAsync(1000);
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.endTime).toBeNull();
+
+        await sendPollResponse(1, "A", "", { email: "student1@test.com", id: 10 });
+
+        expect(classroom.poll.endTime).toBe(1_002_000);
+
+        await jest.advanceTimersByTimeAsync(999);
+        expect(classroom.poll.status).toBe(true);
+
+        await jest.advanceTimersByTimeAsync(1);
+        expect(classroom.poll.status).toBe(false);
+    });
+
+    it("does not count stale responses from the previous poll toward the threshold", async () => {
+        const classroom = setupActiveClassroom({
+            students: {
+                "student1@test.com": { id: 10, email: "student1@test.com", pollRes: { buttonRes: "A", textRes: "" }, isOffline: false },
+                "student2@test.com": { id: 11, email: "student2@test.com", pollRes: { buttonRes: "B", textRes: "" }, isOffline: false },
+            },
+        });
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000, autoEndThreshold: 80 }, teacherSession);
+
+        expect(classroom.students["student1@test.com"].pollRes.buttonRes).toBe("");
+        expect(classroom.students["student2@test.com"].pollRes.buttonRes).toBe("");
+        expect(classroom.poll.endTime).toBeNull();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(true);
+    });
+});
 
 describe("getPollResponses", () => {
     it("returns empty object when poll.status is false", () => {

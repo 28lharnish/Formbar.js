@@ -6,14 +6,17 @@ module.exports = {
     async run(database) {
         const columns = await dbGetAll("PRAGMA table_info(transactions)", [], database);
         const fromUserColumn = columns.find((column) => column.name === "from_user");
-        if (fromUserColumn) {
-            // If the column exists, then this is a legacy transactions table
-            // Transfer the data to a new table with the new layout
-            const transactions = await dbGetAll("SELECT * FROM transactions", [], database);
+        if (!fromUserColumn) {
+            throw new Error("ALREADY_DONE");
+        }
 
+        // If the column exists, then this is a legacy transactions table.
+        await dbRun("BEGIN TRANSACTION", [], database);
+        try {
             // Create new temporary table
+            await dbRun("DROP TABLE IF EXISTS transactions_temp", [], database);
             await dbRun(
-                `CREATE TABLE IF NOT EXISTS transactions_temp (
+                `CREATE TABLE transactions_temp (
                     "from_id"   INTEGER NOT NULL,
                     "to_id"     INTEGER NOT NULL,
                     "from_type" TEXT NOT NULL,
@@ -26,56 +29,64 @@ module.exports = {
                 database
             );
 
-            // Migrate data
-            for (const transaction of transactions) {
-                let fromId, fromType, toId, toType;
-
-                if (!transaction.from_user && transaction.pool) {
-                    // Pool to user transaction
-                    fromId = transaction.pool;
-                    fromType = "pool";
-                    toId = transaction.to_user;
-                    toType = "user";
-                } else if (!transaction.to_user && transaction.pool) {
-                    // User to pool transaction
-                    toId = transaction.pool;
-                    toType = "pool";
-                    fromId = transaction.from_user;
-                    fromType = "user";
-                } else if (transaction.from_user && transaction.to_user) {
-                    // User to user transaction
-                    fromId = transaction.from_user;
-                    fromType = "user";
-                    toId = transaction.to_user;
-                    toType = "user";
-                } else if (!transaction.from_user && transaction.to_user) {
-                    // Pool to user transaction
-                    fromId = 0;
-                    fromType = "pool";
-                    toId = transaction.to_user;
-                    toType = "user";
-                } else if (transaction.from_user && !transaction.to_user) {
-                    // User to pool transaction
-                    fromId = transaction.from_user;
-                    fromType = "user";
-                    toId = 0;
-                    toType = "pool";
-                } else {
-                    throw new Error("Invalid transaction data");
-                }
-
-                await dbRun(
-                    "INSERT INTO transactions_temp (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    [fromId, toId, fromType, toType, transaction.amount, transaction.reason, transaction.date],
-                    database
-                );
-            }
+            // Migrate data in one SQLite statement instead of round-tripping once per row.
+            await dbRun(
+                `INSERT INTO transactions_temp (from_id, to_id, from_type, to_type, amount, reason, date)
+                WITH normalized_transactions AS (
+                    SELECT
+                        *,
+                        (from_user IS NULL OR from_user = 0) AS missing_from_user,
+                        (to_user IS NULL OR to_user = 0) AS missing_to_user,
+                        (from_user IS NOT NULL AND from_user != 0) AS has_from_user,
+                        (to_user IS NOT NULL AND to_user != 0) AS has_to_user,
+                        (pool IS NOT NULL AND pool != 0) AS has_pool
+                    FROM transactions
+                )
+                SELECT
+                    CASE
+                        WHEN missing_from_user AND has_pool THEN pool
+                        WHEN missing_to_user AND has_pool THEN from_user
+                        WHEN has_from_user AND has_to_user THEN from_user
+                        WHEN missing_from_user AND has_to_user THEN 0
+                        WHEN has_from_user AND missing_to_user THEN from_user
+                    END AS from_id,
+                    CASE
+                        WHEN missing_from_user AND has_pool THEN to_user
+                        WHEN missing_to_user AND has_pool THEN pool
+                        WHEN has_from_user AND has_to_user THEN to_user
+                        WHEN missing_from_user AND has_to_user THEN to_user
+                        WHEN has_from_user AND missing_to_user THEN 0
+                    END AS to_id,
+                    CASE
+                        WHEN missing_from_user AND has_pool THEN 'pool'
+                        WHEN missing_to_user AND has_pool THEN 'user'
+                        WHEN has_from_user AND has_to_user THEN 'user'
+                        WHEN missing_from_user AND has_to_user THEN 'pool'
+                        WHEN has_from_user AND missing_to_user THEN 'user'
+                    END AS from_type,
+                    CASE
+                        WHEN missing_from_user AND has_pool THEN 'user'
+                        WHEN missing_to_user AND has_pool THEN 'pool'
+                        WHEN has_from_user AND has_to_user THEN 'user'
+                        WHEN missing_from_user AND has_to_user THEN 'user'
+                        WHEN has_from_user AND missing_to_user THEN 'pool'
+                    END AS to_type,
+                    amount,
+                    reason,
+                    date
+                FROM normalized_transactions;`,
+                [],
+                database
+            );
 
             // Drop the old transactions table and rename the new one
             await dbRun("DROP TABLE IF EXISTS transactions", [], database);
             await dbRun("ALTER TABLE transactions_temp RENAME TO transactions", [], database);
-        } else {
-            throw new Error("ALREADY_DONE");
+
+            await dbRun("COMMIT", [], database);
+        } catch (err) {
+            await dbRun("ROLLBACK", [], database);
+            throw err;
         }
     },
 };

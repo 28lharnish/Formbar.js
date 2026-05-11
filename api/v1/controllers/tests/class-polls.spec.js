@@ -179,6 +179,37 @@ describe("POST /api/v1/class/:id/polls/create", () => {
             expect.objectContaining({ email: "teacher@test.com" })
         );
     });
+
+    it("maps legacy auto-end options when creating a poll", async () => {
+        const { classId, teacherTokens } = await setupClassWithTeacher();
+        const { createPoll } = require("@services/poll-service");
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/polls/create`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({
+                pollPrompt: "Timed?",
+                polls: [{ answer: "Yes" }],
+                blind: true,
+                responseTextBox: false,
+                multiRes: false,
+                autoEndTimer: 5000,
+                autoEndThreshold: 80,
+                blindUntilEnded: true,
+            });
+
+        expect(res.status).toBe(200);
+        expect(createPoll).toHaveBeenCalledWith(
+            String(classId),
+            expect.objectContaining({
+                prompt: "Timed?",
+                autoEndTimer: 5000,
+                autoEndThreshold: 80,
+                blindUntilEnded: true,
+            }),
+            expect.objectContaining({ email: "teacher@test.com" })
+        );
+    });
 });
 
 describe("POST /api/v1/class/:id/polls/end", () => {
