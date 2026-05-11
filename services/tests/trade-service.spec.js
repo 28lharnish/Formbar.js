@@ -123,6 +123,21 @@ describe("normalizeItems()", () => {
     it("throws for negative quantity", () => {
         expect(() => normalizeItems([{ itemId: 1, quantity: -5 }])).toThrow();
     });
+
+    it("throws a ValidationError for malformed item entries", () => {
+        const malformedInputs = [[null], [123], [{}]];
+
+        malformedInputs.forEach((items) => {
+            try {
+                normalizeItems(items);
+                throw new Error("Expected normalizeItems() to throw");
+            } catch (error) {
+                expect(error).toBeDefined();
+                expect(error.name).toBe("ValidationError");
+                expect(error).not.toBeInstanceOf(TypeError);
+            }
+        });
+    });
 });
 
 describe("createTrade() - validation", () => {
