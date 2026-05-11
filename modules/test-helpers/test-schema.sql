@@ -133,17 +133,28 @@ VALUES (4, NULL, 'Multiple Choice', 'Multiple Choice', '[{"answer":"A","weight":
 -- Poll answers
 CREATE TABLE IF NOT EXISTS "poll_answers" (
     "pollId"         INTEGER NOT NULL,
+    "classId"        INTEGER NOT NULL,
     "userId"         INTEGER NOT NULL,
+    "responseIds"    TEXT,
     "buttonResponse" TEXT,
-    "textResponse"   TEXT
+    "textResponse"   TEXT,
+    "createdAt"      INTEGER,
+    PRIMARY KEY ("userId", "pollId")
 );
 
 -- Poll history
 CREATE TABLE IF NOT EXISTS "poll_history" (
-    "id"    INTEGER NOT NULL UNIQUE,
-    "class" INTEGER NOT NULL,
-    "data"  TEXT    NOT NULL,
-    "date"  TEXT    NOT NULL,
+    "id"                     INTEGER NOT NULL UNIQUE,
+    "class"                  INTEGER NOT NULL,
+    "prompt"                 TEXT,
+    "responses"              TEXT,
+    "allowMultipleResponses" INTEGER NOT NULL DEFAULT 0,
+    "blind"                  INTEGER NOT NULL DEFAULT 0,
+    "allowTextResponses"     INTEGER NOT NULL DEFAULT 0,
+    "createdAt"              INTEGER NOT NULL,
+    "auto_end_timer"         INTEGER,
+    "auto_end_threshold"     INTEGER,
+    "blind_until_ended"      INTEGER NOT NULL DEFAULT 0 CHECK ("blind_until_ended" IN (0, 1)),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 

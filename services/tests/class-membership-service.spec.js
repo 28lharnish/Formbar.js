@@ -144,9 +144,13 @@ describe("deleteClassroom", () => {
         const room = await seedClassroom();
         await seedClassUser(room.id, 1);
         await seedClassUser(room.id, 2);
-        const pollId = await mockDatabase.dbRun("INSERT INTO poll_history (class, data, date) VALUES (?, ?, ?)", [room.id, "{}", "2026-04-21"]);
-        await mockDatabase.dbRun("INSERT INTO poll_answers (pollId, userId, buttonResponse, textResponse) VALUES (?, ?, ?, ?)", [
+        const pollId = await mockDatabase.dbRun(
+            "INSERT INTO poll_history (class, prompt, responses, createdAt) VALUES (?, ?, ?, ?)",
+            [room.id, "Exit?", "[]", Date.now()]
+        );
+        await mockDatabase.dbRun("INSERT INTO poll_answers (pollId, classId, userId, buttonResponse, textResponse) VALUES (?, ?, ?, ?, ?)", [
             pollId,
+            room.id,
             2,
             "A",
             null,
