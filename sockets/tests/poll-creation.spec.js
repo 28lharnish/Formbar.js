@@ -72,6 +72,43 @@ describe("startPoll", () => {
         );
     });
 
+    it("should pass auto-end options from the legacy payload to createPoll", async () => {
+        await startPollHandler(false, true, "Prompt", [{ answer: "A" }], true, 2, [7], ["ghost"], null, true, false, 5000, 80, true);
+
+        expect(createPoll).toHaveBeenCalledWith(
+            testData.classId,
+            {
+                prompt: "Prompt",
+                answers: [{ answer: "A" }],
+                blind: true,
+                allowVoteChanges: false,
+                weight: 2,
+                excludedRespondents: [7],
+                indeterminate: ["ghost"],
+                allowTextResponses: true,
+                allowMultipleResponses: true,
+                autoEndTimer: 5000,
+                autoEndThreshold: 80,
+                blindUntilEnded: true,
+            },
+            socket.request.session
+        );
+    });
+
+    it("should not coerce boolean auto-end timer values to milliseconds", async () => {
+        await startPollHandler(false, true, "Prompt", [{ answer: "A" }], true, 2, [7], ["ghost"], null, true, false, true, 80, true);
+
+        expect(createPoll).toHaveBeenCalledWith(
+            testData.classId,
+            expect.objectContaining({
+                autoEndTimer: true,
+                autoEndThreshold: 80,
+                blindUntilEnded: true,
+            }),
+            socket.request.session
+        );
+    });
+
     it("should route poll creation errors through handleSocketError", async () => {
         createPoll.mockRejectedValueOnce(new Error("Test Error"));
 

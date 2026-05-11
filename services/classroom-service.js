@@ -34,6 +34,7 @@ class Classroom {
             allowTextResponses: false,
             allowMultipleResponses: false,
             blind: false,
+            blindUntilEnded: false,
             weight: 1,
             excludedRespondents: [],
         };

@@ -48,9 +48,7 @@ beforeAll(async () => {
         description TEXT,
         owner_user_id INTEGER NOT NULL,
         share_item_id INTEGER,
-        pool_id INTEGER,
-        api_key_hash TEXT,
-        api_secret_hash TEXT
+        pool_id INTEGER
     )`);
 });
 
@@ -113,8 +111,5 @@ describe("createApp()", () => {
         expect(row.owner_user_id).toBe(APP_INPUT.ownerId);
         expect(row.share_item_id).toBe(7);
         expect(row.pool_id).toBe(42);
-        expect(row.api_key_hash).toMatch(/^[0-9a-f]{64}$/);
-        expect(row.api_secret_hash).toMatch(/^[0-9a-f]{64}$/);
-        expect(row.api_key_hash).not.toBe(result.apiKey);
     });
 });

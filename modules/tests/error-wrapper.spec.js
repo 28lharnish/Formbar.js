@@ -35,12 +35,12 @@ describe("requireBodyParam()", () => {
 });
 
 describe("requireInternalParam()", () => {
-    it("throws AppError when param is null", () => {
-        expect(() => requireInternalParam(null, "config")).toThrow(AppError);
+    it("throws ValidationError when param is null", () => {
+        expect(() => requireInternalParam(null, "config")).toThrow(ValidationError);
     });
 
-    it("throws AppError when param is undefined", () => {
-        expect(() => requireInternalParam(undefined, "config")).toThrow(AppError);
+    it("throws ValidationError when param is undefined", () => {
+        expect(() => requireInternalParam(undefined, "config")).toThrow(ValidationError);
     });
 
     it("sets statusCode to 500", () => {
@@ -51,10 +51,6 @@ describe("requireInternalParam()", () => {
             return;
         }
         throw new Error("Expected an error to be thrown");
-    });
-
-    it("does not throw ValidationError", () => {
-        expect(() => requireInternalParam(null, "x")).not.toThrow(ValidationError);
     });
 
     it.each([0, "", false, "value"])("does not throw for valid value %j", (val) => {

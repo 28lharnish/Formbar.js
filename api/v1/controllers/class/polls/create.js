@@ -76,6 +76,15 @@ module.exports = (router) => {
      *               allowMultipleResponses:
      *                 type: boolean
      *                 example: false
+     *               autoEndTimer:
+     *                 type: number
+     *                 example: 10
+     *               autoEndThreshold:
+     *                 type: number
+     *                 example: 50
+     *               blindUntilEnded:
+     *                 type: boolean
+     *                 example: false
      *     responses:
      *       200:
      *         description: Poll created successfully
@@ -117,6 +126,9 @@ module.exports = (router) => {
                       indeterminate: Array.isArray(body.indeterminate) ? body.indeterminate : [],
                       allowTextResponses: !!body.responseTextBox,
                       allowMultipleResponses: !!body.multiRes,
+                      autoEndTimer: body.autoEndTimer,
+                      autoEndThreshold: body.autoEndThreshold,
+                      blindUntilEnded: body.blindUntilEnded != null ? !!body.blindUntilEnded : undefined,
                   }
                 : body;
 

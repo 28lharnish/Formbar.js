@@ -7,7 +7,7 @@ const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getUserScopes } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
-const { validateOAuthClientRedirect, validateOAuthClientSecret } = require("@services/app-service");
+const { validateOAuthClientRedirect, validateOAuthAPIKey } = require("@services/app-service");
 const { findRoleByPermissionLevel, getUserRoles } = require("@services/role-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
@@ -544,12 +544,12 @@ async function generateAuthorizationCode({ client_id, redirect_uri, scope, autho
  * @param {string} params.client_id - The client application's ID
  * @returns {Promise<Object>} Token response with access_token, token_type, expires_in, and refresh_token
  */
-async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id, client_secret }) {
+async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id, apiKey }) {
     requireInternalParam(code, "code");
     requireInternalParam(redirect_uri, "redirect_uri");
     requireInternalParam(client_id, "client_id");
-    if (!client_secret) {
-        throw new AppError("client_secret is required.", { statusCode: 400 });
+    if (!apiKey) {
+        throw new AppError("API key is required.", { statusCode: 400 });
     }
 
     const authorizationCodeData = verifyToken(code);
@@ -579,7 +579,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         throw new AppError("client_id does not match the original authorization request.", { statusCode: 400 });
     }
 
-    const client = await validateOAuthClientSecret({ clientId: client_id, redirectUri: redirect_uri, clientSecret: client_secret });
+    const client = await validateOAuthAPIKey({ clientId: client_id, redirectUri: redirect_uri, apiKey: apiKey });
     if (!client) {
         throw new AppError("Invalid OAuth client credentials or redirect_uri.", { statusCode: 401 });
     }

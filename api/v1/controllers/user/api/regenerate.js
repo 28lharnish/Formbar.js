@@ -2,7 +2,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const userService = require("@services/user-service");
+const apiKeyService = require("@services/api-key-service");
 
 /**
  * Register regenerate controller routes.
@@ -75,7 +75,7 @@ module.exports = (router) => {
             requireQueryParam(userId, "id");
 
             req.infoEvent("user.api.view", "Attempting to regenerate user API key", { targetUserId: userId });
-            const apiKey = await userService.regenerateAPIKey(userId);
+            const apiKey = await apiKeyService.regenerateAPIKey("user", userId);
             req.infoEvent("user.api.regenerate.success", "User API key regenerated", { targetUserId: userId });
 
             res.status(200).json({

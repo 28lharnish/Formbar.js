@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS "classusers" (
 CREATE INDEX IF NOT EXISTS idx_classusers_class_student ON classusers (classId, studentId);
 CREATE INDEX IF NOT EXISTS idx_classusers_student_class ON classusers (studentId, classId);
 
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL, -- 'user' or 'app'
+    entity_id INTEGER NOT NULL, -- user_id or app_id
+    api_key_hash TEXT NOT NULL UNIQUE, -- SHA-256 hash of the API key
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_entity ON api_keys (entity_type, entity_id);
+
 -- Named roles (final state: includes color column)
 CREATE TABLE IF NOT EXISTS "roles" (
     "id"      INTEGER NOT NULL UNIQUE,
@@ -133,17 +143,28 @@ VALUES (4, NULL, 'Multiple Choice', 'Multiple Choice', '[{"answer":"A","weight":
 -- Poll answers
 CREATE TABLE IF NOT EXISTS "poll_answers" (
     "pollId"         INTEGER NOT NULL,
+    "classId"        INTEGER NOT NULL,
     "userId"         INTEGER NOT NULL,
+    "responseIds"    TEXT,
     "buttonResponse" TEXT,
-    "textResponse"   TEXT
+    "textResponse"   TEXT,
+    "createdAt"      INTEGER,
+    PRIMARY KEY ("userId", "pollId")
 );
 
 -- Poll history
 CREATE TABLE IF NOT EXISTS "poll_history" (
-    "id"    INTEGER NOT NULL UNIQUE,
-    "class" INTEGER NOT NULL,
-    "data"  TEXT    NOT NULL,
-    "date"  TEXT    NOT NULL,
+    "id"                     INTEGER NOT NULL UNIQUE,
+    "class"                  INTEGER NOT NULL,
+    "prompt"                 TEXT,
+    "responses"              TEXT,
+    "allowMultipleResponses" INTEGER NOT NULL DEFAULT 0,
+    "blind"                  INTEGER NOT NULL DEFAULT 0,
+    "allowTextResponses"     INTEGER NOT NULL DEFAULT 0,
+    "createdAt"              INTEGER NOT NULL,
+    "auto_end_timer"         INTEGER,
+    "auto_end_threshold"     INTEGER,
+    "blind_until_ended"      INTEGER NOT NULL DEFAULT 0 CHECK ("blind_until_ended" IN (0, 1)),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
@@ -286,9 +307,7 @@ CREATE TABLE IF NOT EXISTS "apps" (
     "description" TEXT,
     "owner_user_id" INTEGER NOT NULL,
     "share_item_id" INTEGER NOT NULL,
-    "pool_id" INTEGER NOT NULL,
-    "api_key_hash" TEXT NOT NULL UNIQUE,
-    "api_secret_hash" TEXT NOT NULL
+    "pool_id" INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "app_redirect_uris" (

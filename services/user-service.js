@@ -7,7 +7,6 @@ const { sendMail } = require("@modules/mail");
 const { dbGet, dbRun, dbGetAll, database } = require("@modules/database");
 const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
-const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { getUserRoles } = require("@services/role-service");
@@ -18,10 +17,10 @@ const { endClass } = require("@services/class-service");
 const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { hashBcrypt, compareBcrypt, sha256 } = require("@modules/crypto");
-const { hashAPIKey, getEmailFromAPIKey: resolveEmailFromAPIKey } = require("@services/api-key-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
+const { error } = require("console");
 
 let passwordResetTemplate;
 let verifyEmailTemplate;
@@ -468,36 +467,6 @@ async function updatePassword(userId, oldPassword, newPassword) {
     return true;
 }
 
-/**
- * Create and save a new API key for a user.
- * @param {number} userId - userId.
- * @returns {Promise<string>}
- */
-async function regenerateAPIKey(userId) {
-    requireInternalParam(userId, "userId");
-
-    const user = await getUserDataFromDb(userId);
-    if (!user) {
-        throw new NotFoundError("User not found for API key regeneration.", {
-            event: "user.api_key.regenerate.failed",
-            reason: "user_not_found",
-        });
-    }
-
-    const apiKey = crypto.randomBytes(32).toString("hex");
-    const hashedAPIKey = hashAPIKey(apiKey);
-    await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
-
-    // Invalidate the cache for the user's email
-    if (user.email) {
-        apiKeyCacheStore.invalidateByEmail(user.email);
-    } else {
-        apiKeyCacheStore.clear();
-    }
-
-    return apiKey;
-}
-
 // User lookup
 
 /**
@@ -525,21 +494,7 @@ function getUserClass(email) {
     }
 }
 
-/**
- * Gets the email associated with an API key, with caching.
- * @param {string} api - API key.
- * @returns {Promise<string|Object|Error>}
- */
-async function getEmailFromAPIKey(api) {
-    try {
-        if (!api) return { error: "Missing API key" };
 
-        const email = await resolveEmailFromAPIKey(api);
-        return email || { error: "Not a valid API key" };
-    } catch (err) {
-        return err;
-    }
-}
 
 /**
  * Gets the current user's data including class/session info.
@@ -548,7 +503,7 @@ async function getEmailFromAPIKey(api) {
  */
 async function getUser(userIdentifier) {
     try {
-        const email = userIdentifier.email || (await getEmailFromId(userIdentifier.id)) || (await getEmailFromAPIKey(userIdentifier.api));
+        const email = userIdentifier.email || (await getEmailFromId(userIdentifier.id));
         if (email instanceof Error) throw email;
         if (email.error) throw email;
 
@@ -756,7 +711,6 @@ module.exports = {
     verifyEmailFromCode,
     resetPassword,
     updatePassword,
-    regenerateAPIKey,
     requestPinReset,
     resetPin,
     updatePin,
