@@ -221,6 +221,7 @@ function formatTrade(row) {
             ...(row.from_pool_id != null ? { poolId: row.from_pool_id } : {}),
         },
     };
+
     if (row.from_source_type === "inventory") {
         offered.items = row.offered_items ? JSON.parse(row.offered_items) : [];
     } else {
@@ -233,6 +234,7 @@ function formatTrade(row) {
             ...(row.to_pool_id != null ? { poolId: row.to_pool_id } : {}),
         },
     };
+
     if (row.to_source_type === "inventory") {
         requested.items = row.requested_items ? JSON.parse(row.requested_items) : [];
     } else {

@@ -1,6 +1,12 @@
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const { getTradesForUser } = require("@services/trade-service");
-const ValidationError = require("@errors/validation-error");
+const { getUserDataFromDb } = require("@services/user-service");
+const { requireQueryParam } = require("@modules/error-wrapper");
+const { parsePaginationQuery } = require("@modules/pagination");
+const NotFoundError = require("@errors/not-found-error");
+
+const DEFAULT_TRADE_LIMIT = 20;
+const MAX_TRADE_LIMIT = 100;
 
 /**
  * Register trades list controller routes.
@@ -9,17 +15,17 @@ const ValidationError = require("@errors/validation-error");
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/trades:
+     * /api/v1/user/{id}/trades:
      *   get:
-     *     summary: List the current user's trades
+     *     summary: List the user's trades
      *     description: >
-     *       Returns the current user's trades organized into four buckets:
+     *       Returns the user's trades organized into four buckets:
      *       `inbound` (pending trades where the user is the recipient),
      *       `outbound` (pending trades where the user is the requester),
      *       `completed` (accepted and exchanged trades), and
      *       `inactive` (rejected, canceled, or failed trades).
      *       Each bucket includes its own pagination metadata.
-     *     tags: [Trades]
+     *     tags: [Trades, Users]
      *     security:
      *       - bearerAuth: []
      *     parameters:
@@ -59,20 +65,20 @@ module.exports = (router) => {
      *       401:
      *         description: Not authenticated
      */
-    router.get("/trades", isAuthenticated, isVerified, async (req, res) => {
-        const limit = req.query.limit !== undefined ? Number(req.query.limit) : 20;
-        const offset = req.query.offset !== undefined ? Number(req.query.offset) : 0;
+    router.get("/user/:id/trades", isAuthenticated, isVerified, async (req, res) => {
+        const userId = Number(req.params.id);
+        requireQueryParam(userId, "id");
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-            throw new ValidationError("limit must be an integer between 1 and 100.", { reason: "invalid_limit" });
+        const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_TRADE_LIMIT, MAX_TRADE_LIMIT);
+        const requestedUser = await getUserDataFromDb(userId);
+        if (!requestedUser) {
+            throw new NotFoundError("User not found.", { event: "user.trades.list.failed", reason: "user_not_found" });
         }
-        if (!Number.isInteger(offset) || offset < 0) {
-            throw new ValidationError("offset must be a non-negative integer.", { reason: "invalid_offset" });
-        }
 
-        req.infoEvent("trades.list", "Fetching trade buckets", { userId: req.user.id });
+        req.infoEvent("user.trades.list.attempt", "Attempting to list user trades", { userId: userId });
 
-        const buckets = await getTradesForUser(req.user.id, { limit, offset });
+        const buckets = await getTradesForUser(userId, { limit, offset });
+        req.infoEvent("user.trades.list.success", "User trades listed successfully", { userId: userId });
         res.status(200).json({ success: true, data: buckets });
     });
 };

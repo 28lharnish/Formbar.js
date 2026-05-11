@@ -39,7 +39,7 @@ jest.mock("@modules/config", () => {
 });
 
 const createController = require("@controllers/trades/create");
-const listController = require("@controllers/trades/list");
+const listController = require("@controllers/user/trades");
 const getController = require("@controllers/trades/get");
 const acceptController = require("@controllers/trades/accept");
 const rejectController = require("@controllers/trades/reject");
@@ -161,7 +161,7 @@ describe("GET /api/v1/trades", () => {
     it("returns all four buckets with pagination metadata", async () => {
         const { tokens: t1 } = await seedAuthenticatedUser(mockDatabase);
 
-        const res = await request(app).get("/api/v1/trades").set("Authorization", `Bearer ${t1.accessToken}`);
+        const res = await request(app).get("/api/v1/user/1/trades").set("Authorization", `Bearer ${t1.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.data).toMatchObject({
@@ -190,7 +190,7 @@ describe("GET /api/v1/trades", () => {
             });
 
         // u2 lists trades - should see it as inbound
-        const res = await request(app).get("/api/v1/trades").set("Authorization", `Bearer ${t2.accessToken}`);
+        const res = await request(app).get(`/api/v1/user/${u2.id}/trades`).set("Authorization", `Bearer ${t2.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.data.inbound.total).toBe(1);
@@ -213,21 +213,21 @@ describe("GET /api/v1/trades", () => {
                 requested: { source: { type: "inventory" }, items: [{ itemId: 1, quantity: 1 }] },
             });
 
-        const res = await request(app).get("/api/v1/trades").set("Authorization", `Bearer ${t1.accessToken}`);
+        const res = await request(app).get(`/api/v1/user/${u1.id}/trades`).set("Authorization", `Bearer ${t1.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.data.outbound.total).toBe(1);
     });
 
     it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/trades");
+        const res = await request(app).get("/api/v1/user/1/trades");
         expect(res.status).toBe(401);
     });
 
     it("accepts limit and offset query params", async () => {
         const { tokens: t1 } = await seedAuthenticatedUser(mockDatabase);
 
-        const res = await request(app).get("/api/v1/trades?limit=5&offset=0").set("Authorization", `Bearer ${t1.accessToken}`);
+        const res = await request(app).get("/api/v1/user/1/trades?limit=5&offset=0").set("Authorization", `Bearer ${t1.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.data.inbound.limit).toBe(5);
