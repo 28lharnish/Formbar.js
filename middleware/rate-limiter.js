@@ -126,8 +126,10 @@ function getSocketRateLimitKey(socket) {
 const { settings, rateLimit: rateLimitConfig } = require("@modules/config.js");
 
 function createRateLimiter(options = {}) {
-    const basePoints = Number.isFinite(options.basePoints) ? options.basePoints : rateLimitConfig?.basePoints ?? 60;
-    const durationSeconds = Number.isFinite(options.durationSeconds) ? options.durationSeconds : rateLimitConfig?.durationSeconds ?? RATE_LIMIT_DURATION_SECONDS;
+    const basePoints = Number.isFinite(options.basePoints) ? options.basePoints : (rateLimitConfig?.basePoints ?? 60);
+    const durationSeconds = Number.isFinite(options.durationSeconds)
+        ? options.durationSeconds
+        : (rateLimitConfig?.durationSeconds ?? RATE_LIMIT_DURATION_SECONDS);
     const multiplier = options.rateLimitMultiplier ?? settings?.rateLimitMultiplier ?? 1;
 
     const points = Math.max(1, Math.round(basePoints * multiplier));

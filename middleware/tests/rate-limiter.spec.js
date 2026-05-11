@@ -14,12 +14,7 @@ jest.mock("@services/auth-service", () => ({
 const RateLimitError = require("@errors/rate-limit-error");
 const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken } = require("@services/auth-service");
-const {
-    createRateLimiter,
-    getRequestRateLimitKey,
-    getSocketRateLimitKey,
-    normalizeIpAddress,
-} = require("@middleware/rate-limiter");
+const { createRateLimiter, getRequestRateLimitKey, getSocketRateLimitKey, normalizeIpAddress } = require("@middleware/rate-limiter");
 
 afterEach(() => {
     jest.clearAllMocks();
