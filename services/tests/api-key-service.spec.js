@@ -24,7 +24,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
     await mockDatabase.reset();
-    apiKeyCacheStore.clear();
+    Object.values(apiKeyCacheStore).forEach((fn) => fn.mockReset());
 });
 
 afterAll(async () => {
@@ -84,6 +84,7 @@ describe("resolveAPIKey()", () => {
     it("resolves sha256 API keys with a direct lookup", async () => {
         const apiKey = "sha-key";
         const userId = await seedUser(sha256(apiKey));
+        apiKeyCacheStore.get.mockReturnValue(undefined);
 
         const user = await resolveAPIKey(apiKey);
 
@@ -91,11 +92,38 @@ describe("resolveAPIKey()", () => {
     });
 
     it("does not trust a stale cache entry after the stored hash changes", async () => {
-        await seedUser(sha256("new-key"), "rotated-api-key@test.com");
-        apiKeyCacheStore.set("old-key", "rotated-api-key@test.com");
+        const userId = await seedUser(sha256("new-key"), "rotated-api-key@test.com");
+        apiKeyCacheStore.get.mockReturnValue({ id: userId, type: "user" });
 
         const user = await resolveAPIKey("old-key");
 
         expect(user).toBeNull();
+        expect(apiKeyCacheStore.invalidateByAPIKey).toHaveBeenCalledWith("old-key");
+    });
+
+    it("returns null when a hash lookup resolves to an unsupported entity type", async () => {
+        const apiKey = "app-key";
+        await mockDatabase.dbRun(
+            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
+            [sha256(apiKey), 123, "unsupported"]
+        );
+        apiKeyCacheStore.get.mockReturnValue(undefined);
+
+        const entity = await resolveAPIKey(apiKey);
+
+        expect(entity).toBeNull();
+    });
+
+    it("returns null when a hash lookup points at a deleted entity", async () => {
+        const apiKey = "deleted-user-key";
+        await mockDatabase.dbRun(
+            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
+            [sha256(apiKey), 999999, "user"]
+        );
+        apiKeyCacheStore.get.mockReturnValue(undefined);
+
+        const entity = await resolveAPIKey(apiKey);
+
+        expect(entity).toBeNull();
     });
 });

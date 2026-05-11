@@ -6,8 +6,6 @@ const { registerItem, addItemToInventory } = require("@services/inventory-servic
 const ValidationError = require("@errors/validation-error");
 const crypto = require("crypto");
 
-const { get } = require("http");
-
 const SHARES_PER_APP = 100;
 
 /**

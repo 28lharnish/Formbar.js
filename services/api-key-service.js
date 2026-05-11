@@ -95,28 +95,51 @@ async function resolveAPIKey(rawAPIKey) {
         return null;
     }
 
+    const apiKeyHash = hashAPIKey(apiKey);
+
     // Check the cache for this API key before hitting the database
     const cachedEntity = apiKeyCacheStore.get(apiKey);
     if (cachedEntity) {
-        const resolver = entityResolvers[cachedEntity.type];
+        const shaEntity = await dbGet(
+            "SELECT entity_id, entity_type FROM api_keys WHERE api_key_hash = ?",
+            [apiKeyHash]
+        );
 
-        if (resolver) {
+        if (
+            !shaEntity ||
+            shaEntity.entity_id !== cachedEntity.id ||
+            shaEntity.entity_type !== cachedEntity.type
+        ) {
+            apiKeyCacheStore.invalidateByAPIKey(apiKey);
+        } else {
+            const resolver = entityResolvers[cachedEntity.type];
+            if (!resolver) {
+                return null;
+            }
+
             const resolvedEntity = await resolver(cachedEntity.id);
-            return resolvedEntity ? { ...resolvedEntity, cached: true, migrated: false } : null;
+            if (!resolvedEntity) {
+                return null;
+            }
+
+            return { ...resolvedEntity, cached: true, migrated: false };
         }
-        // If the cache had an entry but we couldn't resolve it, remove the stale cache entry
-        apiKeyCacheStore.invalidateByAPIKey(apiKey);
     }
 
-    const apiKeyHash = hashAPIKey(apiKey);
     const shaEntity = await dbGet("SELECT * FROM api_keys WHERE api_key_hash = ?", [apiKeyHash]);
     if (shaEntity) {
         const resolver = entityResolvers[shaEntity.entity_type];
-        if (resolver) {
-            const resolvedEntity = await resolver(shaEntity.entity_id);
-            apiKeyCacheStore.set(apiKey, shaEntity.entity_id, shaEntity.entity_type);
-            return { ...resolvedEntity, cached: false, migrated: false };
+        if (!resolver) {
+            return null;
         }
+
+        const resolvedEntity = await resolver(shaEntity.entity_id);
+        if (!resolvedEntity) {
+            return null;
+        }
+
+        apiKeyCacheStore.set(apiKey, shaEntity.entity_id, shaEntity.entity_type);
+        return { ...resolvedEntity, cached: false, migrated: false };
     }
 
     return null;
