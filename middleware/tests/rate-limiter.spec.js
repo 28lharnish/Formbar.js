@@ -1,122 +1,207 @@
-jest.mock("@modules/database", () => ({
-    dbGet: jest.fn(),
+jest.mock("@modules/config.js", () => ({
+    settings: { rateLimitMultiplier: 1 },
+    rateLimit: { basePoints: 60, durationSeconds: 60 },
 }));
 
 jest.mock("@services/api-key-service", () => ({
     resolveAPIKey: jest.fn(),
 }));
 
-jest.mock("@services/user-service", () => ({
-    getUserDataFromDb: jest.fn(),
-}));
-
 jest.mock("@services/auth-service", () => ({
     verifyToken: jest.fn(),
 }));
 
-jest.mock("@modules/config", () => ({
-    settings: {
-        rateLimitWindowMs: 60000,
-        rateLimitMultiplier: 0.04,
-    },
-}));
-
-jest.mock("@modules/permissions", () => ({
-    computeGlobalPermissionLevel: jest.fn(() => 0),
-    STUDENT_PERMISSIONS: 2,
-    TEACHER_PERMISSIONS: 4,
-}));
-
-jest.mock("@modules/scope-resolver", () => ({
-    getUserScopes: jest.fn(() => ({ global: [], class: [] })),
-}));
-
-const { rateLimiter, getBucketKeyToEvict } = require("@middleware/rate-limiter");
+const RateLimitError = require("@errors/rate-limit-error");
 const { resolveAPIKey } = require("@services/api-key-service");
-const { getUserDataFromDb } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
-const { dbGet } = require("@modules/database");
+const { createRateLimiter, getRequestRateLimitKey, getSocketRateLimitKey, normalizeIpAddress } = require("@middleware/rate-limiter");
 
-function createReq({ api, authorization, path = "/api/v1/example", ip = "127.0.0.1" }) {
+afterEach(() => {
+    jest.clearAllMocks();
+});
+
+function buildRequest(overrides = {}) {
     return {
-        headers: {
-            ...(api !== undefined ? { api } : {}),
-            ...(authorization !== undefined ? { authorization } : {}),
-        },
-        path,
-        ip,
-        body: {},
+        user: null,
+        headers: {},
         query: {},
-        warnEvent: jest.fn(),
+        ip: "127.0.0.1",
+        ...overrides,
     };
 }
 
-function createRes() {
-    return {
-        status: jest.fn().mockReturnThis(),
-        json: jest.fn(),
+function buildSocket(overrides = {}) {
+    const socket = {
+        request: {
+            session: {},
+            headers: {},
+            socket: { remoteAddress: "127.0.0.1" },
+        },
+        handshake: { address: "127.0.0.1" },
+        emit: jest.fn(),
+        use: jest.fn((handler) => {
+            socket.rateLimitHandler = handler;
+        }),
+        ...overrides,
     };
+
+    return socket;
 }
 
-describe("HTTP rate-limiter middleware", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
+describe("normalizeIpAddress()", () => {
+    it("returns unknown for empty values", () => {
+        expect(normalizeIpAddress()).toBe("unknown");
     });
 
-    it("keys authenticated buckets by user id instead of email", async () => {
-        resolveAPIKey.mockResolvedValue({ id: 42, email: "api-user@example.com" });
-        verifyToken.mockReturnValue({ email: "token-user@example.com" });
-        dbGet.mockResolvedValue({ id: 42 });
-        getUserDataFromDb.mockResolvedValue({ id: 42, email: "token-user@example.com", roles: { global: [], class: [] } });
+    it("strips IPv4-mapped IPv6 prefixes", () => {
+        expect(normalizeIpAddress("::ffff:127.0.0.1")).toBe("127.0.0.1");
+    });
+});
 
-        const apiReq = createReq({ api: "api-key-1" });
-        const apiRes = createRes();
-        const apiNext = jest.fn();
-        await rateLimiter(apiReq, apiRes, apiNext);
+describe("getRequestRateLimitKey()", () => {
+    it("prefers the session user id", async () => {
+        const key = await getRequestRateLimitKey(buildRequest({ user: { id: 123 } }));
 
-        expect(apiNext).toHaveBeenCalledTimes(1);
-        expect(apiRes.status).not.toHaveBeenCalled();
+        expect(key).toBe("account:123");
+    });
 
-        const tokenReq = createReq({ authorization: "token-1" });
-        const tokenRes = createRes();
-        const tokenNext = jest.fn();
-        await rateLimiter(tokenReq, tokenRes, tokenNext);
+    it("falls back to the bearer token when there is no session user", async () => {
+        verifyToken.mockReturnValue({ id: 456 });
 
-        expect(tokenNext).not.toHaveBeenCalled();
-        expect(tokenRes.status).toHaveBeenCalledWith(429);
-        expect(tokenRes.json).toHaveBeenCalledWith(
-            expect.objectContaining({
-                error: expect.stringContaining("Please try again"),
+        const key = await getRequestRateLimitKey(buildRequest({ headers: { authorization: "Bearer token-value" } }));
+
+        expect(verifyToken).toHaveBeenCalledWith("token-value");
+        expect(key).toBe("account:456");
+    });
+
+    it("falls back to the API key when there is no session or bearer token", async () => {
+        resolveAPIKey.mockResolvedValue({ id: 789 });
+
+        const key = await getRequestRateLimitKey(buildRequest({ headers: { api: "api-key-value" } }));
+
+        expect(resolveAPIKey).toHaveBeenCalledWith("api-key-value");
+        expect(key).toBe("account:789");
+    });
+
+    it("falls back to the request IP", async () => {
+        const key = await getRequestRateLimitKey(buildRequest({ ip: "::ffff:127.0.0.1" }));
+
+        expect(key).toBe("ip:127.0.0.1");
+    });
+});
+
+describe("getSocketRateLimitKey()", () => {
+    it("prefers the socket session user id", () => {
+        const key = getSocketRateLimitKey(
+            buildSocket({
+                request: {
+                    session: { userId: 321 },
+                    headers: {},
+                    socket: { remoteAddress: "127.0.0.1" },
+                },
             })
         );
+
+        expect(key).toBe("account:321");
     });
 
-    it("does not choose the current path or global bucket for path bucket eviction", () => {
-        const keyToEvict = getBucketKeyToEvict(
-            {
-                __global__: [1],
-                "/api/v1/current": [],
-                hasBeenMessaged: false,
-                "/api/v1/old": [1],
-            },
-            "/api/v1/current",
-            "__global__"
+    it("falls back to the bearer token when there is no socket session user", () => {
+        verifyToken.mockReturnValue({ id: 654 });
+
+        const key = getSocketRateLimitKey(
+            buildSocket({
+                request: {
+                    session: {},
+                    headers: { authorization: "Bearer socket-token" },
+                    socket: { remoteAddress: "127.0.0.1" },
+                },
+            })
         );
 
-        expect(keyToEvict).toBe("/api/v1/old");
+        expect(verifyToken).toHaveBeenCalledWith("socket-token");
+        expect(key).toBe("account:654");
     });
 
-    it("skips eviction when only protected buckets are present", () => {
-        const keyToEvict = getBucketKeyToEvict(
-            {
-                __global__: [1],
-                "/api/v1/current": [],
-                hasBeenMessaged: false,
-            },
-            "/api/v1/current",
-            "__global__"
+    it("falls back to the socket IP", () => {
+        const key = getSocketRateLimitKey(
+            buildSocket({
+                request: {
+                    session: {},
+                    headers: {},
+                    socket: { remoteAddress: "::ffff:127.0.0.1" },
+                },
+                handshake: {},
+            })
         );
 
-        expect(keyToEvict).toBeUndefined();
+        expect(key).toBe("ip:127.0.0.1");
+    });
+});
+
+describe("createRateLimiter()", () => {
+    it("keeps HTTP and socket budgets separate", async () => {
+        const rateLimiter = createRateLimiter({ basePoints: 1, durationSeconds: 60, rateLimitMultiplier: 1 });
+        const req = buildRequest({ user: { id: 42 } });
+        const socket = buildSocket({
+            request: {
+                session: { userId: 42 },
+                headers: {},
+                socket: { remoteAddress: "127.0.0.1" },
+            },
+        });
+
+        const httpNext = jest.fn();
+        const socketNext = jest.fn();
+
+        rateLimiter.socketMiddleware(socket, socketNext);
+        expect(socketNext).toHaveBeenCalledTimes(1);
+
+        await rateLimiter.httpMiddleware(req, {}, httpNext);
+        expect(httpNext).toHaveBeenCalledTimes(1);
+
+        const socketEventNext = jest.fn();
+        await socket.rateLimitHandler(["message"], socketEventNext);
+
+        expect(socketEventNext).toHaveBeenCalledTimes(1);
+        expect(socket.emit).not.toHaveBeenCalled();
+    });
+
+    it("passes a RateLimitError to next when the HTTP budget is exhausted", async () => {
+        const rateLimiter = createRateLimiter({ basePoints: 1, durationSeconds: 60, rateLimitMultiplier: 1 });
+        const req = buildRequest({ user: { id: 99 } });
+        const next = jest.fn();
+
+        await rateLimiter.httpMiddleware(req, {}, next);
+        await rateLimiter.httpMiddleware(req, {}, next);
+
+        const err = next.mock.calls[next.mock.calls.length - 1][0];
+
+        expect(err).toBeInstanceOf(RateLimitError);
+        expect(err.statusCode).toBe(429);
+        expect(err.message).toBe("Too many requests, please try again later.");
+    });
+
+    it("emits a message event when the socket budget is exhausted", async () => {
+        const rateLimiter = createRateLimiter({ basePoints: 1, durationSeconds: 60, rateLimitMultiplier: 1 });
+        const socket = buildSocket({
+            request: {
+                session: { userId: 77 },
+                headers: {},
+                socket: { remoteAddress: "127.0.0.1" },
+            },
+        });
+
+        rateLimiter.socketMiddleware(socket, jest.fn());
+
+        await socket.rateLimitHandler(["rate-limit"], jest.fn());
+        await socket.rateLimitHandler(["rate-limit"], jest.fn());
+
+        expect(socket.emit).toHaveBeenCalledWith(
+            "message",
+            expect.objectContaining({
+                message: "Too many requests, please try again later.",
+                event: "rate-limit",
+            })
+        );
     });
 });

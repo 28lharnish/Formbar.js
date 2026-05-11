@@ -26,7 +26,7 @@ const NotFoundError = require("@errors/not-found-error");
 const AuthError = require("@errors/auth-error");
 
 const { logout } = require("@services/user-service");
-const { rateLimiter } = require("@middleware/rate-limiter");
+const { createRateLimiter } = require("@middleware/rate-limiter");
 const { ensureFormbarDeveloperPool } = require("@services/bootstrap-service");
 const { parseTrustProxySetting } = require("@modules/proxy-trust");
 
@@ -57,11 +57,13 @@ app.set("trust proxy", parseTrustProxySetting(process.env.TRUST_PROXY));
 // This should always be applied first so that we can log when anything goes wrong
 app.use(requestLoggerMiddleware);
 
-// Connect rate limiter middleware
-app.use(rateLimiter);
+const rateLimiter = createRateLimiter({ rateLimitMultiplier: settings.rateLimitMultiplier });
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
+
+// Connect rate limiter middleware
+app.use(rateLimiter.httpMiddleware);
 
 // For further uses on this use this link: https://socket.io/how-to/use-with-express-session
 // Uses a middleware function to successfully transmit data between the user and server
@@ -69,6 +71,8 @@ app.use(sessionMiddleware);
 io.use((socket, next) => {
     sessionMiddleware(socket.request, socket.request.res || {}, next);
 });
+
+io.use(rateLimiter.socketMiddleware);
 
 // Block socket connections from banned IPs
 io.use((socket, next) => {
@@ -151,7 +155,6 @@ const LEGACY_API_WARNING =
 function attachLegacyApiDeprecationHeaders(req, res, next) {
     res.setHeader("X-Deprecated", "Use /api/v1 endpoints instead");
     res.setHeader("Deprecation", "true");
-    res.setHeader("Sunset", "Tue, 01 Sep 2026 00:00:00 GMT");
     res.append("Warning", LEGACY_API_WARNING);
     next();
 }

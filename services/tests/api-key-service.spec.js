@@ -1,5 +1,6 @@
 const { createTestDb } = require("@test-helpers/db");
 
+
 let mockDatabase;
 
 jest.mock("@modules/database", () => ({
@@ -11,9 +12,11 @@ jest.mock("@modules/database", () => ({
     dbGetAll: (...args) => mockDatabase.dbGetAll(...args),
 }));
 
-const { hashBcrypt, sha256 } = require("@modules/crypto");
+const { sha256 } = require("@modules/crypto");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
-const { resolveAPIKey } = require("@services/api-key-service");
+const { resolveAPIKey, regenerateAPIKey } = require("@services/api-key-service");
+const ValidationError = require("@errors/validation-error");
+const NotFoundError = require("@errors/not-found-error");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -21,7 +24,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
     await mockDatabase.reset();
-    apiKeyCacheStore.clear();
+    Object.values(apiKeyCacheStore).forEach((fn) => fn.mockReset());
 });
 
 afterAll(async () => {
@@ -29,45 +32,98 @@ afterAll(async () => {
 });
 
 async function seedUser(apiHash, email = "api-key-user@test.com") {
-    return mockDatabase.dbRun("INSERT INTO users (email, password, API, secret, displayName, digipogs, verified) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+    const userId = await mockDatabase.dbRun("INSERT INTO users (email, password, secret, displayName, digipogs, verified) VALUES (?, ?, ?, ?, ?, ?)", [
         email,
         "hashed-password",
-        apiHash,
         `${email}-secret`,
         email,
         0,
         1,
     ]);
+
+    await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [apiHash, userId, "user"]);
+
+    return userId;
 }
+
+jest.mock("@stores/api-key-cache-store", () => ({
+    apiKeyCacheStore: {
+        invalidateByAPIKey: jest.fn(),
+        invalidateByEntity: jest.fn(),
+        clear: jest.fn(),
+        get: jest.fn(),
+        set: jest.fn(),
+    },
+}));
+
+describe("regenerateAPIKey()", () => {
+    it("throws ValidationError when userId is missing", async () => {
+        await expect(regenerateAPIKey(null, null)).rejects.toThrow(ValidationError);
+        await expect(regenerateAPIKey(undefined, undefined)).rejects.toThrow(ValidationError);
+    });
+
+    it("throws NotFoundError for non-existent user", async () => {
+        await expect(regenerateAPIKey("user", 99999)).rejects.toThrow(NotFoundError);
+    });
+
+    it("returns a new plaintext API key and stores a sha256 hash", async () => {
+        const userId = await seedUser(sha256("oldapi"), "api-key-user@test.com");
+        const newKey = await regenerateAPIKey("user", userId);
+
+        expect(typeof newKey).toBe("string");
+        expect(newKey.length).toBe(64);
+
+        const row = await mockDatabase.dbGet("SELECT api_key_hash FROM api_keys WHERE entity_id = ? AND entity_type = ?", [userId, "user"]);
+        expect(row.api_key_hash).not.toBe("oldapi");
+        expect(row.api_key_hash).not.toBe(newKey);
+        expect(row.api_key_hash).toBe(sha256(newKey));
+    });
+});
 
 describe("resolveAPIKey()", () => {
     it("resolves sha256 API keys with a direct lookup", async () => {
         const apiKey = "sha-key";
         const userId = await seedUser(sha256(apiKey));
+        apiKeyCacheStore.get.mockReturnValue(undefined);
 
         const user = await resolveAPIKey(apiKey);
 
         expect(user).toEqual(expect.objectContaining({ id: userId, email: "api-key-user@test.com", migrated: false }));
     });
 
-    it("migrates a matching bcrypt API key to sha256", async () => {
-        const apiKey = "legacy-api-key";
-        const legacyHash = await hashBcrypt(apiKey);
-        const userId = await seedUser(legacyHash, "legacy-api-key@test.com");
-
-        const user = await resolveAPIKey(apiKey);
-
-        expect(user).toEqual(expect.objectContaining({ id: userId, email: "legacy-api-key@test.com", migrated: true }));
-        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [userId]);
-        expect(row.API).toBe(sha256(apiKey));
-    });
-
     it("does not trust a stale cache entry after the stored hash changes", async () => {
-        await seedUser(sha256("new-key"), "rotated-api-key@test.com");
-        apiKeyCacheStore.set("old-key", "rotated-api-key@test.com");
+        const userId = await seedUser(sha256("new-key"), "rotated-api-key@test.com");
+        apiKeyCacheStore.get.mockReturnValue({ id: userId, type: "user" });
 
         const user = await resolveAPIKey("old-key");
 
         expect(user).toBeNull();
+        expect(apiKeyCacheStore.invalidateByAPIKey).toHaveBeenCalledWith("old-key");
+    });
+
+    it("returns null when a hash lookup resolves to an unsupported entity type", async () => {
+        const apiKey = "app-key";
+        await mockDatabase.dbRun(
+            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
+            [sha256(apiKey), 123, "unsupported"]
+        );
+        apiKeyCacheStore.get.mockReturnValue(undefined);
+
+        const entity = await resolveAPIKey(apiKey);
+
+        expect(entity).toBeNull();
+    });
+
+    it("returns null when a hash lookup points at a deleted entity", async () => {
+        const apiKey = "deleted-user-key";
+        await mockDatabase.dbRun(
+            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
+            [sha256(apiKey), 999999, "user"]
+        );
+        apiKeyCacheStore.get.mockReturnValue(undefined);
+
+        const entity = await resolveAPIKey(apiKey);
+
+        expect(entity).toBeNull();
     });
 });
