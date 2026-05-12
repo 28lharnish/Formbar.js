@@ -1,46 +1,62 @@
-const { isAuthenticated } = require("@middleware/authentication");
-const ValidationError = require("@errors/validation-error");
 const appService = require("@services/app-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
 	/**
 	 * @swagger
-	 * /api/v1/apps:
+	 * /api/v1/apps/{id}:
 	 *   get:
-	 *     summary: Get all applications owned by the authenticated user
-	 *    tags:
-	 * 	 - Apps
-	 *    description: |
-	 * 	 Retrieves a list of all third-party applications owned by the authenticated user, including their app id, name and description.
-	 *    security:
-	 * 	- bearerAuth: []
-	 * 	- apiKeyAuth: []
-	 *    responses:
-	 *      200:
-	 * 	  description: Applications retrieved successfully
-	 * 	  content:
-	 * 	    application/json:
-	 * 	      schema:
-	 * 		type: object
-	 * 	properties:
-	 * 	success:
-	 * 	  type: boolean
-	 * 	  example: true
-	 * 	data:
-	 * 	  type: array
-	 * 	  items:
-	 * 	    type: object
-	 * 	    properties:
-	 * 	      appId:
-	 * 	      type: integer
-	 * 	      example: 1
-	 * 	      name:
-	 * 	      type: string
-	 * 	      example: "Homework Helper"
-	 * 	      description:
-	 * 	      type: string
-	 * 	      example: "An app to assist students with homework"
+	 *     summary: Get an application by ID
+	 *     tags:
+	 *       - Apps
+	 *     description: |
+	 *       Retrieves the application with the specified ID.
+	 *     parameters:
+	 *       - in: path
+	 *         name: id
+	 *         required: true
+	 *         schema:
+	 *           type: integer
+	 *         description: Application ID
+	 *     responses:
+	 *       200:
+	 *         description: Application retrieved successfully
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: true
+	 *                 data:
+	 *                   type: object
+	 *                   properties:
+	 *                     id:
+	 *                       type: integer
+	 *                       example: 1
+	 *                     name:
+	 *                       type: string
+	 *                       example: "Homework Helper"
+	 *                     description:
+	 *                       type: string
+	 *                       example: "An app to assist students with homework"
+	 *                     ownerId:
+	 *                       type: integer
+	 *                       example: 42
+	 *       404:
+	 *         description: Application not found
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 success:
+	 *                   type: boolean
+	 *                   example: false
+	 *                 message:
+	 *                   type: string
+	 *                   example: Application not found.
 	 */
 	router.get("/apps/:id", async (req, res) => {
         const appId = req.params.id;
