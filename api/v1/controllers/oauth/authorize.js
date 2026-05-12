@@ -24,6 +24,81 @@ function validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope,
  * @returns {void}
  */
 module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/oauth/authorize/metadata:
+     *   get:
+     *     summary: Get OAuth authorization metadata
+     *     tags:
+     *       - OAuth
+     *     description: |
+     *       Returns public metadata about the OAuth client and requested authorization
+     *       before completing the authorization code flow.
+     *
+     *       **Required Permission:** Authenticated user (via session or JWT)
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: query
+     *         name: response_type
+     *         schema:
+     *           type: string
+     *           enum: [code]
+     *         description: Must be 'code' for authorization code flow (optional, defaults to 'code')
+     *       - in: query
+     *         name: client_id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The client application's identifier
+     *       - in: query
+     *         name: redirect_uri
+     *         required: true
+     *         schema:
+     *           type: string
+     *           format: uri
+     *         description: Registered redirect URI for the client application
+     *       - in: query
+     *         name: scope
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Space-delimited list of requested scopes
+     *       - in: query
+     *         name: state
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: CSRF protection token included for parity with the authorization request
+     *     responses:
+     *       200:
+     *         description: OAuth client metadata retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   description: Public OAuth client metadata and requested authorization details
+     *                   additionalProperties: true
+     *       400:
+     *         description: Missing required parameters, unsupported response_type, or unregistered client/redirect URI
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       401:
+     *         description: User not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     */
     router.get("/oauth/authorize/metadata", isAuthenticated, async (req, res) => {
         const { response_type, client_id, redirect_uri, scope, state } = req.query;
         validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope, state });

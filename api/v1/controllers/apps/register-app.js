@@ -1,4 +1,5 @@
 const { isAuthenticated } = require("@middleware/authentication");
+const { isVerified } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 const appService = require("@services/app-service");
 
@@ -84,7 +85,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/apps/register", isAuthenticated, async (req, res) => {
+    router.post("/apps/register", isAuthenticated, isVerified, async (req, res) => {
         const { name, description, redirectUris } = req.body;
 		const convRedirectUris = Array.isArray(redirectUris) ? redirectUris : JSON.parse(redirectUris || "[]");
 
