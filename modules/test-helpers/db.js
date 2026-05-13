@@ -103,6 +103,7 @@ const CLEARABLE_TABLES = [
     "trades",
     "apps",
     "app_redirect_uris",
+    "oauth_grants",
 ];
 
 /**

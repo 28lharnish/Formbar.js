@@ -72,7 +72,8 @@ module.exports = (router) => {
             const requesterUser = requesterEmail ? classStateStore.getUser(requesterEmail) : null;
             const isManager = requesterUser ? userHasScope(requesterUser, SCOPES.GLOBAL.USERS.MANAGE) : false;
             const isOwnProfile = String(req.user?.id) === String(userId);
-            const emailVisible = isOwnProfile || isManager;
+            const oauthEmailVisible = Boolean(req.user?.oauth && req.user.scopes?.app?.includes(SCOPES.APP.EMAIL.READ));
+            const emailVisible = req.user?.oauth ? isOwnProfile && oauthEmailVisible : isOwnProfile || isManager;
 
             // Load in-memory state for live pogMeter
             const liveUser = classStateStore.getUser(email);

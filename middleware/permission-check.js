@@ -1,6 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
+const { SCOPES } = require("@modules/permissions");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
@@ -15,6 +16,27 @@ function normalizeClassId(raw) {
     return Number.isNaN(n) ? raw : n;
 }
 
+function getRequiredOAuthSelfScope(req) {
+    const routePath = req.route?.path || req.path || "";
+
+    if (routePath.includes("/transactions")) {
+        return SCOPES.APP.DIGIPOGS.READ;
+    }
+    if (routePath.includes("/classes") || routePath.endsWith("/class")) {
+        return SCOPES.APP.CLASSES.READ;
+    }
+    if (routePath.includes("/pools")) {
+        return SCOPES.APP.DIGIPOGS.READ;
+    }
+
+    return SCOPES.APP.PROFILE.READ;
+}
+
+function oauthTokenHasScope(req, scope) {
+    const appScopes = req.user?.scopes?.app || req.user?.oauth?.scopes || [];
+    return appScopes.includes(scope);
+}
+
 /**
  * Middleware to check if a user has a specific global scope.
  * Uses the new scope-based permission system with backward-compatible role resolution.
@@ -26,6 +48,19 @@ function hasScope(scope) {
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.scope_check.not_authenticated", "Scope check failed: User is not authenticated");
             throw new AuthError("User is not authenticated");
+        }
+
+        if (req.user.oauth) {
+            const appScopes = req.user.scopes?.app || req.user.oauth.scopes || [];
+            if (appScopes.includes(scope)) {
+                return next();
+            }
+
+            throw new ForbiddenError("You do not have permission to access this resource.", {
+                event: "permission.check.failed",
+                reason: "insufficient_oauth_scope",
+                scope,
+            });
         }
 
         const user = classStateStore.getUser(req.user.email);
@@ -62,6 +97,14 @@ function hasClassScope(scope) {
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.class_scope_check.not_authenticated", "Class scope check failed: User is not authenticated");
             throw new AuthError("User is not authenticated", { event: "permission.check.failed", reason: "not_authenticated" });
+        }
+
+        if (req.user.oauth) {
+            throw new ForbiddenError("Insufficient class permissions.", {
+                event: "permission.check.failed",
+                reason: "insufficient_oauth_scope",
+                scope,
+            });
         }
 
         const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
@@ -114,6 +157,13 @@ function isSelfOrHasScopes(scopes, message) {
 
         const targetId = Number(req.params.id);
         if (req.user.id === targetId) {
+            if (req.user.oauth && !oauthTokenHasScope(req, getRequiredOAuthSelfScope(req))) {
+                throw new ForbiddenError("You do not have permission to access this resource.", {
+                    event: "permission.check.failed",
+                    reason: "insufficient_oauth_scope",
+                    scope: getRequiredOAuthSelfScope(req),
+                });
+            }
             return next();
         }
 

@@ -48,7 +48,8 @@ beforeAll(async () => {
         description TEXT,
         owner_user_id INTEGER NOT NULL,
         share_item_id INTEGER,
-        pool_id INTEGER
+        pool_id INTEGER,
+        client_secret_hash TEXT
     )`);
 });
 

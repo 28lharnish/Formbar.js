@@ -298,7 +298,8 @@ CREATE TABLE IF NOT EXISTS "apps" (
     "description" TEXT,
     "owner_user_id" INTEGER NOT NULL,
     "share_item_id" INTEGER NOT NULL,
-    "pool_id" INTEGER NOT NULL
+    "pool_id" INTEGER NOT NULL,
+    "client_secret_hash" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS "app_redirect_uris" (
@@ -308,3 +309,17 @@ CREATE TABLE IF NOT EXISTS "app_redirect_uris" (
     UNIQUE ("app_id", "redirect_uri")
 );
 CREATE INDEX IF NOT EXISTS idx_app_redirect_uris_app ON app_redirect_uris (app_id);
+
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    app_id INTEGER NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    UNIQUE (user_id, app_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_grants_user_app ON oauth_grants (user_id, app_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_grants_app ON oauth_grants (app_id);

@@ -1,12 +1,31 @@
 const { dbGet, dbRun } = require("@modules/database");
-const { sha256 } = require("@modules/crypto");
-const { regenerateAPIKey, resolveAPIKey } = require("@services/api-key-service");
+const { compareBcrypt, hashBcrypt, sha256 } = require("@modules/crypto");
+const { resolveAPIKey } = require("@services/api-key-service");
+const { SCOPES } = require("@modules/scopes");
+const { flattenObject } = require("@modules/util");
 const { createPool } = require("@services/digipog-service");
 const { registerItem, addItemToInventory } = require("@services/inventory-service");
 const ValidationError = require("@errors/validation-error");
 const crypto = require("crypto");
 
 const SHARES_PER_APP = 100;
+const VALID_APP_SCOPES = flattenObject(SCOPES.APP);
+
+function normalizeOAuthScopes(scopes = "") {
+    const requested = Array.isArray(scopes) ? scopes : String(scopes).split(/\s+/);
+    return [...new Set(requested.map((scope) => String(scope).trim()).filter(Boolean))];
+}
+
+function validateOAuthScopes(scopes = "") {
+    const requestedScopes = normalizeOAuthScopes(scopes);
+    const invalidScopes = requestedScopes.filter((scope) => !VALID_APP_SCOPES.includes(scope));
+
+    if (invalidScopes.length > 0) {
+        throw new ValidationError(`Unsupported OAuth scope(s): ${invalidScopes.join(", ")}.`);
+    }
+
+    return requestedScopes;
+}
 
 /**
  * Create an app record, issue credentials, and seed the matching share item and pool.
@@ -78,11 +97,13 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
         const apiKey = crypto.randomBytes(64).toString("hex");
         const apiSecret = crypto.randomBytes(256).toString("hex");
         const apiKeyHash = sha256(apiKey);
+        const apiSecretHash = await hashBcrypt(apiSecret);
         
         await dbRun(
             "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
             [apiKeyHash, appId, "app"]
         );
+        await dbRun("UPDATE apps SET client_secret_hash = ? WHERE id = ?", [apiSecretHash, appId]);
 
         await addItemToInventory(ownerId, shareItemId, SHARES_PER_APP);
         await dbRun("COMMIT");
@@ -101,6 +122,27 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
 async function getAppById(appId) {
     const app = await dbGet("SELECT id, name, description, owner_user_id AS ownerId FROM apps WHERE id = ?", [appId]);
     return app || null;
+}
+
+async function getPublicOAuthAppMetadata({ clientId, redirectUri, requestedScopes }) {
+    const client = await validateOAuthClientRedirect({ clientId, redirectUri });
+    if (!client) {
+        return null;
+    }
+
+    const scopes = validateOAuthScopes(requestedScopes);
+    const app = await getAppById(clientId);
+    if (!app) {
+        return null;
+    }
+
+    return {
+        id: app.id,
+        name: app.name,
+        description: app.description,
+        redirectUri: client.redirectUri,
+        requestedScopes: scopes,
+    };
 }
 
 /**
@@ -129,11 +171,30 @@ async function validateOAuthClientRedirect({ clientId, redirectUri }) {
  * @param {Object} params - params.
  * @returns {Promise<*>}
  */
+async function validateOAuthClientCredentials({ clientId, redirectUri, clientSecret }) {
+    if (!clientSecret || typeof clientSecret !== "string" || !clientSecret.trim()) {
+        return null;
+    }
+
+    const client = await validateOAuthClientRedirect({ clientId, redirectUri });
+    if (!client) {
+        return null;
+    }
+
+    const app = await dbGet("SELECT id, client_secret_hash FROM apps WHERE id = ?", [clientId]);
+    if (!app?.client_secret_hash) {
+        return null;
+    }
+
+    const isValidSecret = await compareBcrypt(clientSecret, app.client_secret_hash);
+    return isValidSecret ? { ...client, redirectUri: client.redirectUri } : null;
+}
+
 async function validateOAuthAPIKey({ clientId, redirectUri, apiKey}) {
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
         return null;
     }
-    
+
     const app = await resolveAPIKey(apiKey);
     if (!app) {
         return null;
@@ -145,7 +206,11 @@ async function validateOAuthAPIKey({ clientId, redirectUri, apiKey}) {
 module.exports = {
     createApp,
     getAppById,
+    getPublicOAuthAppMetadata,
     normalizeRedirectUris,
+    normalizeOAuthScopes,
+    validateOAuthScopes,
     validateOAuthClientRedirect,
+    validateOAuthClientCredentials,
     validateOAuthAPIKey,
 };

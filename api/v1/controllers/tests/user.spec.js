@@ -1,4 +1,5 @@
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 const { createTestDb } = require("@test-helpers/db");
 const { classStateStore } = require("@services/classroom-service");
 const { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore } = require("./helpers/test-app");
@@ -48,12 +49,7 @@ jest.mock("@services/socket-updates-service", () => ({
     userUpdateSocket: jest.fn(),
 }));
 
-jest.mock("@services/user-service", () => ({
-    ...jest.requireActual("@services/user-service"),
-    regenerateAPIKey: jest.fn().mockResolvedValue("new-api-key-123"),
-}));
-
-const userService = require("@services/user-service");
+const { privateKey } = require("@modules/config");
 const userController = require("../user/user");
 const meController = require("../user/me/me");
 const banController = require("../user/ban");
@@ -283,6 +279,39 @@ describe("GET /api/v1/user/me", () => {
             digipogs: 0,
             isGuest: true,
         });
+    });
+
+    it("does not expose app scopes for OAuth app tokens", async () => {
+        const { user } = await seedStudent();
+        const accessToken = jwt.sign(
+            {
+                id: user.id,
+                email: user.email,
+                displayName: user.displayName,
+                permissions: 0,
+                classPermissions: null,
+                scopes: {
+                    global: [],
+                    class: [],
+                    app: ["app.profile.read", "app.email.read"],
+                },
+                oauth: {
+                    appId: 1,
+                    scopes: ["app.profile.read", "app.email.read"],
+                },
+            },
+            privateKey,
+            { algorithm: "RS256", expiresIn: "15m" }
+        );
+
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.email).toBe(user.email);
+        expect(res.body.data.scopes).toEqual({ global: [], class: [] });
+        expect(res.body.data.scopes).not.toHaveProperty("app");
+        expect(res.body.data).not.toHaveProperty("oauth");
     });
 });
 
@@ -803,7 +832,9 @@ describe("POST /api/v1/user/:id/api/regenerate", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data.apiKey).toBe("new-api-key-123");
-        expect(userService.regenerateAPIKey).toHaveBeenCalledWith(user.id);
+        expect(res.body.data.apiKey).toMatch(/^[0-9a-f]{64}$/);
+
+        const apiKeyRow = await mockDatabase.dbGet("SELECT * FROM api_keys WHERE entity_type = 'user' AND entity_id = ?", [user.id]);
+        expect(apiKeyRow).toBeTruthy();
     });
 });

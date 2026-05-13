@@ -42,6 +42,7 @@ jest.mock("@modules/config", () => {
 const authorizeController = require("../oauth/authorize");
 const tokenController = require("../oauth/token");
 const revokeController = require("../oauth/revoke");
+const { hashBcrypt } = require("@modules/crypto");
 
 const app = createTestApp(authorizeController, tokenController, revokeController);
 const OAUTH_CLIENT_ID = "1";
@@ -49,9 +50,10 @@ const OAUTH_CLIENT_SECRET = "oauth-secret";
 const OAUTH_REDIRECT_URI = "http://localhost:4000/cb";
 
 async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
+    const clientSecretHash = await hashBcrypt(OAUTH_CLIENT_SECRET);
     await mockDatabase.dbRun(
-        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?, ?)",
-        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1]
+        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id, client_secret_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1, clientSecretHash]
     );
     // Use the new api_keys table to store the API key
     await mockDatabase.dbRun(
@@ -89,7 +91,7 @@ describe("GET /api/v1/oauth/authorize", () => {
         const res = await request(app)
             .get("/api/v1/oauth/authorize")
             .set("Authorization", tokens.accessToken)
-            .query({ redirect_uri: "http://localhost:4000/cb", scope: "read", state: "xyz" });
+            .query({ redirect_uri: "http://localhost:4000/cb", scope: "app.profile.read", state: "xyz" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -102,7 +104,7 @@ describe("GET /api/v1/oauth/authorize", () => {
         const res = await request(app)
             .get("/api/v1/oauth/authorize")
             .set("Authorization", tokens.accessToken)
-            .query({ client_id: "1", scope: "read", state: "xyz" });
+            .query({ client_id: "1", scope: "app.profile.read", state: "xyz" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -128,7 +130,7 @@ describe("GET /api/v1/oauth/authorize", () => {
         const res = await request(app)
             .get("/api/v1/oauth/authorize")
             .set("Authorization", tokens.accessToken)
-            .query({ client_id: "1", redirect_uri: "http://localhost:4000/cb", scope: "read" });
+            .query({ client_id: "1", redirect_uri: "http://localhost:4000/cb", scope: "app.profile.read" });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
@@ -142,7 +144,7 @@ describe("GET /api/v1/oauth/authorize", () => {
             response_type: "token",
             client_id: "1",
             redirect_uri: "http://localhost:4000/cb",
-            scope: "read",
+            scope: "app.profile.read",
             state: "xyz",
         });
 
@@ -158,7 +160,7 @@ describe("GET /api/v1/oauth/authorize", () => {
         const res = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "read",
+            scope: "app.profile.read",
             state: "xyz",
         });
 
@@ -180,7 +182,7 @@ describe("GET /api/v1/oauth/authorize", () => {
             .query({
                 client_id: OAUTH_CLIENT_ID,
                 redirect_uri: OAUTH_REDIRECT_URI,
-                scope: "read",
+                scope: "app.profile.read",
                 state: "xyz",
             });
 
@@ -189,6 +191,46 @@ describe("GET /api/v1/oauth/authorize", () => {
         expect(res.body.data.redirectUrl).toContain(OAUTH_REDIRECT_URI);
         expect(res.body.data.redirectUrl).toContain("code=");
         expect(res.body.data.redirectUrl).toContain("state=xyz");
+    });
+
+    it("returns authorization metadata for a registered client and backend app scope", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        await seedOAuthClient();
+
+        const res = await request(app)
+            .get("/api/v1/oauth/authorize/metadata")
+            .set("Authorization", tokens.accessToken)
+            .query({
+                client_id: OAUTH_CLIENT_ID,
+                redirect_uri: OAUTH_REDIRECT_URI,
+                scope: "app.profile.read",
+                state: "xyz",
+            });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toMatchObject({
+            id: Number(OAUTH_CLIENT_ID),
+            name: "OAuth App",
+            redirectUri: OAUTH_REDIRECT_URI,
+            requestedScopes: ["app.profile.read"],
+        });
+    });
+
+    it("rejects unsupported app scope names", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        await seedOAuthClient();
+
+        const res = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
+            scope: "profile:read",
+            state: "xyz",
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error.message).toMatch(/unsupported oauth scope/i);
     });
 });
 
@@ -258,7 +300,7 @@ describe("POST /api/v1/oauth/token", () => {
         const authRes = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "read",
+            scope: "app.profile.read",
             state: "xyz",
         });
 
@@ -288,7 +330,7 @@ describe("POST /api/v1/oauth/token", () => {
         const authRes = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "read",
+            scope: "app.profile.read",
             state: "xyz",
         });
 
@@ -348,7 +390,7 @@ describe("POST /api/v1/oauth/revoke", () => {
         const authRes = await request(app).get("/api/v1/oauth/authorize").set("Authorization", tokens.accessToken).query({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "read",
+            scope: "app.profile.read",
             state: "xyz",
         });
 

@@ -154,6 +154,30 @@ async function isAuthenticated(req, res, next) {
         return;
     }
 
+    if (decodedToken.oauth) {
+        const dbUser = await dbGet("SELECT id, email, displayName, verified, digipogs FROM users WHERE email = ?", [email]);
+        if (!dbUser) {
+            req.warnEvent("auth.user_not_found", `OAuth token user not found: ${email}`, { email });
+            throw new AuthError("User is not authenticated");
+        }
+
+        req.user = {
+            id: Number(dbUser.id),
+            userId: Number(dbUser.id),
+            email: dbUser.email,
+            displayName: dbUser.displayName,
+            verified: dbUser.verified,
+            digipogs: dbUser.digipogs,
+            permissions: decodedToken.permissions ?? 0,
+            classPermissions: decodedToken.classPermissions ?? null,
+            scopes: decodedToken.scopes || { global: [], class: [], app: decodedToken.oauth.scopes || [] },
+            oauth: decodedToken.oauth,
+        };
+
+        next();
+        return;
+    }
+
     let user = classStateStore.getUser(email);
     if (!user) {
         const computedUser = await loadComputedUserByEmail(email);

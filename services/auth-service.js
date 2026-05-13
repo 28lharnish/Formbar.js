@@ -7,7 +7,7 @@ const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getUserScopes } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
-const { validateOAuthClientRedirect, validateOAuthAPIKey } = require("@services/app-service");
+const { validateOAuthClientCredentials, validateOAuthClientRedirect, validateOAuthScopes } = require("@services/app-service");
 const { findRoleByPermissionLevel, getUserRoles } = require("@services/role-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
@@ -501,6 +501,48 @@ function getBearerToken(value) {
     return typeof value === "string" ? value.replace(/^Bearer\s+/i, "") : value;
 }
 
+function buildOAuthAccessTokenPayload(user, appId, scopes) {
+    return {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        permissions: 0,
+        classPermissions: null,
+        scopes: {
+            global: [],
+            class: [],
+            app: scopes,
+        },
+        oauth: {
+            appId: Number(appId),
+            scopes,
+        },
+    };
+}
+
+async function upsertOAuthGrant({ userId, appId, scopes }) {
+    const now = Math.floor(Date.now() / 1000);
+    const scopesJson = JSON.stringify(scopes);
+    const existing = await dbGet("SELECT id FROM oauth_grants WHERE user_id = ? AND app_id = ?", [userId, appId]);
+
+    if (existing) {
+        await dbRun("UPDATE oauth_grants SET scopes = ?, updated_at = ?, revoked_at = NULL WHERE id = ?", [scopesJson, now, existing.id]);
+        return;
+    }
+
+    await dbRun("INSERT INTO oauth_grants (user_id, app_id, scopes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", [
+        userId,
+        appId,
+        scopesJson,
+        now,
+        now,
+    ]);
+}
+
+async function getActiveOAuthGrant({ userId, appId }) {
+    return dbGet("SELECT * FROM oauth_grants WHERE user_id = ? AND app_id = ? AND revoked_at IS NULL", [userId, appId]);
+}
+
 /**
  * Generate Authorization Code.
  *
@@ -518,17 +560,24 @@ async function generateAuthorizationCode({ client_id, redirect_uri, scope, autho
         throw new AppError("OAuth client or redirect_uri is not registered.", { statusCode: 400 });
     }
 
+    const scopes = validateOAuthScopes(scope);
     const userData = verifyToken(getBearerToken(authorization));
     if (userData.error) {
         throw new AppError("Invalid authorization token provided.", { statusCode: 400 });
     }
+
+    await upsertOAuthGrant({
+        userId: userData.id,
+        appId: Number(client_id),
+        scopes,
+    });
 
     return jwt.sign(
         {
             sub: userData.id,
             aud: client_id,
             redirect_uri: redirect_uri,
-            scope: scope,
+            scope: scopes.join(" "),
         },
         privateKey,
         { algorithm: "RS256", expiresIn: "5m" }
@@ -544,12 +593,12 @@ async function generateAuthorizationCode({ client_id, redirect_uri, scope, autho
  * @param {string} params.client_id - The client application's ID
  * @returns {Promise<Object>} Token response with access_token, token_type, expires_in, and refresh_token
  */
-async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id, apiKey }) {
+async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id, clientSecret }) {
     requireInternalParam(code, "code");
     requireInternalParam(redirect_uri, "redirect_uri");
     requireInternalParam(client_id, "client_id");
-    if (!apiKey) {
-        throw new AppError("API key is required.", { statusCode: 400 });
+    if (!clientSecret) {
+        throw new AppError("Client secret is required.", { statusCode: 400 });
     }
 
     const authorizationCodeData = verifyToken(code);
@@ -579,9 +628,17 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         throw new AppError("client_id does not match the original authorization request.", { statusCode: 400 });
     }
 
-    const client = await validateOAuthAPIKey({ clientId: client_id, redirectUri: redirect_uri, apiKey: apiKey });
+    const client = await validateOAuthClientCredentials({ clientId: client_id, redirectUri: redirect_uri, clientSecret });
     if (!client) {
         throw new AppError("Invalid OAuth client credentials or redirect_uri.", { statusCode: 401 });
+    }
+
+    const requestedScopes = validateOAuthScopes(authorizationCodeData.scope);
+    const grant = await getActiveOAuthGrant({ userId: authorizationCodeData.sub, appId: Number(client_id) });
+    const grantedScopes = grant ? JSON.parse(grant.scopes || "[]") : [];
+    const hasRequestedGrant = requestedScopes.every((scope) => grantedScopes.includes(scope));
+    if (!hasRequestedGrant) {
+        throw new AppError("The requested OAuth grant was not found or has been revoked.", { statusCode: 401 });
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
@@ -590,14 +647,14 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         throw new AppError("User associated with the authorization code was not found.", { statusCode: 404 });
     }
 
-    const tokenPayload = {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-    };
+    const tokenPayload = buildOAuthAccessTokenPayload(user, client_id, requestedScopes);
 
     const accessToken = jwt.sign(tokenPayload, privateKey, { algorithm: "RS256", expiresIn: "15m" });
-    const refreshToken = jwt.sign({ id: user.id }, privateKey, { algorithm: "RS256", expiresIn: "30d" });
+    const refreshToken = jwt.sign(
+        { id: user.id, appId: Number(client_id), scopes: requestedScopes, tokenType: "oauth", jti: crypto.randomBytes(16).toString("hex") },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "30d" }
+    );
     const decodedRefreshToken = jwt.decode(refreshToken);
 
     // Persist the OAuth refresh token to the database (store hash, not cleartext)
@@ -609,18 +666,16 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         "oauth",
     ]);
 
-    const { roles: activeRoles, scopes: activeScopes, classPermissions } = await getActiveClassContext(user);
-
     return {
         access_token: accessToken,
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: refreshToken,
-        permissions: user.permissions,
-        classPermissions,
-        role: user.role,
-        roles: activeRoles,
-        scopes: activeScopes,
+        permissions: 0,
+        classPermissions: null,
+        role: null,
+        roles: { global: [], class: [] },
+        scopes: tokenPayload.scopes,
     };
 }
 
@@ -646,20 +701,33 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         throw new AppError("Refresh token not found or has been revoked.", { statusCode: 401 });
     }
 
-    // Load user details so the OAuth access token includes the same claims as regular access tokens
+    const appId = Number(refreshTokenData.appId);
+    const grantedScopes = Array.isArray(refreshTokenData.scopes) ? validateOAuthScopes(refreshTokenData.scopes) : [];
+    if (!appId || grantedScopes.length === 0) {
+        throw new AppError("Invalid OAuth refresh token metadata.", { statusCode: 400 });
+    }
+
+    const grant = await getActiveOAuthGrant({ userId: refreshTokenData.id, appId });
+    const activeGrantScopes = grant ? JSON.parse(grant.scopes || "[]") : [];
+    const hasActiveGrant = grantedScopes.every((scope) => activeGrantScopes.includes(scope));
+    if (!hasActiveGrant) {
+        throw new AppError("The OAuth grant was not found or has been revoked.", { statusCode: 401 });
+    }
+
+    // Load user details so the OAuth access token includes the approved app claims
     const user = await normalizeUserData(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [refreshTokenData.id]));
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }
 
-    const tokenPayload = {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-    };
+    const tokenPayload = buildOAuthAccessTokenPayload(user, appId, grantedScopes);
 
     const accessToken = jwt.sign(tokenPayload, privateKey, { algorithm: "RS256", expiresIn: "15m" });
-    const newRefreshToken = jwt.sign(tokenPayload, privateKey, { algorithm: "RS256", expiresIn: "30d" });
+    const newRefreshToken = jwt.sign(
+        { id: user.id, appId, scopes: grantedScopes, tokenType: "oauth", jti: crypto.randomBytes(16).toString("hex") },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "30d" }
+    );
     const decodedRefreshToken = jwt.decode(newRefreshToken);
 
     // Rotate the refresh token: delete old, insert new (store hash, not cleartext)
@@ -672,17 +740,15 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         "oauth",
     ]);
 
-    const { classPermissions } = await getActiveClassContext(user);
-
     return {
         access_token: accessToken,
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: newRefreshToken,
-        permissions: user.permissions,
-        classPermissions,
-        role: user.role,
-        scopes: getUserScopes(user),
+        permissions: 0,
+        classPermissions: null,
+        role: null,
+        scopes: tokenPayload.scopes,
     };
 }
 
