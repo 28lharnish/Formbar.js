@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Formbar.js Onboarding | Formbar.js Onboarding</title>
+    <meta name="description" content="Setup, project shape, task routing, glossary, and common pitfalls.">
+    <link rel="stylesheet" href="assets/onboarding.css">
+    <script defer src="assets/onboarding.js"></script>
+    
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="topbar">
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidebar">Menu</button>
+        <a class="brand" href="index.html" aria-label="Formbar.js onboarding home">
+            <span class="brand-mark">F</span>
+            <span>
+                <strong>Formbar.js</strong>
+                <small>Onboarding Docs</small>
+            </span>
+        </a>
+        <a class="source-link" href="../README.md">Markdown source</a>
+    </header>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-inner">
+                <label class="search-label" for="doc-search">Filter docs</label>
+                <input id="doc-search" class="doc-search" type="search" placeholder="Search pages">
+                <nav class="page-nav" aria-label="Documentation pages">
+                    <a class="nav-card active" href="index.html" aria-current="page" data-search="start here setup, project shape, task routing, glossary, and common pitfalls."><span>Start Here</span><small>Setup, project shape, task routing, glossary, and common pitfalls.</small></a>
+<a class="nav-card" href="project-map.html" data-search="project map where code lives and where new code usually belongs."><span>Project Map</span><small>Where code lives and where new code usually belongs.</small></a>
+<a class="nav-card" href="runtime-flow.html" data-search="runtime flow startup, http request routing, sockets, errors, and debugging checks."><span>Runtime Flow</span><small>Startup, HTTP request routing, sockets, errors, and debugging checks.</small></a>
+<a class="nav-card" href="data-and-auth.html" data-search="data and auth sqlite, migrations, auth paths, tokens, api keys, roles, and scopes."><span>Data And Auth</span><small>SQLite, migrations, auth paths, tokens, API keys, roles, and scopes.</small></a>
+<a class="nav-card" href="dev-workflow.html" data-search="developer workflow daily commands, change workflows, testing, and handoff checklist."><span>Developer Workflow</span><small>Daily commands, change workflows, testing, and handoff checklist.</small></a>
+<a class="nav-card" href="architecture.html" data-search="architecture visual maps of the backend, request lifecycle, sockets, auth, and data."><span>Architecture</span><small>Visual maps of the backend, request lifecycle, sockets, auth, and data.</small></a>
+<a class="nav-card" href="codebase-map.html" data-search="codebase map detailed directory, file, test, and ownership inventory."><span>Codebase Map</span><small>Detailed directory, file, test, and ownership inventory.</small></a>
+<a class="nav-card" href="feature-state.html" data-search="feature state implemented areas, partial work, deprecated paths, and follow-up risks."><span>Feature State</span><small>Implemented areas, partial work, deprecated paths, and follow-up risks.</small></a>
+                </nav>
+            </div>
+        </aside>
+
+        <main class="content-shell" id="main">
+            <section class="hero">
+                <p class="eyebrow">Formbar.js Onboarding</p>
+                <h1>Formbar.js Onboarding</h1>
+                <p>Setup, project shape, task routing, glossary, and common pitfalls.</p>
+                <div class="hero-actions">
+                    <a href="../README.md">View Markdown</a>
+                    <a href="index.html">Docs Home</a>
+                </div>
+            </section>
+
+            <article class="doc-content">
+                <p>Start here if you are new to this project.</p>
+<p>Formbar.js is the backend for a classroom management and polling app. It handles user accounts, classes, live class state, polls, timers, help and break requests, digipogs, notifications, API keys, OAuth/OIDC login, and admin tools.</p>
+<p>This repo is mainly a Node.js API and Socket.IO server. The frontend is expected to run separately. Local frontend configuration is controlled by <code>FRONTEND_URL</code> in <code>.env</code>.</p>
+<h2 id="the-big-picture"><a class="heading-anchor" href="#the-big-picture" aria-label="Link to The Big Picture">#</a>The Big Picture</h2>
+<p>The project has three main code layers:</p>
+<div class="code-block" data-language="text"><pre><code class="language-text">HTTP controllers and socket handlers
+        call
+services
+        call
+modules, stores, and the SQLite database</code></pre></div>
+<p>That means most new work follows this pattern:</p>
+<ol>
+<li>Find the controller or socket event where the request enters the app.
+</li>
+<li>Put the main business rule in a service.
+</li>
+<li>Store durable data in SQLite through <code>modules/database.js</code>.
+</li>
+<li>Store temporary live state in <code>stores/**</code> only when it is okay to lose that state on restart.
+</li>
+<li>Add or update tests near the code you changed.
+</li>
+</ol>
+<h2 id="first-hour-setup"><a class="heading-anchor" href="#first-hour-setup" aria-label="Link to First Hour Setup">#</a>First Hour Setup</h2>
+<p>Prerequisites:</p>
+<ul>
+<li>Node.js 18 or newer
+</li>
+<li>npm
+</li>
+</ul>
+<p>From the repo root:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">npm install</code></pre></div>
+<p>For a fresh local database:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">npm run init-db</code></pre></div>
+<p><code>npm run init-db</code> creates <code>database/database.db</code> from <code>database/init.sql</code>, then runs migrations. If the database already exists, the command prints a message and exits. That is fine. Keep the existing database and run:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">npm run migrate</code></pre></div>
+<p>Start the backend:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">npm run dev</code></pre></div>
+<p>Then open:</p>
+<div class="code-block" data-language="text"><pre><code class="language-text">http://localhost:420/docs</code></pre></div>
+<p>For the formatted onboarding docs, open:</p>
+<div class="code-block" data-language="text"><pre><code class="language-text">docs/onboarding/html/index.html</code></pre></div>
+<p>After editing any onboarding markdown file, rebuild the HTML docs with:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">node docs/onboarding/build-html.js</code></pre></div>
+<p>Run tests:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">npm test</code></pre></div>
+<p>If the app exits with <code>The database file does not exist</code>, run <code>npm run init-db</code>.</p>
+<h2 id="generated-local-files"><a class="heading-anchor" href="#generated-local-files" aria-label="Link to Generated Local Files">#</a>Generated Local Files</h2>
+<p>The app can create a few local files during setup:</p>
+<ul>
+<li><code>.env</code> is copied from <code>.env-template</code> if missing.
+</li>
+<li><code>public-key.pem</code> and <code>private-key.pem</code> are generated if missing.
+</li>
+<li><code>database/database.db</code> is created by <code>npm run init-db</code>.
+</li>
+<li><code>database/database.bak</code> or numbered backup files may be created by <code>npm run migrate</code>.
+</li>
+</ul>
+<p>Do not commit local secrets, generated keys, or database files.</p>
+<h2 id="reading-order"><a class="heading-anchor" href="#reading-order" aria-label="Link to Reading Order">#</a>Reading Order</h2>
+<p>Read only what you need, but this order works well for a new contributor:</p>
+<ol>
+<li><a href="project-map.html">Project Map</a>: where code lives and where new code usually belongs.
+</li>
+<li><a href="runtime-flow.html">Runtime Flow</a>: what happens during startup, HTTP requests, and socket events.
+</li>
+<li><a href="data-and-auth.html">Data And Auth</a>: database rules, migrations, tokens, API keys, roles, and scopes.
+</li>
+<li><a href="dev-workflow.html">Developer Workflow</a>: commands, tests, and common change patterns.
+</li>
+<li><a href="architecture.html">Architecture Diagrams</a>: visual maps of the backend.
+</li>
+<li><a href="codebase-map.html">Codebase Map</a>: detailed directory and file inventory.
+</li>
+<li><a href="feature-state.html">Feature State</a>: what is implemented, partial, deprecated, or risky.
+</li>
+</ol>
+<h2 id="if-your-task-is"><a class="heading-anchor" href="#if-your-task-is" aria-label="Link to If Your Task Is...">#</a>If Your Task Is...</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Task</th><th>Start Here</th><th>You Will Probably Change</th></tr></thead>
+<tbody><tr><td>Add or change a REST endpoint</td><td><code>api/v1/controllers/**</code></td><td>A controller, a service, tests, and maybe OpenAPI comments</td></tr>
+<tr><td>Add or change realtime behavior</td><td><code>sockets/**</code></td><td>A socket module, a service, socket tests</td></tr>
+<tr><td>Change class, poll, role, user, digipog, or notification rules</td><td><code>services/**</code></td><td>A service and its tests</td></tr>
+<tr><td>Change persisted data</td><td><code>database/migrations/**</code></td><td>A new migration, service queries, <code>modules/test-helpers/test-schema.sql</code></td></tr>
+<tr><td>Change auth or permissions</td><td><code>middleware/authentication.js</code>, <code>middleware/permission-check.js</code>, <code>modules/scopes.js</code>, <code>services/role-service.js</code></td><td>Middleware, scopes/roles, tests</td></tr>
+<tr><td>Change temporary live state</td><td><code>stores/**</code></td><td>A store and service code that uses it</td></tr>
+<tr><td>Change API documentation</td><td>Controller JSDoc and <code>docs/components/schemas/**</code></td><td>OpenAPI comments or schema YAML</td></tr></tbody>
+</table>
+</div>
+<h2 id="beginner-glossary"><a class="heading-anchor" href="#beginner-glossary" aria-label="Link to Beginner Glossary">#</a>Beginner Glossary</h2>
+<ul>
+<li>Controller: Express route code that receives an HTTP request and returns an HTTP response.
+</li>
+<li>Socket handler: Socket.IO event code that receives realtime client events and emits realtime updates.
+</li>
+<li>Service: shared business logic. Controllers and socket handlers should call services instead of duplicating rules.
+</li>
+<li>Middleware: code that runs before a controller or socket event, often for logging, auth, rate limiting, or permission checks.
+</li>
+<li>Durable state: data stored in SQLite and expected to survive restart.
+</li>
+<li>Runtime state: in-memory data under <code>stores/**</code>; it disappears when the Node process restarts.
+</li>
+<li>Scope: a named permission such as &quot;can manage users&quot; or &quot;can vote in polls&quot;.
+</li>
+</ul>
+<h2 id="rules-of-thumb"><a class="heading-anchor" href="#rules-of-thumb" aria-label="Link to Rules Of Thumb">#</a>Rules Of Thumb</h2>
+<ul>
+<li>Put shared behavior in <code>services/**</code>.
+</li>
+<li>Keep HTTP request/response details in <code>api/v1/controllers/**</code>.
+</li>
+<li>Keep realtime event wiring in <code>sockets/**</code>.
+</li>
+<li>Use <code>modules/database.js</code> helpers for database access.
+</li>
+<li>Add new schema changes as new migration files. Do not edit <code>database/init.sql</code> or old migrations.
+</li>
+<li>Update tests when behavior changes.
+</li>
+<li>Prefer existing patterns in nearby files over inventing a new structure.
+</li>
+</ul>
+<h2 id="common-pitfalls"><a class="heading-anchor" href="#common-pitfalls" aria-label="Link to Common Pitfalls">#</a>Common Pitfalls</h2>
+<h3 id="querying-the-database-inside-a-loop"><a class="heading-anchor" href="#querying-the-database-inside-a-loop" aria-label="Link to Querying The Database Inside A Loop">#</a>Querying The Database Inside A Loop</h3>
+<p>Avoid one database query per item. Batch the query when possible.</p>
+<div class="code-block" data-language="js"><pre><code class="language-js">// Bad: one query per user.
+for (const userId of userIds) {
+    const user = await dbGet(&quot;SELECT * FROM users WHERE id = ?&quot;, [userId]);
+    results.push(user);
+}
+
+// Good: one query for all users.
+const placeholders = userIds.map(() =&gt; &quot;?&quot;).join(&quot;, &quot;);
+const users = await dbGetAll(
+    `SELECT * FROM users WHERE id IN (${placeholders})`,
+    userIds
+);</code></pre></div>
+<p>This matters because SQLite calls are serialized. Looping over queries can make HTTP requests and socket events slow.</p>
+<h3 id="putting-business-rules-in-controllers-or-socket-handlers"><a class="heading-anchor" href="#putting-business-rules-in-controllers-or-socket-handlers" aria-label="Link to Putting Business Rules In Controllers Or Socket Handlers">#</a>Putting Business Rules In Controllers Or Socket Handlers</h3>
+<p>Controllers and socket handlers should validate input, call a service, and return or emit the result. If the same rule might matter to both HTTP and realtime behavior, it belongs in <code>services/**</code>.</p>
+<h3 id="confusing-stores-with-the-database"><a class="heading-anchor" href="#confusing-stores-with-the-database" aria-label="Link to Confusing Stores With The Database">#</a>Confusing Stores With The Database</h3>
+<p><code>stores/**</code> are in memory. They reset when the server restarts. Anything that must survive a restart belongs in SQLite.</p>
+<h3 id="editing-old-database-history"><a class="heading-anchor" href="#editing-old-database-history" aria-label="Link to Editing Old Database History">#</a>Editing Old Database History</h3>
+<p>Do not edit <code>database/init.sql</code> or an existing file under <code>database/migrations/**</code>. Add a new migration instead. Old migrations may already have run in another environment.</p>
+<h3 id="forgetting-the-test-schema"><a class="heading-anchor" href="#forgetting-the-test-schema" aria-label="Link to Forgetting The Test Schema">#</a>Forgetting The Test Schema</h3>
+<p>Tests use <code>modules/test-helpers/test-schema.sql</code>. If you change table structure, update the test schema too.</p>
+<h3 id="regenerating-rsa-keys"><a class="heading-anchor" href="#regenerating-rsa-keys" aria-label="Link to Regenerating RSA Keys">#</a>Regenerating RSA Keys</h3>
+<p>Deleting or replacing <code>public-key.pem</code> or <code>private-key.pem</code> invalidates existing JWT access and refresh tokens. All logged-in users will need to sign in again.</p>
+<h3 id="expanding-legacy-api-paths"><a class="heading-anchor" href="#expanding-legacy-api-paths" aria-label="Link to Expanding Legacy API Paths">#</a>Expanding Legacy API Paths</h3>
+<p>New code should use <code>/api/v1</code>. The non-versioned <code>/api</code> compatibility layer exists for old clients and should not grow unless the goal is explicitly legacy compatibility.</p>
+<h3 id="wrong-socket-module-export"><a class="heading-anchor" href="#wrong-socket-module-export" aria-label="Link to Wrong Socket Module Export">#</a>Wrong Socket Module Export</h3>
+<p>Every socket event module must export:</p>
+<div class="code-block" data-language="js"><pre><code class="language-js">run(socket, socketUpdates)</code></pre></div>
+<p>If the export shape is wrong, the module may load but its events will not register correctly.</p>
+<h3 id="missing-proxy-trust"><a class="heading-anchor" href="#missing-proxy-trust" aria-label="Link to Missing Proxy Trust">#</a>Missing Proxy Trust</h3>
+<p>When deployed behind a reverse proxy such as nginx, set <code>TRUST_PROXY</code>. Without it, Express may treat all traffic as coming from the proxy IP, which can break rate limiting and IP access checks.</p>
+<h3 id="email-disabled-locally"><a class="heading-anchor" href="#email-disabled-locally" aria-label="Link to Email Disabled Locally">#</a>Email Disabled Locally</h3>
+<p>Local <code>.env</code> defaults to <code>EMAIL_ENABLED=false</code>. Email verification, password reset, and PIN reset flows behave differently when email is disabled. Test those flows with email enabled before shipping email-related work.</p>
+            </article>
+
+            <nav class="page-turner" aria-label="Page navigation">
+                <span></span>
+                <a class="turn-card next" href="project-map.html"><small>Next</small><span>Project Map</span></a>
+            </nav>
+        </main>
+
+        <aside class="toc" aria-label="Page sections">
+            <div class="toc-inner">
+                <h2>On This Page</h2>
+                <a class="toc-link" href="#the-big-picture">The Big Picture</a>
+<a class="toc-link" href="#first-hour-setup">First Hour Setup</a>
+<a class="toc-link" href="#generated-local-files">Generated Local Files</a>
+<a class="toc-link" href="#reading-order">Reading Order</a>
+<a class="toc-link" href="#if-your-task-is">If Your Task Is...</a>
+<a class="toc-link" href="#beginner-glossary">Beginner Glossary</a>
+<a class="toc-link" href="#rules-of-thumb">Rules Of Thumb</a>
+<a class="toc-link" href="#common-pitfalls">Common Pitfalls</a>
+<a class="toc-link nested" href="#querying-the-database-inside-a-loop">Querying The Database Inside A Loop</a>
+<a class="toc-link nested" href="#putting-business-rules-in-controllers-or-socket-handlers">Putting Business Rules In Controllers Or Socket Handlers</a>
+<a class="toc-link nested" href="#confusing-stores-with-the-database">Confusing Stores With The Database</a>
+<a class="toc-link nested" href="#editing-old-database-history">Editing Old Database History</a>
+<a class="toc-link nested" href="#forgetting-the-test-schema">Forgetting The Test Schema</a>
+<a class="toc-link nested" href="#regenerating-rsa-keys">Regenerating RSA Keys</a>
+<a class="toc-link nested" href="#expanding-legacy-api-paths">Expanding Legacy API Paths</a>
+<a class="toc-link nested" href="#wrong-socket-module-export">Wrong Socket Module Export</a>
+<a class="toc-link nested" href="#missing-proxy-trust">Missing Proxy Trust</a>
+<a class="toc-link nested" href="#email-disabled-locally">Email Disabled Locally</a>
+            </div>
+        </aside>
+    </div>
+</body>
+</html>

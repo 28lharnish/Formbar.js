@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Data And Auth | Formbar.js Onboarding</title>
+    <meta name="description" content="SQLite, migrations, auth paths, tokens, API keys, roles, and scopes.">
+    <link rel="stylesheet" href="assets/onboarding.css">
+    <script defer src="assets/onboarding.js"></script>
+    
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="topbar">
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sidebar">Menu</button>
+        <a class="brand" href="index.html" aria-label="Formbar.js onboarding home">
+            <span class="brand-mark">F</span>
+            <span>
+                <strong>Formbar.js</strong>
+                <small>Onboarding Docs</small>
+            </span>
+        </a>
+        <a class="source-link" href="../data-and-auth.md">Markdown source</a>
+    </header>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-inner">
+                <label class="search-label" for="doc-search">Filter docs</label>
+                <input id="doc-search" class="doc-search" type="search" placeholder="Search pages">
+                <nav class="page-nav" aria-label="Documentation pages">
+                    <a class="nav-card" href="index.html" data-search="start here setup, project shape, task routing, glossary, and common pitfalls."><span>Start Here</span><small>Setup, project shape, task routing, glossary, and common pitfalls.</small></a>
+<a class="nav-card" href="project-map.html" data-search="project map where code lives and where new code usually belongs."><span>Project Map</span><small>Where code lives and where new code usually belongs.</small></a>
+<a class="nav-card" href="runtime-flow.html" data-search="runtime flow startup, http request routing, sockets, errors, and debugging checks."><span>Runtime Flow</span><small>Startup, HTTP request routing, sockets, errors, and debugging checks.</small></a>
+<a class="nav-card active" href="data-and-auth.html" aria-current="page" data-search="data and auth sqlite, migrations, auth paths, tokens, api keys, roles, and scopes."><span>Data And Auth</span><small>SQLite, migrations, auth paths, tokens, API keys, roles, and scopes.</small></a>
+<a class="nav-card" href="dev-workflow.html" data-search="developer workflow daily commands, change workflows, testing, and handoff checklist."><span>Developer Workflow</span><small>Daily commands, change workflows, testing, and handoff checklist.</small></a>
+<a class="nav-card" href="architecture.html" data-search="architecture visual maps of the backend, request lifecycle, sockets, auth, and data."><span>Architecture</span><small>Visual maps of the backend, request lifecycle, sockets, auth, and data.</small></a>
+<a class="nav-card" href="codebase-map.html" data-search="codebase map detailed directory, file, test, and ownership inventory."><span>Codebase Map</span><small>Detailed directory, file, test, and ownership inventory.</small></a>
+<a class="nav-card" href="feature-state.html" data-search="feature state implemented areas, partial work, deprecated paths, and follow-up risks."><span>Feature State</span><small>Implemented areas, partial work, deprecated paths, and follow-up risks.</small></a>
+                </nav>
+            </div>
+        </aside>
+
+        <main class="content-shell" id="main">
+            <section class="hero">
+                <p class="eyebrow">Formbar.js Onboarding</p>
+                <h1>Data And Auth</h1>
+                <p>SQLite, migrations, auth paths, tokens, API keys, roles, and scopes.</p>
+                <div class="hero-actions">
+                    <a href="../data-and-auth.md">View Markdown</a>
+                    <a href="index.html">Docs Home</a>
+                </div>
+            </section>
+
+            <article class="doc-content">
+                <p>Read this before changing database schema, migrations, login, tokens, API keys, OIDC, roles, scopes, or permission checks.</p>
+<h2 id="two-kinds-of-state"><a class="heading-anchor" href="#two-kinds-of-state" aria-label="Link to Two Kinds Of State">#</a>Two Kinds Of State</h2>
+<p>Formbar.js uses both SQLite and in-memory stores.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>State Type</th><th>Where It Lives</th><th>Survives Restart?</th><th>Examples</th></tr></thead>
+<tbody><tr><td>Durable state</td><td>SQLite through <code>modules/database.js</code></td><td>Yes</td><td>Users, classes, roles, refresh tokens, poll history, digipogs, inventory, notifications, apps</td></tr>
+<tr><td>Runtime state</td><td><code>stores/**</code></td><td>No</td><td>Active class state, connected sockets, active poll state, class-code cache, API-key cache</td></tr></tbody>
+</table>
+</div>
+<p>If losing the data on restart would be a bug, do not put it only in <code>stores/**</code>.</p>
+<h2 id="database-files"><a class="heading-anchor" href="#database-files" aria-label="Link to Database Files">#</a>Database Files</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>File Or Folder</th><th>Purpose</th></tr></thead>
+<tbody><tr><td><code>database/init.sql</code></td><td>Base schema for a brand-new database</td></tr>
+<tr><td><code>database/init.js</code></td><td>Creates <code>database/database.db</code> from <code>init.sql</code>, then runs migrations</td></tr>
+<tr><td><code>database/migrate.js</code></td><td>Runs all SQL and JS migrations</td></tr>
+<tr><td><code>database/migrations/*.sql</code></td><td>SQL migration history</td></tr>
+<tr><td><code>database/migrations/JSMigrations/*.js</code></td><td>JavaScript migration history</td></tr>
+<tr><td><code>modules/database.js</code></td><td>Shared database helpers: <code>dbGet</code>, <code>dbRun</code>, <code>dbGetAll</code></td></tr>
+<tr><td><code>modules/test-helpers/test-schema.sql</code></td><td>Schema used by tests</td></tr></tbody>
+</table>
+</div>
+<p>Do not edit <code>database/init.sql</code> or old migrations. Add a new migration instead.</p>
+<h2 id="local-database-lifecycle"><a class="heading-anchor" href="#local-database-lifecycle" aria-label="Link to Local Database Lifecycle">#</a>Local Database Lifecycle</h2>
+<p>For a new local database:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">npm run init-db</code></pre></div>
+<p>That command:</p>
+<ol>
+<li>Refuses to overwrite an existing <code>database/database.db</code>.
+</li>
+<li>Creates the database from <code>database/init.sql</code>.
+</li>
+<li>Sets <code>SKIP_BACKUP=true</code>.
+</li>
+<li>Runs <code>database/migrate.js</code>.
+</li>
+</ol>
+<p>For an existing local database:</p>
+<div class="code-block" data-language="bash"><pre><code class="language-bash">npm run migrate</code></pre></div>
+<p><code>npm run migrate</code> backs up <code>database/database.db</code> before running unless <code>SKIP_BACKUP</code> is set.</p>
+<h2 id="how-migrations-work"><a class="heading-anchor" href="#how-migrations-work" aria-label="Link to How Migrations Work">#</a>How Migrations Work</h2>
+<p class="callout">Important: this migration runner has no tracking table. In the future, you may want to change this to avoid confusion and/or errors.</p>
+<p>That means every time <code>npm run migrate</code> runs, it attempts every migration file again from the beginning.</p>
+<p>Every migration must therefore be idempotent, which means it must be safe to run more than once.</p>
+<h3 id="sql-migrations"><a class="heading-anchor" href="#sql-migrations" aria-label="Link to SQL Migrations">#</a>SQL Migrations</h3>
+<p>Use SQLite guards when SQLite supports them:</p>
+<div class="code-block" data-language="sql"><pre><code class="language-sql">CREATE TABLE IF NOT EXISTS example_table (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_example_name ON example_table (name);
+
+DROP INDEX IF EXISTS idx_old_example;
+DROP TABLE IF EXISTS old_example_table;</code></pre></div>
+<p>SQLite does not support <code>IF NOT EXISTS</code> for <code>ALTER TABLE ADD COLUMN</code>. In this repo, it is acceptable to write:</p>
+<div class="code-block" data-language="sql"><pre><code class="language-sql">ALTER TABLE users ADD COLUMN display_name TEXT;</code></pre></div>
+<p>On the second run, SQLite throws a duplicate-column error. The SQL migration runner catches SQL file errors, rolls back that file, prints a warning, and continues. That pattern is already part of this repo&#39;s migration style.</p>
+<h3 id="js-migrations"><a class="heading-anchor" href="#js-migrations" aria-label="Link to JS Migrations">#</a>JS Migrations</h3>
+<p>JS migrations export <code>run(database)</code>:</p>
+<div class="code-block" data-language="js"><pre><code class="language-js">module.exports = {
+    async run(database) {
+        // migration work
+    },
+};</code></pre></div>
+<p>Preferred pattern: check before changing schema or data.</p>
+<div class="code-block" data-language="js"><pre><code class="language-js">const { dbGetAll, dbRun } = require(&quot;@modules/database&quot;);
+
+module.exports = {
+    async run(database) {
+        const columns = await dbGetAll(&quot;PRAGMA table_info(users)&quot;, [], database);
+        const hasDisplayName = columns.some((column) =&gt; column.name === &quot;display_name&quot;);
+
+        if (!hasDisplayName) {
+            await dbRun(&quot;ALTER TABLE users ADD COLUMN display_name TEXT&quot;, [], database);
+        }
+    },
+};</code></pre></div>
+<p>For destructive one-time transformations, check whether the old shape still exists. If it does not, throw:</p>
+<div class="code-block" data-language="js"><pre><code class="language-js">throw new Error(&quot;ALREADY_DONE&quot;);</code></pre></div>
+<p><code>database/migrate.js</code> treats exactly <code>&quot;ALREADY_DONE&quot;</code> as a graceful skip for JS migrations.</p>
+<h2 id="schema-change-checklist"><a class="heading-anchor" href="#schema-change-checklist" aria-label="Link to Schema Change Checklist">#</a>Schema Change Checklist</h2>
+<p>When changing schema or persisted data:</p>
+<ol>
+<li>Add a new migration file. Do not edit history.
+</li>
+<li>Make the migration idempotent.
+</li>
+<li>Update service queries.
+</li>
+<li>Update <code>modules/test-helpers/test-schema.sql</code>.
+</li>
+<li>Add or update tests.
+</li>
+<li>Run the relevant tests.
+</li>
+<li>Run <code>npm run migrate</code> on a local database to verify the migration path.
+</li>
+</ol>
+<h2 id="database-helper-rules"><a class="heading-anchor" href="#database-helper-rules" aria-label="Link to Database Helper Rules">#</a>Database Helper Rules</h2>
+<p>Use <code>modules/database.js</code> helpers:</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Helper</th><th>Use For</th></tr></thead>
+<tbody><tr><td><code>dbGet</code></td><td>A query that returns one row</td></tr>
+<tr><td><code>dbGetAll</code></td><td>A query that returns many rows</td></tr>
+<tr><td><code>dbRun</code></td><td><code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, or other statements</td></tr></tbody>
+</table>
+</div>
+<p>Avoid database calls inside loops. Prefer one batched query:</p>
+<div class="code-block" data-language="js"><pre><code class="language-js">const placeholders = ids.map(() =&gt; &quot;?&quot;).join(&quot;, &quot;);
+const rows = await dbGetAll(
+    `SELECT * FROM users WHERE id IN (${placeholders})`,
+    ids
+);</code></pre></div>
+<h2 id="auth-paths"><a class="heading-anchor" href="#auth-paths" aria-label="Link to Auth Paths">#</a>Auth Paths</h2>
+<p>Formbar.js supports several authentication paths:</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Auth Path</th><th>Main Code</th></tr></thead>
+<tbody><tr><td>Email/password register and login</td><td><code>services/auth-service.js</code>, <code>api/v1/controllers/auth/**</code></td></tr>
+<tr><td>Guest login</td><td><code>services/auth-service.js</code>, <code>api/v1/controllers/auth/guest.js</code></td></tr>
+<tr><td>Access token refresh</td><td><code>services/auth-service.js</code>, <code>api/v1/controllers/auth/refresh.js</code></td></tr>
+<tr><td>API key auth</td><td><code>services/api-key-service.js</code>, <code>middleware/authentication.js</code></td></tr>
+<tr><td>OIDC login with configured providers</td><td><code>modules/oidc.js</code>, <code>api/v1/controllers/auth/oidc/**</code></td></tr>
+<tr><td>OAuth app authorization/token flow</td><td><code>services/auth-service.js</code>, <code>api/v1/controllers/oauth/**</code></td></tr></tbody>
+</table>
+</div>
+<p>Most protected HTTP routes use <code>isAuthenticated</code> from <code>middleware/authentication.js</code>.</p>
+<h2 id="token-behavior"><a class="heading-anchor" href="#token-behavior" aria-label="Link to Token Behavior">#</a>Token Behavior</h2>
+<ul>
+<li>Access tokens are RS256 JWTs and currently expire after 15 minutes.
+</li>
+<li>App login refresh tokens are RS256 JWTs and currently expire after 30 days.
+</li>
+<li>Stored refresh tokens are hashed before they are saved.
+</li>
+<li>OAuth authorization codes are single-use.
+</li>
+<li>Used authorization-code hashes are stored so a code cannot be reused.
+</li>
+<li>RSA keys come from <code>public-key.pem</code> and <code>private-key.pem</code>.
+</li>
+</ul>
+<p>Deleting or regenerating the RSA key files invalidates existing tokens. Only do that intentionally.</p>
+<p>Expired refresh-token and authorization-code cleanup code exists in <code>middleware/authentication.js</code>, but the interval that would run it during startup is currently commented out in <code>app.js</code>. See <a href="feature-state.html">Feature State</a>.</p>
+<h2 id="http-auth-and-authorization"><a class="heading-anchor" href="#http-auth-and-authorization" aria-label="Link to HTTP Auth And Authorization">#</a>HTTP Auth And Authorization</h2>
+<p><code>middleware/authentication.js</code> provides:</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Function</th><th>Purpose</th></tr></thead>
+<tbody><tr><td><code>isAuthenticated</code></td><td>Accepts an API key or bearer token and sets <code>req.user</code></td></tr>
+<tr><td><code>isVerified</code></td><td>Requires verified email when <code>EMAIL_ENABLED=true</code>; guests bypass this</td></tr>
+<tr><td><code>isIPBanned</code></td><td>Enforces IP allow/deny rules</td></tr></tbody>
+</table>
+</div>
+<p><code>middleware/permission-check.js</code> provides:</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Function</th><th>Purpose</th></tr></thead>
+<tbody><tr><td><code>hasScope(...)</code></td><td>Checks a global scope</td></tr>
+<tr><td><code>hasClassScope(...)</code></td><td>Checks a class-level scope</td></tr>
+<tr><td><code>isClassMember(...)</code></td><td>Checks class membership when used by a route</td></tr></tbody>
+</table>
+</div>
+<p>New authorization logic should prefer scopes over numeric permission levels. Numeric levels still exist for compatibility and summaries.</p>
+<h2 id="roles-and-scopes"><a class="heading-anchor" href="#roles-and-scopes" aria-label="Link to Roles And Scopes">#</a>Roles And Scopes</h2>
+<p>Scopes are named permissions. Roles are collections of scopes.</p>
+<p>Related files:</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>File</th><th>Purpose</th></tr></thead>
+<tbody><tr><td><code>modules/scopes.js</code></td><td>Scope constants</td></tr>
+<tr><td><code>modules/permissions.js</code></td><td>Scope-to-permission summaries</td></tr>
+<tr><td><code>modules/scope-resolver.js</code></td><td>Computes effective scopes for a user</td></tr>
+<tr><td><code>modules/roles.js</code></td><td>Role helpers</td></tr>
+<tr><td><code>modules/role-reference.js</code></td><td>Role definitions/reference data</td></tr>
+<tr><td><code>services/role-service.js</code></td><td>Persisted role and class-role behavior</td></tr></tbody>
+</table>
+</div>
+<p>When adding a new permission:</p>
+<ol>
+<li>Add or reuse a scope constant.
+</li>
+<li>Add service behavior that enforces the rule.
+</li>
+<li>Add HTTP and/or socket checks.
+</li>
+<li>Update role defaults if the scope should belong to built-in roles.
+</li>
+<li>Add tests for allowed and denied users.
+</li>
+</ol>
+<h2 id="socket-auth"><a class="heading-anchor" href="#socket-auth" aria-label="Link to Socket Auth">#</a>Socket Auth</h2>
+<p>Socket auth lives under <code>sockets/middleware/**</code>.</p>
+<p>Socket connections run through:</p>
+<ol>
+<li>Shared Express session middleware.
+</li>
+<li>IP allow/deny check.
+</li>
+<li>Socket auth/API middleware.
+</li>
+<li>Socket rate limiting and inactivity tracking.
+</li>
+<li>Event handlers.
+</li>
+</ol>
+<p>Keep socket authorization aligned with matching HTTP behavior. If a teacher cannot do something through HTTP, they should not be able to do it through a socket event either.</p>
+<h2 id="environment-settings-that-affect-auth"><a class="heading-anchor" href="#environment-settings-that-affect-auth" aria-label="Link to Environment Settings That Affect Auth">#</a>Environment Settings That Affect Auth</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Setting</th><th>Effect</th></tr></thead>
+<tbody><tr><td><code>EMAIL_ENABLED</code></td><td>Enables email verification requirements and email-dependent flows</td></tr>
+<tr><td><code>FRONTEND_URL</code></td><td>Used by flows that need frontend links or redirects</td></tr>
+<tr><td><code>GOOGLE_OIDC_*</code></td><td>Enables Google OIDC login when configured</td></tr>
+<tr><td><code>MICROSOFT_OIDC_*</code></td><td>Enables Microsoft OIDC login when configured</td></tr>
+<tr><td><code>WHITELIST_ENABLED</code></td><td>Enables IP whitelist enforcement</td></tr>
+<tr><td><code>BLACKLIST_ENABLED</code></td><td>Enables IP blacklist enforcement</td></tr>
+<tr><td><code>TRUST_PROXY</code></td><td>Tells Express how to read client IPs behind a proxy</td></tr>
+<tr><td><code>RATE_LIMIT_WINDOW_SECONDS</code></td><td>Controls rate-limit window length</td></tr>
+<tr><td><code>RATE_LIMIT_MULTIPLIER</code></td><td>Scales rate limits</td></tr></tbody>
+</table>
+</div>
+<h2 id="common-pitfalls"><a class="heading-anchor" href="#common-pitfalls" aria-label="Link to Common Pitfalls">#</a>Common Pitfalls</h2>
+<ul>
+<li>Do not persist important data only in <code>stores/**</code>.
+</li>
+<li>Do not edit <code>database/init.sql</code> or old migrations.
+</li>
+<li>Do not forget <code>modules/test-helpers/test-schema.sql</code> after schema changes.
+</li>
+<li>Do not regenerate RSA keys casually.
+</li>
+<li>Do not assume email flows were tested if <code>EMAIL_ENABLED=false</code>.
+</li>
+<li>Do not add database calls inside loops.
+</li>
+<li>Do not add a socket permission without checking the matching HTTP permission.
+</li>
+</ul>
+            </article>
+
+            <nav class="page-turner" aria-label="Page navigation">
+                <a class="turn-card previous" href="runtime-flow.html"><small>Previous</small><span>Runtime Flow</span></a>
+                <a class="turn-card next" href="dev-workflow.html"><small>Next</small><span>Developer Workflow</span></a>
+            </nav>
+        </main>
+
+        <aside class="toc" aria-label="Page sections">
+            <div class="toc-inner">
+                <h2>On This Page</h2>
+                <a class="toc-link" href="#two-kinds-of-state">Two Kinds Of State</a>
+<a class="toc-link" href="#database-files">Database Files</a>
+<a class="toc-link" href="#local-database-lifecycle">Local Database Lifecycle</a>
+<a class="toc-link" href="#how-migrations-work">How Migrations Work</a>
+<a class="toc-link nested" href="#sql-migrations">SQL Migrations</a>
+<a class="toc-link nested" href="#js-migrations">JS Migrations</a>
+<a class="toc-link" href="#schema-change-checklist">Schema Change Checklist</a>
+<a class="toc-link" href="#database-helper-rules">Database Helper Rules</a>
+<a class="toc-link" href="#auth-paths">Auth Paths</a>
+<a class="toc-link" href="#token-behavior">Token Behavior</a>
+<a class="toc-link" href="#http-auth-and-authorization">HTTP Auth And Authorization</a>
+<a class="toc-link" href="#roles-and-scopes">Roles And Scopes</a>
+<a class="toc-link" href="#socket-auth">Socket Auth</a>
+<a class="toc-link" href="#environment-settings-that-affect-auth">Environment Settings That Affect Auth</a>
+<a class="toc-link" href="#common-pitfalls">Common Pitfalls</a>
+            </div>
+        </aside>
+    </div>
+</body>
+</html>
