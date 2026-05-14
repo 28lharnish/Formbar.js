@@ -365,7 +365,7 @@ function renderPage(page, parsed, index) {
     const next = pages[index + 1];
     const sourceHref = `../${page.source}`;
     const mermaidScript = parsed.hasMermaid
-        ? '<script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs"; mermaid.initialize({ startOnLoad: true, theme: "base", themeVariables: { primaryColor: "#eefcf8", primaryTextColor: "#102321", primaryBorderColor: "#2f9f8f", lineColor: "#5f6f6a", fontFamily: "Inter, Segoe UI, sans-serif" } });</script>'
+        ? '<script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs"; mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: { primaryColor: "#eefcf8", primaryTextColor: "#102321", primaryBorderColor: "#2f9f8f", lineColor: "#5f6f6a", fontFamily: "Inter, Segoe UI, sans-serif" } }); await mermaid.run({ querySelector: ".mermaid" }); window.dispatchEvent(new Event("formbar:mermaid-ready"));</script>'
         : "";
 
     return `<!doctype html>

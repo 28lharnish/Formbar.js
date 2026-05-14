@@ -26,11 +26,16 @@ html {
 
 body {
     margin: 0;
-    background:
-        linear-gradient(180deg, rgba(22, 126, 115, 0.08), transparent 28rem),
-        var(--bg);
+    background: linear-gradient(180deg, rgba(22, 126, 115, 0.08), transparent 28rem), var(--bg);
     color: var(--ink);
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
     font-size: 16px;
     line-height: 1.6;
 }
@@ -229,9 +234,7 @@ a:hover {
     padding: clamp(1.5rem, 4vw, 3rem);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    background:
-        linear-gradient(135deg, rgba(22, 126, 115, 0.14), rgba(200, 88, 43, 0.08)),
-        var(--surface);
+    background: linear-gradient(135deg, rgba(22, 126, 115, 0.14), rgba(200, 88, 43, 0.08)), var(--surface);
     box-shadow: var(--shadow);
 }
 
@@ -397,10 +400,87 @@ a:hover {
 }
 
 .diagram {
+    position: relative;
+    height: clamp(22rem, 58vh, 36rem);
     margin: 1.3rem 0;
-    padding: 1rem;
+    padding: 0;
     border: 1px solid var(--line);
     background: #fbfdfc;
+}
+
+.diagram-panzoom {
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.diagram-panzoom::after {
+    content: attr(data-zoom);
+    position: absolute;
+    right: 0.8rem;
+    bottom: 0.65rem;
+    padding: 0.18rem 0.42rem;
+    border: 1px solid rgba(191, 210, 204, 0.72);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.86);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    pointer-events: none;
+}
+
+.diagram-panzoom.is-panning {
+    cursor: grabbing;
+}
+
+.diagram-canvas {
+    position: absolute;
+    inset: 1rem;
+    overflow: hidden;
+}
+
+.diagram svg {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+}
+
+.diagram-controls {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.65rem;
+    z-index: 2;
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.25rem;
+    border: 1px solid rgba(191, 210, 204, 0.72);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 8px 24px rgba(23, 33, 31, 0.08);
+}
+
+.diagram-controls button {
+    display: grid;
+    min-width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.diagram-controls button:hover,
+.diagram-controls button:focus-visible {
+    border-color: var(--line-strong);
+    background: var(--surface-soft);
+    outline: none;
 }
 
 .mermaid {

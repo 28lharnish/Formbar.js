@@ -96,7 +96,7 @@
 <div class="code-block" data-language="bash"><pre><code class="language-bash">npm run migrate</code></pre></div>
 <p><code>npm run migrate</code> backs up <code>database/database.db</code> before running unless <code>SKIP_BACKUP</code> is set.</p>
 <h2 id="how-migrations-work"><a class="heading-anchor" href="#how-migrations-work" aria-label="Link to How Migrations Work">#</a>How Migrations Work</h2>
-<p class="callout">Important: this migration runner has no tracking table. In the future, you may want to change this to avoid confusion and/or errors.</p>
+<p class="callout">Important: this migration runner has no tracking table.</p>
 <p>That means every time <code>npm run migrate</code> runs, it attempts every migration file again from the beginning.</p>
 <p>Every migration must therefore be idempotent, which means it must be safe to run more than once.</p>
 <h3 id="sql-migrations"><a class="heading-anchor" href="#sql-migrations" aria-label="Link to SQL Migrations">#</a>SQL Migrations</h3>
