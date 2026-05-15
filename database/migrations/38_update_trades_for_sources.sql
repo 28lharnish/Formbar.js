@@ -2,6 +2,10 @@
 -- Rebuilds the trades table to support source-based trading (inventory items or pool digipogs).
 -- Migrates old 'accepted' rows to 'completed'; preserves 'pending' and 'rejected' rows.
 
+-- Guard: intentionally fails on re-run so the migration runner skips this migration
+-- when it has already been applied. The table persists after first run.
+CREATE TABLE _migration_38_trades_sources_applied (id INTEGER PRIMARY KEY);
+
 CREATE TABLE IF NOT EXISTS trades_v2 (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     from_user          INTEGER NOT NULL,

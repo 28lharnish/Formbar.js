@@ -157,7 +157,7 @@ describe("POST /api/v1/trades", () => {
     });
 });
 
-describe("GET /api/v1/trades", () => {
+describe("GET /api/v1/user/:id/trades", () => {
     it("returns all four buckets with pagination metadata", async () => {
         const { tokens: t1 } = await seedAuthenticatedUser(mockDatabase);
 
@@ -222,6 +222,15 @@ describe("GET /api/v1/trades", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/user/1/trades");
         expect(res.status).toBe(401);
+    });
+
+    it("returns 403 when accessing another user's trades", async () => {
+        const { tokens: t1 } = await seedAuthenticatedUser(mockDatabase, { email: "a@test.com", displayName: "UserA" });
+        const { user: u2 } = await seedAuthenticatedUser(mockDatabase, { email: "b@test.com", displayName: "UserB" });
+
+        const res = await request(app).get(`/api/v1/user/${u2.id}/trades`).set("Authorization", `Bearer ${t1.accessToken}`);
+
+        expect(res.status).toBe(403);
     });
 
     it("accepts limit and offset query params", async () => {

@@ -18,6 +18,10 @@ function normalizeItems(items) {
 
     const aggregated = new Map();
     for (const entry of items) {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            throw new ValidationError("Each item must be an object with itemId and quantity.", { reason: "invalid_item_entry" });
+        }
+
         const itemId = Number(entry.itemId);
         const quantity = Number(entry.quantity);
 
@@ -148,6 +152,11 @@ async function validateSide(side, userId, label) {
         const digipogs = Number(side.digipogs);
         if (!Number.isInteger(digipogs) || digipogs <= 0) {
             throw new ValidationError(`The ${label} pool side must include a positive integer digipog amount.`, { reason: "invalid_digipogs" });
+        }
+
+        const poolExists = await dbGet("SELECT id FROM digipog_pools WHERE id = ?", [poolId]);
+        if (!poolExists) {
+            throw new ValidationError(`The ${label} pool was not found.`, { reason: "pool_not_found" });
         }
 
         const isOwner = await isPoolOwnedByUser(poolId, userId);
@@ -576,7 +585,9 @@ async function rejectTrade(tradeId, userId) {
         throw err;
     }
 
-    await createNotification(requesterId, "trade_rejected", { tradeId });
+    try {
+        await createNotification(requesterId, "trade_rejected", { tradeId });
+    } catch {}
 }
 
 /**
@@ -614,7 +625,9 @@ async function cancelTrade(tradeId, userId) {
         throw err;
     }
 
-    await createNotification(recipientId, "trade_canceled", { tradeId });
+    try {
+        await createNotification(recipientId, "trade_canceled", { tradeId });
+    } catch {}
 }
 
 module.exports = {

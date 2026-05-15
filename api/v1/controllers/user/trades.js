@@ -4,6 +4,7 @@ const { getUserDataFromDb } = require("@services/user-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { parsePaginationQuery } = require("@modules/pagination");
 const NotFoundError = require("@errors/not-found-error");
+const ForbiddenError = require("@errors/forbidden-error");
 
 const DEFAULT_TRADE_LIMIT = 20;
 const MAX_TRADE_LIMIT = 100;
@@ -68,6 +69,10 @@ module.exports = (router) => {
     router.get("/user/:id/trades", isAuthenticated, isVerified, async (req, res) => {
         const userId = Number(req.params.id);
         requireQueryParam(userId, "id");
+
+        if (req.user.id !== userId) {
+            throw new ForbiddenError("You can only view your own trades.", { event: "user.trades.list.failed", reason: "forbidden" });
+        }
 
         const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_TRADE_LIMIT, MAX_TRADE_LIMIT);
         const requestedUser = await getUserDataFromDb(userId);
