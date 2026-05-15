@@ -275,21 +275,30 @@ CREATE TABLE IF NOT EXISTS "item_registry" (
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
--- Trades (migration 20)
+-- Trades (final state after migration 38_update_trades_for_sources)
 CREATE TABLE IF NOT EXISTS "trades" (
-    "id"              INTEGER NOT NULL,
-    "from_user"       INTEGER NOT NULL,
-    "to_user"         INTEGER NOT NULL,
-    "offered_items"   TEXT    NOT NULL,
-    "requested_items" TEXT    NOT NULL,
-    "status"          TEXT    NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'accepted', 'rejected')),
-    "created_at"      TEXT    NOT NULL,
-    "updated_at"      TEXT    NOT NULL,
+    "id"                 INTEGER NOT NULL,
+    "from_user"          INTEGER NOT NULL,
+    "to_user"            INTEGER NOT NULL,
+    "from_source_type"   TEXT    NOT NULL DEFAULT 'inventory' CHECK (from_source_type IN ('inventory', 'pool')),
+    "from_pool_id"       INTEGER,
+    "to_source_type"     TEXT    NOT NULL DEFAULT 'inventory' CHECK (to_source_type IN ('inventory', 'pool')),
+    "to_pool_id"         INTEGER,
+    "offered_items"      TEXT,
+    "requested_items"    TEXT,
+    "offered_digipogs"   INTEGER,
+    "requested_digipogs" INTEGER,
+    "status"             TEXT    NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'completed', 'rejected', 'canceled', 'failed')),
+    "failure_reason"     TEXT,
+    "created_at"         TEXT    NOT NULL,
+    "updated_at"         TEXT    NOT NULL,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 CREATE INDEX IF NOT EXISTS idx_trades_from_user ON trades (from_user);
 CREATE INDEX IF NOT EXISTS idx_trades_to_user ON trades (to_user);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades (status);
+CREATE INDEX IF NOT EXISTS idx_trades_from_user_status ON trades (from_user, status);
+CREATE INDEX IF NOT EXISTS idx_trades_to_user_status ON trades (to_user, status);
 
 -- Apps and registered OAuth redirect URIs
 CREATE TABLE IF NOT EXISTS "apps" (

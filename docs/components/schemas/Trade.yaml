@@ -1,0 +1,109 @@
+components:
+    schemas:
+        TradeItem:
+            type: object
+            required:
+                - itemId
+                - quantity
+            properties:
+                itemId:
+                    type: integer
+                    example: 1
+                quantity:
+                    type: integer
+                    example: 2
+        TradeSource:
+            type: object
+            required:
+                - type
+            properties:
+                type:
+                    type: string
+                    enum:
+                        - inventory
+                        - pool
+                poolId:
+                    type: integer
+                    nullable: true
+                    example: 5
+        TradeSide:
+            type: object
+            required:
+                - source
+            properties:
+                source:
+                    $ref: "#/components/schemas/TradeSource"
+                items:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/TradeItem"
+                digipogs:
+                    type: integer
+                    example: 10
+        Trade:
+            type: object
+            required:
+                - id
+                - fromUserId
+                - toUserId
+                - offered
+                - requested
+                - status
+                - createdAt
+                - updatedAt
+            properties:
+                id:
+                    type: integer
+                    example: 42
+                fromUserId:
+                    type: integer
+                    example: 1
+                toUserId:
+                    type: integer
+                    example: 2
+                offered:
+                    $ref: "#/components/schemas/TradeSide"
+                requested:
+                    $ref: "#/components/schemas/TradeSide"
+                status:
+                    type: string
+                    enum:
+                        - pending
+                        - completed
+                        - rejected
+                        - canceled
+                        - failed
+                failureReason:
+                    type: string
+                    nullable: true
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+        TradeBucket:
+            type: object
+            required:
+                - items
+                - total
+                - limit
+                - offset
+                - hasMore
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/Trade"
+                total:
+                    type: integer
+                    example: 3
+                limit:
+                    type: integer
+                    example: 20
+                offset:
+                    type: integer
+                    example: 0
+                hasMore:
+                    type: boolean
+                    example: false
