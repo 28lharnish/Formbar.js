@@ -1,5 +1,15 @@
 # Formbar.js Onboarding
 
+> **HTML docs are generated, not committed.** Run the following command from the repo root to build them:
+>
+> ```bash
+> npm run build:docs
+> ```
+>
+> Then open `docs/onboarding/html/index.html` in a browser.
+>
+> **This is the recommended way of viewing these documents.**
+
 Start here if you are new to this project.
 
 Formbar.js is the backend for a classroom management and polling app. It handles user accounts, classes, live class state, polls, timers, help and break requests, digipogs, notifications, API keys, OAuth/OIDC login, and admin tools.

@@ -155,7 +155,7 @@ describe("SocketUpdates classUpdate visibility", () => {
         jest.clearAllMocks();
     });
 
-    it("limits the payload to the viewer when they do not have students.read", () => {
+    it("omits students when the viewer does not have students.read", () => {
         const socket = makeSocket();
         const updates = new SocketUpdates(socket);
 
@@ -167,12 +167,7 @@ describe("SocketUpdates classUpdate visibility", () => {
                 key: undefined,
                 settings: undefined,
                 roles: undefined,
-                students: expect.objectContaining({
-                    11: expect.objectContaining({
-                        id: 11,
-                        displayName: "Student",
-                    }),
-                }),
+                students: undefined,
                 myId: 11,
                 myRoles: [],
                 poll: expect.objectContaining({
@@ -182,7 +177,7 @@ describe("SocketUpdates classUpdate visibility", () => {
             })
         );
         const payload = socket.emit.mock.calls[0][1];
-        expect(payload.students[10]).toBeUndefined();
+        expect(payload.students).toBeUndefined();
     });
 
     it("includes broader class data when the viewer has the matching scopes", () => {

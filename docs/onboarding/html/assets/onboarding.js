@@ -88,156 +88,54 @@
         diagram.appendChild(controls);
 
         const state = {
-            scale: 1,
             svg: null,
-            baseBox: null,
-            fullBox: null,
-            viewBox: null,
+            scale: 1,
+            baseVX: 0, baseVY: 0, baseVW: 0, baseVH: 0,
+            vx: 0, vy: 0, vw: 0, vh: 0,
             dragging: false,
             pointerId: null,
-            startX: 0,
-            startY: 0,
-            startBox: null,
+            startX: 0, startY: 0,
+            startVX: 0, startVY: 0,
         };
 
-        function cloneBox(box) {
-            return {
-                x: box.x,
-                y: box.y,
-                width: box.width,
-                height: box.height,
-            };
-        }
-
-        function readSvgBox(svg) {
-            const viewBox = svg.viewBox?.baseVal;
-            if (viewBox && viewBox.width && viewBox.height) {
-                return {
-                    x: viewBox.x,
-                    y: viewBox.y,
-                    width: viewBox.width,
-                    height: viewBox.height,
-                };
-            }
-
-            let measuredBox = null;
-            try {
-                measuredBox = svg.getBBox();
-            } catch {
-                measuredBox = null;
-            }
-
-            const width = measuredBox?.width || svg.getBoundingClientRect().width || parseFloat(svg.getAttribute("width")) || 1000;
-            const height = measuredBox?.height || svg.getBoundingClientRect().height || parseFloat(svg.getAttribute("height")) || 700;
-
-            return {
-                x: measuredBox?.x || 0,
-                y: measuredBox?.y || 0,
-                width,
-                height,
-            };
-        }
-
-        function getViewportRect() {
-            const rect = canvas.getBoundingClientRect();
-            return {
-                width: Math.max(rect.width, 1),
-                height: Math.max(rect.height, 1),
-            };
-        }
-
-        function fitBoxToViewport(baseBox) {
-            const viewport = getViewportRect();
-            const baseAspect = baseBox.width / baseBox.height;
-            const viewportAspect = viewport.width / viewport.height;
-            const fitted = cloneBox(baseBox);
-
-            if (viewportAspect > baseAspect) {
-                fitted.width = baseBox.height * viewportAspect;
-                fitted.x = baseBox.x - (fitted.width - baseBox.width) / 2;
-            } else {
-                fitted.height = baseBox.width / viewportAspect;
-                fitted.y = baseBox.y - (fitted.height - baseBox.height) / 2;
-            }
-
-            return fitted;
-        }
-
-        function clampViewBox(box) {
-            const full = state.fullBox;
-            if (!full) return box;
-
-            if (box.width >= full.width) {
-                box.x = full.x - (box.width - full.width) / 2;
-            } else {
-                box.x = clamp(box.x, full.x, full.x + full.width - box.width);
-            }
-
-            if (box.height >= full.height) {
-                box.y = full.y - (box.height - full.height) / 2;
-            } else {
-                box.y = clamp(box.y, full.y, full.y + full.height - box.height);
-            }
-
-            return box;
-        }
-
         function applyViewBox() {
-            if (!state.svg || !state.viewBox) return;
-
-            const box = state.viewBox;
-            state.svg.setAttribute("viewBox", `${box.x} ${box.y} ${box.width} ${box.height}`);
+            if (!state.svg) return;
+            state.svg.setAttribute("viewBox", `${state.vx} ${state.vy} ${state.vw} ${state.vh}`);
             diagram.dataset.zoom = `${Math.round(state.scale * 100)}%`;
         }
 
         function resetViewBox() {
-            if (!state.baseBox) return;
-
             state.scale = 1;
-            state.fullBox = fitBoxToViewport(state.baseBox);
-            state.viewBox = cloneBox(state.fullBox);
-            applyViewBox();
-        }
-
-        function resizeViewBox() {
-            if (!state.baseBox || !state.viewBox) return;
-
-            const center = {
-                x: state.viewBox.x + state.viewBox.width / 2,
-                y: state.viewBox.y + state.viewBox.height / 2,
-            };
-
-            state.fullBox = fitBoxToViewport(state.baseBox);
-            state.viewBox = clampViewBox({
-                x: center.x - state.fullBox.width / state.scale / 2,
-                y: center.y - state.fullBox.height / state.scale / 2,
-                width: state.fullBox.width / state.scale,
-                height: state.fullBox.height / state.scale,
-            });
+            state.vx = state.baseVX;
+            state.vy = state.baseVY;
+            state.vw = state.baseVW;
+            state.vh = state.baseVH;
             applyViewBox();
         }
 
         function zoomAt(clientX, clientY, factor) {
-            if (!state.svg || !state.viewBox || !state.fullBox) return;
-
+            if (!state.svg) return;
             const rect = canvas.getBoundingClientRect();
             const nextScale = clamp(state.scale * factor, 0.35, 4);
-            const ratioX = clamp((clientX - rect.left) / rect.width, 0, 1);
-            const ratioY = clamp((clientY - rect.top) / rect.height, 0, 1);
-            const cursor = {
-                x: state.viewBox.x + state.viewBox.width * ratioX,
-                y: state.viewBox.y + state.viewBox.height * ratioY,
-            };
-            const nextWidth = state.fullBox.width / nextScale;
-            const nextHeight = state.fullBox.height / nextScale;
 
+            // Cursor as a fraction of the canvas
+            const fx = (clientX - rect.left) / rect.width;
+            const fy = (clientY - rect.top) / rect.height;
+
+            // SVG coordinate under the cursor before zooming
+            const svgX = state.vx + fx * state.vw;
+            const svgY = state.vy + fy * state.vh;
+
+            // New viewBox dimensions at the new scale
+            const newVW = state.baseVW / nextScale;
+            const newVH = state.baseVH / nextScale;
+
+            // Shift origin so that the SVG point stays under the cursor
+            state.vx = svgX - fx * newVW;
+            state.vy = svgY - fy * newVH;
+            state.vw = newVW;
+            state.vh = newVH;
             state.scale = nextScale;
-            state.viewBox = clampViewBox({
-                x: cursor.x - nextWidth * ratioX,
-                y: cursor.y - nextHeight * ratioY,
-                width: nextWidth,
-                height: nextHeight,
-            });
             applyViewBox();
         }
 
@@ -246,19 +144,55 @@
             zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
         }
 
-        function reset() {
-            resetViewBox();
-        }
-
         function connectSvg(renderedSvg) {
             if (!renderedSvg || state.svg === renderedSvg) return;
-
             state.svg = renderedSvg;
-            state.baseBox = readSvgBox(renderedSvg);
+
+            // Switch to non-uniform scaling so the viewBox maps 1:1 to the canvas.
+            // We compensate by padding the base viewBox to match the container
+            // aspect ratio, which avoids any distortion at scale=1.
             state.svg.setAttribute("preserveAspectRatio", "none");
             state.svg.removeAttribute("width");
             state.svg.removeAttribute("height");
-            state.svg.style.transform = "none";
+
+            // Parse the original viewBox written by Mermaid
+            const vbAttr = state.svg.getAttribute("viewBox");
+            let ox = 0, oy = 0, ow = 800, oh = 600;
+            if (vbAttr) {
+                const parts = vbAttr.trim().split(/[\s,]+/).map(Number);
+                if (parts.length >= 4 && parts.every(isFinite)) {
+                    [ox, oy, ow, oh] = parts;
+                }
+            }
+
+            // Expand the base viewBox to match the canvas aspect ratio so the
+            // SVG always fills the canvas without distortion at scale=1
+            const rect = canvas.getBoundingClientRect();
+            const cw = rect.width > 0 ? rect.width : 800;
+            const ch = rect.height > 0 ? rect.height : 600;
+            const diagramAR = ow / oh;
+            const containerAR = cw / ch;
+
+            let baseVX, baseVY, baseVW, baseVH;
+            if (diagramAR > containerAR) {
+                // Wider than the canvas — fit width, pad vertically
+                baseVW = ow;
+                baseVH = ow / containerAR;
+                baseVX = ox;
+                baseVY = oy - (baseVH - oh) / 2;
+            } else {
+                // Taller than the canvas — fit height, pad horizontally
+                baseVH = oh;
+                baseVW = oh * containerAR;
+                baseVX = ox - (baseVW - ow) / 2;
+                baseVY = oy;
+            }
+
+            state.baseVX = baseVX;
+            state.baseVY = baseVY;
+            state.baseVW = baseVW;
+            state.baseVH = baseVH;
+
             resetViewBox();
         }
 
@@ -280,7 +214,8 @@
             state.pointerId = event.pointerId;
             state.startX = event.clientX;
             state.startY = event.clientY;
-            state.startBox = state.viewBox ? cloneBox(state.viewBox) : null;
+            state.startVX = state.vx;
+            state.startVY = state.vy;
 
             diagram.classList.add("is-panning");
             diagram.setPointerCapture(event.pointerId);
@@ -288,17 +223,15 @@
         });
 
         diagram.addEventListener("pointermove", (event) => {
-            if (!state.dragging || event.pointerId !== state.pointerId || !state.startBox) return;
+            if (!state.dragging || event.pointerId !== state.pointerId) return;
 
             const rect = canvas.getBoundingClientRect();
-            const dx = ((event.clientX - state.startX) / rect.width) * state.startBox.width;
-            const dy = ((event.clientY - state.startY) / rect.height) * state.startBox.height;
+            const dxScreen = event.clientX - state.startX;
+            const dyScreen = event.clientY - state.startY;
 
-            state.viewBox = clampViewBox({
-                ...state.startBox,
-                x: state.startBox.x - dx,
-                y: state.startBox.y - dy,
-            });
+            // Convert screen-pixel delta to SVG-coordinate delta
+            state.vx = state.startVX - (dxScreen / rect.width) * state.vw;
+            state.vy = state.startVY - (dyScreen / rect.height) * state.vh;
             applyViewBox();
         });
 
@@ -306,7 +239,6 @@
             if (event.pointerId !== state.pointerId) return;
             state.dragging = false;
             state.pointerId = null;
-            state.startBox = null;
             diagram.classList.remove("is-panning");
             if (diagram.hasPointerCapture(event.pointerId)) {
                 diagram.releasePointerCapture(event.pointerId);
@@ -318,7 +250,6 @@
         diagram.addEventListener("lostpointercapture", () => {
             state.dragging = false;
             state.pointerId = null;
-            state.startBox = null;
             diagram.classList.remove("is-panning");
         });
 
@@ -328,15 +259,10 @@
 
             if (button.dataset.action === "zoom-in") zoomFromCenter(1.18);
             if (button.dataset.action === "zoom-out") zoomFromCenter(1 / 1.18);
-            if (button.dataset.action === "reset") reset();
+            if (button.dataset.action === "reset") resetViewBox();
         });
 
         connectSvg(svg);
-
-        if ("ResizeObserver" in window) {
-            const resizeObserver = new ResizeObserver(resizeViewBox);
-            resizeObserver.observe(canvas);
-        }
 
         diagram.dataset.zoom = "100%";
     }
@@ -345,11 +271,9 @@
         document.querySelectorAll(".diagram").forEach(watchDiagramForSvg);
     }
 
-    initAllDiagrams();
     window.addEventListener("formbar:mermaid-ready", () => {
         window.requestAnimationFrame(initAllDiagrams);
     });
-    window.addEventListener("load", initAllDiagrams);
 
     const tocLinks = Array.from(document.querySelectorAll(".toc-link"));
     const headings = tocLinks.map((link) => document.querySelector(decodeURIComponent(link.hash))).filter(Boolean);
