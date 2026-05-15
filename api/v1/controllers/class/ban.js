@@ -6,22 +6,22 @@ const { requireQueryParam } = require("@modules/error-wrapper");
 const membershipService = require("@services/class-membership-service");
 
 /**
- * Register kick controller routes.
+ * Register ban controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/class/{id}/students/{userId}/kick:
+     * /api/v1/class/{id}/students/{userId}/ban:
      *   post:
-     *     summary: Kick a student from a class
+     *     summary: Ban a student from a class
      *     tags:
      *       - Class
      *     description: |
-     *       Removes a student from the classroom roster and active session.
+     *       Applies the banned role to a student and removes them from the active session.
      *
-     *       **Required scope:** `class.students.kick`
+     *       **Required scope:** `class.students.ban`
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -37,10 +37,10 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Student user ID to remove
+     *         description: Student user ID to ban
      *     responses:
      *       200:
-     *         description: Student was kicked successfully
+     *         description: Student was banned successfully
      *         content:
      *           application/json:
      *             schema:

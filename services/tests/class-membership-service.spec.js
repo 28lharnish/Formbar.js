@@ -90,7 +90,7 @@ const { emitToUser, advancedEmitToClass } = require("@services/socket-updates-se
 const { classStateStore } = require("@services/classroom-service");
 const classService = require("@services/class-service");
 const { findRoleByPermissionLevel } = require("@services/role-service");
-const { getIdFromEmail } = require("@services/student-service");
+const { getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { userSocketUpdates } = require("../../sockets/init");
 const { BANNED_PERMISSIONS, SCOPES } = require("@modules/permissions");
 const AppError = require("@errors/app-error");
@@ -314,12 +314,11 @@ describe("getClassLinksPaginated", () => {
 });
 
 describe("setClassroomBanStatus", () => {
-    it("returns false when user does not exist", async () => {
-        getIdFromEmail.mockResolvedValueOnce(null);
+    it("throws NotFoundError when user does not exist", async () => {
+        getEmailFromId.mockResolvedValueOnce(null);
 
-        const result = await setClassroomBanStatus(10, 5, true);
+        await expect(setClassroomBanStatus(10, 5, true)).rejects.toThrow(NotFoundError);
 
-        expect(result).toBe(false);
         expect(findRoleByPermissionLevel).not.toHaveBeenCalled();
         expect(classService.classKickStudent).not.toHaveBeenCalled();
     });

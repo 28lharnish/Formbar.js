@@ -130,6 +130,36 @@ async function isAuthenticated(req, res, next) {
         throw new AuthError("Invalid access token provided.");
     }
 
+    if (decodedToken.oauth) {
+        const userId = decodedToken.id || decodedToken.sub;
+        if (!userId) {
+            req.warnEvent("auth.missing_user_id", "Invalid OAuth access token provided: Missing user id");
+            throw new AuthError("Invalid access token provided.");
+        }
+
+        const dbUser = await dbGet("SELECT id, email, displayName, verified, digipogs FROM users WHERE id = ?", [userId]);
+        if (!dbUser) {
+            req.warnEvent("auth.user_not_found", `OAuth token user not found: ${userId}`, { userId });
+            throw new AuthError("User is not authenticated");
+        }
+
+        req.user = {
+            id: Number(dbUser.id),
+            userId: Number(dbUser.id),
+            email: dbUser.email,
+            displayName: dbUser.displayName,
+            verified: dbUser.verified,
+            digipogs: dbUser.digipogs,
+            permissions: decodedToken.permissions ?? 0,
+            classPermissions: decodedToken.classPermissions ?? null,
+            scopes: decodedToken.scopes || { global: [], class: [], app: decodedToken.oauth.scopes || [] },
+            oauth: decodedToken.oauth,
+        };
+
+        next();
+        return;
+    }
+
     const email = decodedToken.email;
     if (!email) {
         req.warnEvent("auth.missing_email", "Invalid access token provided: Missing 'email'");
@@ -148,30 +178,6 @@ async function isAuthenticated(req, res, next) {
             ...user,
             id: Number(user.id),
             userId: user.id,
-        };
-
-        next();
-        return;
-    }
-
-    if (decodedToken.oauth) {
-        const dbUser = await dbGet("SELECT id, email, displayName, verified, digipogs FROM users WHERE email = ?", [email]);
-        if (!dbUser) {
-            req.warnEvent("auth.user_not_found", `OAuth token user not found: ${email}`, { email });
-            throw new AuthError("User is not authenticated");
-        }
-
-        req.user = {
-            id: Number(dbUser.id),
-            userId: Number(dbUser.id),
-            email: dbUser.email,
-            displayName: dbUser.displayName,
-            verified: dbUser.verified,
-            digipogs: dbUser.digipogs,
-            permissions: decodedToken.permissions ?? 0,
-            classPermissions: decodedToken.classPermissions ?? null,
-            scopes: decodedToken.scopes || { global: [], class: [], app: decodedToken.oauth.scopes || [] },
-            oauth: decodedToken.oauth,
         };
 
         next();

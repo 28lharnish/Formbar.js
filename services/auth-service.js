@@ -1,7 +1,13 @@
 const { compareBcrypt, hashBcrypt } = require("@modules/crypto");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
+const {
+    computeGlobalPermissionLevel,
+    computeClassPermissionLevel,
+    MANAGER_PERMISSIONS,
+    STUDENT_PERMISSIONS,
+    SCOPES,
+} = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
@@ -502,10 +508,8 @@ function getBearerToken(value) {
 }
 
 function buildOAuthAccessTokenPayload(user, appId, scopes) {
-    return {
+    const tokenPayload = {
         id: user.id,
-        email: user.email,
-        displayName: user.displayName,
         permissions: 0,
         classPermissions: null,
         scopes: {
@@ -518,6 +522,16 @@ function buildOAuthAccessTokenPayload(user, appId, scopes) {
             scopes,
         },
     };
+
+    if (scopes.includes(SCOPES.APP.EMAIL.READ)) {
+        tokenPayload.email = user.email;
+    }
+
+    if (scopes.includes(SCOPES.APP.PROFILE.READ)) {
+        tokenPayload.displayName = user.displayName;
+    }
+
+    return tokenPayload;
 }
 
 async function upsertOAuthGrant({ userId, appId, scopes }) {

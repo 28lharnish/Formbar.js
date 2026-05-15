@@ -97,10 +97,11 @@ async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
         [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1, clientSecretHash]
     );
     // Store the API key in the new api_keys table
-    await mockDatabase.dbRun(
-        "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
-        [sha256(OAUTH_API_KEY), Number(OAUTH_CLIENT_ID), "app"]
-    );
+    await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [
+        sha256(OAUTH_API_KEY),
+        Number(OAUTH_CLIENT_ID),
+        "app",
+    ]);
     await mockDatabase.dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [Number(OAUTH_CLIENT_ID), redirectUri]);
 }
 
@@ -423,6 +424,9 @@ describe("OAuth authorization code flow", () => {
             class: [],
             app: ["app.profile.read"],
         });
+        const decodedAccessToken = verifyToken(tokenResponse.access_token);
+        expect(decodedAccessToken.email).toBeUndefined();
+        expect(decodedAccessToken.displayName).toBe(user.displayName);
 
         const refreshed = await exchangeRefreshTokenForAccessToken({
             refresh_token: tokenResponse.refresh_token,
@@ -433,6 +437,9 @@ describe("OAuth authorization code flow", () => {
             class: [],
             app: ["app.profile.read"],
         });
+        const decodedRefreshedAccessToken = verifyToken(refreshed.access_token);
+        expect(decodedRefreshedAccessToken.email).toBeUndefined();
+        expect(decodedRefreshedAccessToken.displayName).toBe(user.displayName);
     });
 
     it("rejects a code that has already been used (single-use enforcement)", async () => {

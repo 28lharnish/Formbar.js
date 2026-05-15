@@ -84,10 +84,13 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
         });
         const poolId = await createPool({ name: `${name} Developer Pool`, description, ownerId });
 
-        const appId = await dbRun(
-            "INSERT INTO apps (name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?)",
-            [name, description, ownerId, shareItemId, poolId]
-        );
+        const appId = await dbRun("INSERT INTO apps (name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?)", [
+            name,
+            description,
+            ownerId,
+            shareItemId,
+            poolId,
+        ]);
 
         for (const redirectUri of normalizedRedirectUris) {
             await dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [appId, redirectUri]);
@@ -98,11 +101,8 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
         const apiSecret = crypto.randomBytes(256).toString("hex");
         const apiKeyHash = sha256(apiKey);
         const apiSecretHash = await hashBcrypt(apiSecret);
-        
-        await dbRun(
-            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
-            [apiKeyHash, appId, "app"]
-        );
+
+        await dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [apiKeyHash, appId, "app"]);
         await dbRun("UPDATE apps SET client_secret_hash = ? WHERE id = ?", [apiSecretHash, appId]);
 
         await addItemToInventory(ownerId, shareItemId, SHARES_PER_APP);
@@ -166,7 +166,7 @@ async function validateOAuthClientRedirect({ clientId, redirectUri }) {
 }
 
 /**
- * Validate OAuth Client API Key.
+ * Validate OAuth Client Credentials.
  *
  * @param {Object} params - params.
  * @returns {Promise<*>}
@@ -190,7 +190,7 @@ async function validateOAuthClientCredentials({ clientId, redirectUri, clientSec
     return isValidSecret ? { ...client, redirectUri: client.redirectUri } : null;
 }
 
-async function validateOAuthAPIKey({ clientId, redirectUri, apiKey}) {
+async function validateOAuthAPIKey({ clientId, redirectUri, apiKey }) {
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
         return null;
     }
@@ -200,7 +200,7 @@ async function validateOAuthAPIKey({ clientId, redirectUri, apiKey}) {
         return null;
     }
 
-    return (app.id === Number(clientId)) ? { ...app, redirectUri } : null;
+    return app.id === Number(clientId) ? { ...app, redirectUri } : null;
 }
 
 module.exports = {

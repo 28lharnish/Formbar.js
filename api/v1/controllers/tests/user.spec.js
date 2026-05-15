@@ -286,8 +286,6 @@ describe("GET /api/v1/user/me", () => {
         const accessToken = jwt.sign(
             {
                 id: user.id,
-                email: user.email,
-                displayName: user.displayName,
                 permissions: 0,
                 classPermissions: null,
                 scopes: {

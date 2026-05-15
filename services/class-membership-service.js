@@ -108,19 +108,20 @@ function getClassroomById(classroomId) {
 /**
  * Apply or remove a classroom ban for a user.
  * @param {number} classroomId - classroomId.
- * @param {string} userId - userId.
+ * @param {number} userId - userId.
  * @param {boolean} isBanned - isBanned.
  * @returns {Promise<boolean>}
+ * @throws {NotFoundError} When the user does not exist.
  */
 async function setClassroomBanStatus(classroomId, userId, isBanned) {
     requireInternalParam(classroomId, "classroomId");
-	requireInternalParam(userId, "userId");
+    requireInternalParam(userId, "userId");
 
-	const email = await getEmailFromId(userId);
+    const email = await getEmailFromId(userId);
 
-	if (!email) {
-		throw new NotFoundError("User not found");
-	}
+    if (!email) {
+        throw new NotFoundError("User not found");
+    }
 
     let bannedRole = null;
     if (isBanned) {

@@ -123,6 +123,18 @@ describe("POST /api/v1/apps/register", () => {
         expect(res.body.success).toBe(false);
     });
 
+    it("returns 400 when redirectUris is invalid JSON", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+
+        const res = await request(app)
+            .post("/api/v1/apps/register")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ name: "My App", description: "A test app", redirectUris: "[not-json]" });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
     it("creates an app, pool, and share item on success", async () => {
         const { tokens, user } = await seedAuthenticatedUser(mockDatabase);
 
