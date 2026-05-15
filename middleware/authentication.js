@@ -6,6 +6,7 @@ const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
+const { enforceAppScopeForOAuth } = require("@middleware/permission-check");
 const AuthError = require("@errors/auth-error");
 
 const whitelistedIps = [];
@@ -155,6 +156,8 @@ async function isAuthenticated(req, res, next) {
             scopes: decodedToken.scopes || { global: [], class: [], app: decodedToken.oauth.scopes || [] },
             oauth: decodedToken.oauth,
         };
+
+        enforceAppScopeForOAuth(req);
 
         next();
         return;

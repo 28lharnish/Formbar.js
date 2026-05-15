@@ -3,7 +3,7 @@ const { dbGet } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserScopes } = require("@modules/scope-resolver");
 const { getUserRoles } = require("@services/role-service");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, SCOPES } = require("@modules/permissions");
 
 /**
  * Register me controller routes.
@@ -81,7 +81,7 @@ module.exports = (router) => {
             success: true,
             data: {
                 id: req.user.id,
-                email: req.user.email,
+                email: req.user.oauth && !req.user.scopes?.app?.includes(SCOPES.APP.EMAIL.READ) ? undefined : req.user.email,
                 isGuest: Boolean(req.user.isGuest),
                 activeClass: req.user.activeClass,
                 digipogs: digipogs,

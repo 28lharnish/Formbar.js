@@ -1,6 +1,8 @@
 const { transferDigipogs } = require("@services/digipog-service");
 const { getTransferFromValue, normalizeTransferFrom } = require("@modules/digipog-transfer");
 const AppError = require("@errors/app-error");
+const ForbiddenError = require("@errors/forbidden-error");
+const { isAuthenticated } = require("@middleware/authentication");
 
 /**
  * Register transfer controller routes.
@@ -8,6 +10,14 @@ const AppError = require("@errors/app-error");
  * @returns {void}
  */
 module.exports = (router) => {
+    function authenticateIfBearerToken(req, res, next) {
+        if (!req.headers.authorization) {
+            return next();
+        }
+
+        return isAuthenticated(req, res, next);
+    }
+
     /**
      * @swagger
      * /api/v1/digipogs/transfer:
@@ -76,9 +86,9 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/digipogs/transfer", async (req, res) => {
+    router.post("/digipogs/transfer", authenticateIfBearerToken, async (req, res) => {
         const body = req.body || {};
-        const requestedFrom = normalizeTransferFrom(getTransferFromValue(body));
+        const requestedFrom = normalizeTransferFrom(getTransferFromValue(body)) || (req.user?.oauth ? { id: req.user.id, type: "user" } : null);
 
         if (!requestedFrom) {
             throw new AppError("Missing sender identifier.", {
@@ -88,9 +98,17 @@ module.exports = (router) => {
             });
         }
 
+        if (req.user?.oauth && (requestedFrom.type !== "user" || Number(requestedFrom.id) !== Number(req.user.id))) {
+            throw new ForbiddenError("OAuth transfers can only be sent from the authorized user.", {
+                event: "digipogs.transfer.failed",
+                reason: "oauth_sender_mismatch",
+            });
+        }
+
         const transferPayload = {
             ...body,
             from: requestedFrom,
+            pinVerified: Boolean(req.user?.oauth),
         };
 
         req.infoEvent("digipogs.transfer.attempt", "Attempting to transfer digipogs", {

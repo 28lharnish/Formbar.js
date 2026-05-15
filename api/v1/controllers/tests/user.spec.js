@@ -114,6 +114,27 @@ async function seedSecondStudent() {
     });
 }
 
+function signOAuthAccessToken(user, scopes) {
+    return jwt.sign(
+        {
+            id: user.id,
+            permissions: 0,
+            classPermissions: null,
+            scopes: {
+                global: [],
+                class: [],
+                app: scopes,
+            },
+            oauth: {
+                appId: 1,
+                scopes,
+            },
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "15m" }
+    );
+}
+
 describe("GET /api/v1/user/:id", () => {
     it("returns 401 when unauthenticated", async () => {
         const { user } = await seedStudent();
@@ -281,26 +302,32 @@ describe("GET /api/v1/user/me", () => {
         });
     });
 
+    it("requires app.profile.read for OAuth app tokens", async () => {
+        const { user } = await seedStudent();
+        const accessToken = signOAuthAccessToken(user, ["app.digipogs.read"]);
+
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("hides email for OAuth app tokens without app.email.read", async () => {
+        const { user } = await seedStudent();
+        const accessToken = signOAuthAccessToken(user, ["app.profile.read"]);
+
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.id).toBe(user.id);
+        expect(res.body.data.displayName).toBe(user.displayName);
+        expect(res.body.data).not.toHaveProperty("email");
+    });
+
     it("does not expose app scopes for OAuth app tokens", async () => {
         const { user } = await seedStudent();
-        const accessToken = jwt.sign(
-            {
-                id: user.id,
-                permissions: 0,
-                classPermissions: null,
-                scopes: {
-                    global: [],
-                    class: [],
-                    app: ["app.profile.read", "app.email.read"],
-                },
-                oauth: {
-                    appId: 1,
-                    scopes: ["app.profile.read", "app.email.read"],
-                },
-            },
-            privateKey,
-            { algorithm: "RS256", expiresIn: "15m" }
-        );
+        const accessToken = signOAuthAccessToken(user, ["app.profile.read", "app.email.read"]);
 
         const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${accessToken}`);
 
