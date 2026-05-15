@@ -1,61 +1,142 @@
 # Runtime Flow
 
-When to read this: before debugging startup, request routing, socket events, or route registration.
+Read this when startup, route loading, authentication, request handling, or socket events are confusing.
 
 Back to: [Onboarding Home](./README.md)
 
-## High-Level Architecture
+## One-Screen Summary
 
-See [Architecture Diagrams](./architecture.md) for the full Mermaid set. The main architecture, request lifecycle, and socket flow diagrams cite the exact files/functions behind each step.
+```text
+app.js
+  checks database/database.db
+  creates Express + HTTP + Socket.IO through modules/web-server.js
+  loads config, auth, logging, rate limits, sessions, parsers, IP checks
+  mounts every controller under /api/v1
+  mounts legacy /api compatibility for old clients
+  initializes Socket.IO routes
+  installs 404 and error handlers
+  starts listening on settings.port
+```
 
-## Server Startup
+The default local port is `420`, so local docs are usually at:
 
-1. `app.js` registers module aliases and loads environment variables (source: `app.js` top-level requires).
-2. `app.js` checks for `database/database.db`; if the file is missing, it prints setup guidance and exits early (source: `app.js` database existence check).
-3. `modules/web-server.js` creates the Express app, HTTP server, Socket.IO server, and Swagger/OpenAPI docs (source: `modules/web-server.js:createServer`).
-4. `modules/config.js` loads runtime settings, creates `.env` from `.env-template` if missing, and generates RSA key files if needed (source: `modules/config.js:getConfig`, `generateKeyPair`).
-5. OIDC providers are initialized from env configuration (source: `app.js:initializeAvailableProviders`, `modules/oidc.js:initializeAvailableProviders`).
-6. Express receives request logging, rate limiting, session middleware, URL/body parsers, and IP access checks (source: middleware setup in `app.js`).
-7. API route files are loaded dynamically from `api/<version>/controllers/**` (source: `app.js:getJSFiles`, route mounting loop).
-8. `initSocketRoutes()` wires Socket.IO middleware and event handlers (source: `sockets/init.js:initSocketRoutes`).
-9. The app attaches the 404 and error middleware, then calls `http.listen(settings.port)` (source: final middleware and listen block in `app.js`).
-10. Startup bootstrap ensures the Formbar Developer Pool exists and refreshes the IP access cache (source: `services/bootstrap-service.js:ensureFormbarDeveloperPool`, `middleware/authentication.js:refreshIPAccessCache`, `app.js` listen callback).
+```text
+http://localhost:420/docs
+```
 
-## HTTP Request Lifecycle
+## Startup Flow
 
-1. A request enters Express through the app created in `modules/web-server.js:createServer`.
-2. Global middleware runs in the order defined in `app.js`: request logger, rate limiter, session middleware, parsers, and IP access enforcement.
-3. Route-specific middleware handles authentication, verification, class membership, and scope checks (source: `middleware/authentication.js`, `middleware/permission-check.js`).
-4. The matched controller in `api/v1/controllers/**` handles HTTP-specific input/output (source: controller registration functions under `api/v1/controllers/**`).
-5. The controller calls a service in `services/**` for the main behavior (source: service imports in controllers).
-6. Services read/write SQLite through `modules/database.js` and use `stores/**` when live runtime state is needed (source: `modules/database.js:dbGet`, `dbRun`, `dbGetAll`; store imports in `services/**`).
-7. Typed errors flow through `middleware/error-handler.js` (source: `middleware/error-handler.js`).
+1. `app.js` registers module aliases such as `@services` and `@modules`.
+2. `app.js` loads environment variables with `dotenv`.
+3. `app.js` checks that `database/database.db` exists.
+4. If the database file is missing, startup stops and tells you to run `npm run init-db`.
+5. `modules/web-server.js` creates the Express app, HTTP server, Socket.IO server, and Swagger/OpenAPI docs.
+6. `modules/config.js` loads runtime settings, copies `.env-template` to `.env` if needed, and creates RSA key files if needed.
+7. OIDC providers are initialized from env values.
+8. Express middleware is applied: request logger, rate limiter, session middleware, body parsers, and IP access checks.
+9. `app.js` loads controller files from `api/v1/controllers/**` and mounts them under `/api/v1`.
+10. `app.js` mounts legacy non-versioned `/api` compatibility for old v1 clients.
+11. `sockets/init.js` wires Socket.IO middleware and event modules.
+12. The 404 handler and error handler are added last.
+13. `http.listen(settings.port)` starts the server.
+14. After listen starts, startup code ensures the Formbar Developer Pool exists and refreshes the IP access cache.
+
+## HTTP Request Flow
+
+An HTTP request follows this path:
+
+```text
+client
+  -> Express app
+  -> global middleware
+  -> route-specific auth/scope middleware
+  -> controller in api/v1/controllers/**
+  -> service in services/**
+  -> database/modules/stores as needed
+  -> controller response
+  -> error handler if something throws
+```
+
+What each layer should do:
+
+| Layer | Responsibility |
+|---|---|
+| Global middleware | Logging, rate limiting, session setup, body parsing, IP allow/deny |
+| Route middleware | Authentication, email verification, class membership, scope checks |
+| Controller | Read request input, call a service, return HTTP response |
+| Service | Enforce product rules and coordinate data changes |
+| Modules | Shared infrastructure such as database, crypto, mail, logging |
+| Stores | Temporary live state |
+| Error handler | Turn typed errors into consistent JSON responses |
 
 ## API Versioning
 
-Versioned endpoints mount at `/api/v1` (source: route mounting loop in `app.js`).
+New endpoints should use:
 
-For compatibility, `app.js` also mounts legacy non-versioned `/api/*` paths for v1.
+```text
+/api/v1/...
+```
 
-Several route-level legacy aliases also exist for older clients. Treat them as compatibility support, not as patterns for new endpoints.
+`app.js` also supports old non-versioned paths under:
 
-## Socket Lifecycle
+```text
+/api/...
+```
 
-1. Socket.IO accepts a connection from the server created in `modules/web-server.js:createServer`.
-2. The Express session middleware is shared with Socket.IO (source: first `io.use` block in `app.js`).
-3. A global Socket.IO middleware blocks disallowed IPs (source: second `io.use` block in `app.js`, `middleware/authentication.js:checkIPAllowed`).
-4. `sockets/init.js` creates a `SocketUpdates` instance for the connection (source: `sockets/init.js:initSocketRoutes`, `services/socket-updates-service.js:SocketUpdates`).
-5. Middleware files under `sockets/middleware` run in sorted `order` (source: `sockets/init.js:initSocketRoutes`).
-6. Event modules under `sockets/**` register `socket.on(...)` handlers (source: `sockets/init.js:loadSockets`, `modules/socket-event-middleware.js:onSocketEvent`).
-7. Socket handlers call services and update helpers to modify class state, respond to events, or emit realtime updates (source: imports in `sockets/*.js`, `sockets/polls/*.js`, `services/socket-updates-service.js`).
+Those legacy paths add deprecation headers. Treat them as compatibility support, not as a pattern for new routes.
 
-## Debugging Checks
+Some individual route files also keep old aliases for old clients. Prefer the canonical route in new code and tests unless you are specifically working on compatibility.
 
-- Missing API route: confirm the file is under `api/v1/controllers`, exports a registration function, and is not named `*.spec.js`.
-- Missing socket behavior: confirm the module exports `run(socket, socketUpdates)` and is not under a skipped directory (`middleware/`, `tests/`, `init.js`).
-- Auth failure: check whether the route expects a bearer token, API key, verified email, class membership, or scopes.
-- All requests rate-limited as one user/IP: check `TRUST_PROXY` and proxy configuration.
-- Startup fails immediately: confirm `database/database.db` exists (`npm run init-db`) and migrations completed (`npm run migrate`).
-- Feature works once but breaks after restart: the code is writing to an in-memory store rather than the database.
+## Socket Connection Flow
 
-For a broader list of contributor mistakes and how to avoid them, see [Common Pitfalls](./README.md#common-pitfalls).
+A Socket.IO connection follows this path:
+
+```text
+client
+  -> Socket.IO server
+  -> shared Express session middleware
+  -> IP allow/deny check
+  -> sockets/init.js
+  -> socket middleware in sockets/middleware/**
+  -> socket event modules in sockets/**
+  -> services/**
+  -> SocketUpdates emits responses or class updates
+```
+
+Important details:
+
+- `sockets/init.js` creates a `SocketUpdates` instance for each connection.
+- Socket middleware is sorted by each module's `order` value.
+- Socket event modules must export `run(socket, socketUpdates)`.
+- Socket handlers should call services for business rules.
+- Realtime state often lives in `stores/**`, so check whether a bug disappears after restart.
+
+## Error Flow
+
+Prefer typed errors from `errors/**`:
+
+- `AuthError`
+- `ValidationError`
+- `ForbiddenError`
+- `NotFoundError`
+- `ConflictError`
+- `RateLimitError`
+- `AppError`
+
+Throwing these lets `middleware/error-handler.js` produce consistent responses. Raw `Error` objects should be rare and usually indicate unexpected failures.
+
+## Debugging Checklist
+
+| Symptom | Check |
+|---|---|
+| Server exits immediately | Does `database/database.db` exist? Run `npm run init-db` for a fresh database |
+| Route does not exist | Is the file under `api/v1/controllers/**` and exporting a router registration function? |
+| Route appears under `/api` but not `/api/v1` | Check whether you are hitting a legacy alias instead of the canonical path |
+| Swagger does not show a route | Check controller JSDoc annotations and `modules/web-server.js` Swagger `apis` setting |
+| Auth fails | Check bearer token, API key, email verification, class membership, and required scopes |
+| All users are rate-limited together | Check `TRUST_PROXY` when running behind nginx or another proxy |
+| Socket connects but event does nothing | Confirm the socket file exports `run(socket, socketUpdates)` |
+| Socket event fires but permissions fail | Compare socket permission checks to the matching HTTP route |
+| Feature works until restart | It may be stored only in `stores/**` instead of SQLite |
+
+For diagrams of these flows, see [Architecture Diagrams](./architecture.md).

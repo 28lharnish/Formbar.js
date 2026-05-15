@@ -1,44 +1,125 @@
 # Feature State
 
-When to read this: before promising product behavior to an integrator or planning follow-up work.
+Read this before promising behavior to another team, planning follow-up work, or deciding whether something is safe to build on.
 
 Back to: [Onboarding Home](./README.md)
 
-This file captures feature areas that are implemented, deprecated, or not fully finished as of this repository state.
+This file describes the current product surface in this repo. It is not a replacement for tests or code review, but it helps a new contributor know what is stable, partial, or legacy.
 
-## Implemented Feature Areas
+## Implemented Areas
 
-These areas have live code in the current tree; many are also covered by controller, service, socket, middleware, or module tests:
+These areas have live code in the current tree.
 
-- Versioned REST API under `/api/v1` (source: route mounting loop in `app.js`).
-- Swagger/OpenAPI docs at `/docs`, plus JSON at `/docs.json` and `/docs/openapi.json` (source: `modules/web-server.js:createServer`).
-- Socket.IO realtime events for class membership, class updates, breaks, help, digipogs, and polls (source: `sockets/init.js:initSocketRoutes`, `sockets/*.js`, `sockets/polls/*.js`).
-- Registration, login, refresh, guest login, email verification support, password reset, PIN reset, and PIN verification (source: `services/auth-service.js`, `services/user-service.js`, auth/user controllers under `api/v1/controllers/**`).
-- OIDC login provider discovery and callbacks for configured Google/Microsoft providers (source: `modules/oidc.js`, `api/v1/controllers/auth/oidc/providers.js`, `.env-template`).
-- OAuth app registration, authorize, token, refresh, and revoke flows (source: `api/v1/controllers/apps/register-app.js`, `api/v1/controllers/oauth/*.js`, `services/auth-service.js`).
-- API key based access (source: `services/api-key-service.js:resolveAPIKey`, `middleware/authentication.js:isAuthenticated`).
-- Users, roles, scopes, global permissions, class roles, ban/unban, and class membership (source: `services/user-service.js`, `services/role-service.js`, `modules/scopes.js`, `modules/permissions.js`, `services/class-membership-service.js`).
-- Class creation, enrollment, joining/leaving, start/end, active state, settings, students, links, timers, breaks, help requests, and polls (source: `services/class-service.js`, `services/class-membership-service.js`, `services/poll-service.js`, class controllers under `api/v1/controllers/class/**`).
-- Digipog transfers, awards, pools, pool payout, transaction history, inventory/items, and notifications (source: `services/digipog-service.js`, `services/inventory-service.js`, `services/notification-service.js`).
-- IP whitelist/blacklist management (source: `api/v1/controllers/ip.js`, `services/ip-service.js`, `middleware/authentication.js:refreshIPAccessCache`).
-- Logs and manager/admin support endpoints (source: `api/v1/controllers/logs.js`, `services/log-service.js`, `api/v1/controllers/manager/manager.js`, `services/manager-service.js`).
+| Area | What Exists |
+|---|---|
+| Versioned REST API | Public routes are mounted under `/api/v1` |
+| API docs | Swagger UI at `/docs`; JSON at `/docs.json` and `/docs/openapi.json` |
+| Socket.IO realtime layer | Class updates, class membership, breaks, help, digipogs, polls, and user updates |
+| User auth | Registration, login, refresh, guest login, email verification support, password reset, PIN reset, PIN verification |
+| OIDC login | Google and Microsoft providers when env values are configured |
+| OAuth app flow | App registration, authorize, token exchange, refresh, and revoke |
+| API keys | Programmatic access through API key auth |
+| Users and roles | Users, roles, scopes, global permissions, class roles, ban/unban |
+| Classes | Create, enroll, join, leave, start, end, active state, settings, students, links, timers |
+| Polls | Active polls, responses, saved/custom polls, sharing, history |
+| Break and help tools | Student requests and teacher actions |
+| Digipogs | Transfers, awards, pools, payouts, transaction history |
+| Inventory and items | Item registry and user inventory |
+| Notifications | List, detail, mark read, delete |
+| IP access management | Whitelist/blacklist data and enforcement for HTTP and sockets |
+| Admin/manager support | Logs and manager dashboard endpoints |
 
-## Partial Or Follow-Up Areas
+## Areas To Treat Carefully
 
 ### Scheduled Token Cleanup
 
-`middleware/authentication.js` defines `cleanRefreshTokens()`, which deletes expired refresh tokens and expired used authorization codes. The scheduled startup block in `app.js` is commented out with `@TODO fix`, so cleanup does not currently run on an interval during normal server runtime (source: `middleware/authentication.js:cleanRefreshTokens`, commented cleanup block in `app.js`).
+`middleware/authentication.js` defines cleanup for expired refresh tokens and expired used authorization codes.
 
-Impact: expired token rows and used authorization code rows may remain until cleanup is called by future code or manual maintenance. Token validation still checks token validity before use.
+The interval that would run cleanup during normal startup is currently commented out in `app.js` with a `@TODO fix` note.
 
-### Legacy API Compatibility
+Impact:
 
-`app.js` keeps non-versioned `/api/*` compatibility for v1 and adds deprecation headers.
+- Expired rows may remain in the database longer than expected.
+- Token validation still checks token validity before use.
+- If you work on auth maintenance, make this explicit in tests and rollout notes.
 
-Impact: new clients and new documentation should use `/api/v1`. Legacy aliases should not be expanded except to preserve existing behavior.
+### Legacy `/api` Compatibility
+
+The canonical API path is:
+
+```text
+/api/v1/...
+```
+
+`app.js` also supports non-versioned `/api/...` paths for older v1 clients and adds deprecation headers.
+
+Impact:
+
+- New clients should use `/api/v1`.
+- New docs should use `/api/v1`.
+- Do not add new legacy aliases unless the task is explicitly about preserving old behavior.
 
 ### Deprecated Route Aliases
 
-Some route files expose older aliases with `Warning` headers, including older user verification, class link changes, and break approval paths (source: `api/v1/controllers/user/verify.js`, `api/v1/controllers/class/links/change.js`, `api/v1/controllers/class/links/remove.js`, `api/v1/controllers/class/break/approve.js`).
+Some route files expose older aliases with warning headers. Examples include user verification, class link changes, and break approval paths.
 
-Impact: route work should prefer the canonical endpoint named in the warning header. Tests should cover canonical behavior and only cover aliases when compatibility is the behavior under change.
+Impact:
+
+- Prefer canonical endpoints for new code.
+- Tests should focus on canonical behavior unless compatibility is being changed.
+- If deleting or changing an alias, look for explicit tests and clients that still depend on it.
+
+### Migration History Is Not Perfectly Sequential
+
+Migration filenames have gaps and duplicate `28_` prefixes.
+
+Impact:
+
+- Preserve existing migration files as history.
+- Pick the next clear sequence number for new migrations.
+- Do not rename old migrations just to make the list prettier.
+
+### Runtime Stores Are Not Durable
+
+Live class state, socket state, active polls, class-code cache, and API-key cache live in `stores/**`.
+
+Impact:
+
+- Runtime state resets on process restart.
+- Anything that must survive restart needs a database write.
+- Bugs that appear after restart often come from using a store where persistence was needed.
+
+### Email Is Usually Disabled Locally
+
+The local template sets:
+
+```text
+EMAIL_ENABLED=false
+```
+
+Impact:
+
+- Email verification is bypassed locally when email is disabled.
+- Password reset, PIN reset, and verification links need a real or fake SMTP target to be tested honestly.
+- Do not assume an email-dependent feature is production-ready because it worked with email disabled.
+
+## Stable Patterns To Build On
+
+These patterns are used throughout the repo and are safe defaults for new work:
+
+- Put business rules in `services/**`.
+- Keep controllers and sockets thin.
+- Use typed errors from `errors/**`.
+- Use `hasScope` and `hasClassScope` for authorization.
+- Use `modules/database.js` helpers for SQLite access.
+- Use new idempotent migrations for schema changes.
+- Add tests near the behavior you changed.
+
+## When To Update This File
+
+Update this file when:
+
+- A partial area becomes complete.
+- A deprecated compatibility path is removed.
+- A new feature area becomes important for contributors to know.
+- A major limitation or follow-up area is discovered.

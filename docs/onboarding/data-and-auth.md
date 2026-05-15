@@ -1,191 +1,263 @@
 # Data And Auth
 
-When to read this: before changing persistence, migrations, login, tokens, API keys, OIDC, roles, scopes, or permissions.
+Read this before changing database schema, migrations, login, tokens, API keys, OIDC, roles, scopes, or permission checks.
 
 Back to: [Onboarding Home](./README.md)
 
-## Persistence Model
+## Two Kinds Of State
 
-Formbar.js uses SQLite for durable state and in-memory stores for live runtime state (source: `modules/database.js:getDatabase`, store imports in `services/classroom-service.js`, `services/socket-updates-service.js`, and `services/poll-service.js`).
+Formbar.js uses both SQLite and in-memory stores.
 
-- Durable state: users, roles, classes, class membership, refresh tokens, digipog transactions, pools, inventory/items, notifications, apps, IP access rules, and related audit/history data (source: `database/init.sql`, `database/migrations/**`, service queries under `services/**`).
-- Runtime state: active class/session state, socket activity, poll runtime state, class code cache, API key cache, and other live caches under `stores/**` (source: `stores/class-state-store.js`, `stores/socket-state-store.js`, `stores/poll-runtime-store.js`, `stores/class-code-cache-store.js`, `stores/api-key-cache-store.js`).
+| State Type | Where It Lives | Survives Restart? | Examples |
+|---|---|---|---|
+| Durable state | SQLite through `modules/database.js` | Yes | Users, classes, roles, refresh tokens, poll history, digipogs, inventory, notifications, apps |
+| Runtime state | `stores/**` | No | Active class state, connected sockets, active poll state, class-code cache, API-key cache |
 
-Do not store anything only in memory if it must survive restart.
+If losing the data on restart would be a bug, do not put it only in `stores/**`.
 
-## Database Initialization
+## Database Files
 
-`npm run init-db` runs `database/init.js` (source: `package.json:scripts.init-db`).
+| File Or Folder | Purpose |
+|---|---|
+| `database/init.sql` | Base schema for a brand-new database |
+| `database/init.js` | Creates `database/database.db` from `init.sql`, then runs migrations |
+| `database/migrate.js` | Runs all SQL and JS migrations |
+| `database/migrations/*.sql` | SQL migration history |
+| `database/migrations/JSMigrations/*.js` | JavaScript migration history |
+| `modules/database.js` | Shared database helpers: `dbGet`, `dbRun`, `dbGetAll` |
+| `modules/test-helpers/test-schema.sql` | Schema used by tests |
 
-That script:
+Do not edit `database/init.sql` or old migrations. Add a new migration instead.
 
-1. Refuses to overwrite an existing `database/database.db` (source: `database/init.js:initializeDatabase`).
-2. Creates the SQLite database from `database/init.sql` (source: `database/init.js:initializeDatabase`).
-3. Sets `SKIP_BACKUP=true` (source: `database/init.js:initializeDatabase`).
-4. Runs `database/migrate.js` (source: `database/init.js:initializeDatabase`).
+## Local Database Lifecycle
 
-Repository rules prohibit editing `database/init.sql`. If data shape or schema behavior needs to change, add a new migration.
+For a new local database:
 
-## Migrations
-
-`npm run migrate` runs `database/migrate.js` (source: `package.json:scripts.migrate`).
-
-Migration files are collected from:
-
-- `database/migrations/*.sql`
-- `database/migrations/JSMigrations/*.js`
-
-SQL and JS migrations are combined and sorted by filename (source: `database/migrate.js` migration collection). Keep new filenames sequenced with the existing history and do not edit existing migrations once they are in the tree.
-
-Current migration history has gaps and duplicate `28_` prefixes. Preserve the current files as history; choose the next clear sequence number for new work.
-
-By default, the migration runner backs up `database/database.db` before running unless `SKIP_BACKUP` is set (source: `database/migrate.js` backup block).
-
-## Writing Idempotent Migrations
-
-**The migration runner has no tracking table.** It re-runs every migration file from the beginning every time `npm run migrate` is called. This means every migration must be safe to execute on a database where it has already been applied.
-
-There are two acceptable approaches: make the migration truly safe to run multiple times, or make it fail loudly in a way the runner recognises as "already done".
-
-### SQL migrations
-
-The runner wraps each SQL file in `BEGIN TRANSACTION` / `COMMIT`. If any statement in the file errors, the runner rolls back, prints a warning, and **continues to the next migration** — it does not halt. This means a SQL migration that errors on a second run is treated as already applied (source: `database/migrate.js:executeSQLMigration`).
-
-**Use `IF NOT EXISTS` / `IF EXISTS` guards whenever SQLite supports them — this is the preferred style:**
-
-```sql
--- Tables
-CREATE TABLE IF NOT EXISTS my_table ( ... );
-
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_my_table_col ON my_table (col);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_my_table_col ON my_table (col);
-
--- Dropping tables
-DROP TABLE IF EXISTS old_table;
-
--- Dropping indexes
-DROP INDEX IF EXISTS idx_old;
+```bash
+npm run init-db
 ```
 
-**`ALTER TABLE ADD COLUMN` has no `IF NOT EXISTS` in SQLite.** Write it without a guard and let the runner catch the duplicate-column error on a second run:
+That command:
+
+1. Refuses to overwrite an existing `database/database.db`.
+2. Creates the database from `database/init.sql`.
+3. Sets `SKIP_BACKUP=true`.
+4. Runs `database/migrate.js`.
+
+For an existing local database:
+
+```bash
+npm run migrate
+```
+
+`npm run migrate` backs up `database/database.db` before running unless `SKIP_BACKUP` is set.
+
+## How Migrations Work
+
+Important: this migration runner has no tracking table.
+
+That means every time `npm run migrate` runs, it attempts every migration file again from the beginning.
+
+Every migration must therefore be idempotent, which means it must be safe to run more than once.
+
+### SQL Migrations
+
+Use SQLite guards when SQLite supports them:
 
 ```sql
--- Safe: errors if column already exists; runner handles the error and continues
+CREATE TABLE IF NOT EXISTS example_table (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_example_name ON example_table (name);
+
+DROP INDEX IF EXISTS idx_old_example;
+DROP TABLE IF EXISTS old_example_table;
+```
+
+SQLite does not support `IF NOT EXISTS` for `ALTER TABLE ADD COLUMN`. In this repo, it is acceptable to write:
+
+```sql
 ALTER TABLE users ADD COLUMN display_name TEXT;
 ```
 
-**`ALTER TABLE DROP COLUMN` also has no `IF EXISTS`.** Write it without a guard for the same reason.
+On the second run, SQLite throws a duplicate-column error. The SQL migration runner catches SQL file errors, rolls back that file, prints a warning, and continues. That pattern is already part of this repo's migration style.
 
-**The table-swap pattern** (create temp → copy → drop old → rename) is the standard way to change column types or constraints in SQLite. The guard belongs at the very top — make the first `CREATE TABLE` use `IF NOT EXISTS` so subsequent runs fail immediately on an already-renamed table and the runner moves on:
+### JS Migrations
 
-```sql
--- Migration errors on second run because my_table already exists (old_table is gone)
--- and temp_table creation also fails — both are handled by the runner.
-CREATE TABLE IF NOT EXISTS temp_table ( ... );
-INSERT INTO temp_table SELECT ... FROM old_table;
-DROP TABLE old_table;
-ALTER TABLE temp_table RENAME TO my_table;
-```
-
-### JS migrations
-
-JS migrations are called as `migrationModule.run(database)`. Two patterns are in use:
-
-**Pattern 1 — truly idempotent (preferred for DDL and data seeding).**
-Use `IF NOT EXISTS`, `INSERT OR IGNORE`, and `PRAGMA table_info()` guards throughout so the migration produces no side effects when run on an already-migrated database (source: `database/migrations/JSMigrations/23_add_roles_and_scopes.js`):
+JS migrations export `run(database)`:
 
 ```js
 module.exports = {
     async run(database) {
-        await dbRun(`CREATE TABLE IF NOT EXISTS my_table ( ... )`, [], database);
-
-        // Check before altering
-        const cols = await dbGetAll('PRAGMA table_info(my_table)', [], database);
-        if (!cols.some(c => c.name === 'new_col')) {
-            await dbRun(`ALTER TABLE my_table ADD COLUMN new_col TEXT`, [], database);
-        }
-
-        // Seed data without duplicating rows
-        await dbRun(`INSERT OR IGNORE INTO my_table (id, name) VALUES (1, 'default')`, [], database);
+        // migration work
     },
 };
 ```
 
-**Pattern 2 — state check + `ALREADY_DONE`.**
-When a migration is inherently destructive (e.g., the table-swap pattern or one-time data transformation), check whether it has already been applied and throw `new Error("ALREADY_DONE")` if so. The runner catches this specific message and continues (source: `database/migrate.js:executeJSMigration`, `database/migrations/JSMigrations/14_restructure_transactions.js`):
+Preferred pattern: check before changing schema or data.
 
 ```js
+const { dbGetAll, dbRun } = require("@modules/database");
+
 module.exports = {
     async run(database) {
-        // Check for the old schema shape that this migration is supposed to transform
-        const cols = await dbGetAll('PRAGMA table_info(transactions)', [], database);
-        const hasLegacyColumn = cols.some(c => c.name === 'from_user');
-        if (!hasLegacyColumn) {
-            throw new Error('ALREADY_DONE');
-        }
+        const columns = await dbGetAll("PRAGMA table_info(users)", [], database);
+        const hasDisplayName = columns.some((column) => column.name === "display_name");
 
-        // ... perform the migration ...
+        if (!hasDisplayName) {
+            await dbRun("ALTER TABLE users ADD COLUMN display_name TEXT", [], database);
+        }
     },
 };
 ```
 
-Only `"ALREADY_DONE"` is treated as a graceful skip. Any other thrown error is logged as a real failure and halts the runner (source: `database/migrate.js:executeJSMigration`).
+For destructive one-time transformations, check whether the old shape still exists. If it does not, throw:
 
-## Auth Model
+```js
+throw new Error("ALREADY_DONE");
+```
 
-Core auth behavior lives in `services/auth-service.js`.
+`database/migrate.js` treats exactly `"ALREADY_DONE"` as a graceful skip for JS migrations.
 
-Supported authentication paths:
+## Schema Change Checklist
 
-- Email/password registration and login (source: `services/auth-service.js:register`, `login`).
-- Guest login with short-lived access token (source: `services/auth-service.js:loginAsGuest`).
-- Refresh-token rotation for app login (source: `services/auth-service.js:refreshLogin`).
-- API key authentication for programmatic access (source: `services/api-key-service.js:resolveAPIKey`, `middleware/authentication.js:isAuthenticated`).
-- OIDC login providers, currently configured by Google and Microsoft env values (source: `modules/oidc.js:initializeAvailableProviders`, `.env-template`).
-- OAuth 2.0 app authorization, token exchange, refresh, and revoke flows (source: `services/auth-service.js:generateAuthorizationCode`, `exchangeAuthorizationCodeForToken`, `exchangeRefreshTokenForAccessToken`, `revokeOAuthToken`).
+When changing schema or persisted data:
 
-JWTs are signed with RSA keys loaded by `modules/config.js`. If `public-key.pem` or `private-key.pem` is missing, config generation creates replacements (source: `modules/config.js:getConfig`, `generateKeyPair`; `services/auth-service.js:generateAuthTokens`).
+1. Add a new migration file. Do not edit history.
+2. Make the migration idempotent.
+3. Update service queries.
+4. Update `modules/test-helpers/test-schema.sql`.
+5. Add or update tests.
+6. Run the relevant tests.
+7. Run `npm run migrate` on a local database to verify the migration path.
+
+## Database Helper Rules
+
+Use `modules/database.js` helpers:
+
+| Helper | Use For |
+|---|---|
+| `dbGet` | A query that returns one row |
+| `dbGetAll` | A query that returns many rows |
+| `dbRun` | `INSERT`, `UPDATE`, `DELETE`, or other statements |
+
+Avoid database calls inside loops. Prefer one batched query:
+
+```js
+const placeholders = ids.map(() => "?").join(", ");
+const rows = await dbGetAll(
+    `SELECT * FROM users WHERE id IN (${placeholders})`,
+    ids
+);
+```
+
+## Auth Paths
+
+Formbar.js supports several authentication paths:
+
+| Auth Path | Main Code |
+|---|---|
+| Email/password register and login | `services/auth-service.js`, `api/v1/controllers/auth/**` |
+| Guest login | `services/auth-service.js`, `api/v1/controllers/auth/guest.js` |
+| Access token refresh | `services/auth-service.js`, `api/v1/controllers/auth/refresh.js` |
+| API key auth | `services/api-key-service.js`, `middleware/authentication.js` |
+| OIDC login with configured providers | `modules/oidc.js`, `api/v1/controllers/auth/oidc/**` |
+| OAuth app authorization/token flow | `services/auth-service.js`, `api/v1/controllers/oauth/**` |
+
+Most protected HTTP routes use `isAuthenticated` from `middleware/authentication.js`.
 
 ## Token Behavior
 
-- Access tokens are RS256 JWTs with a 15 minute expiry (source: `services/auth-service.js:generateAuthTokens`).
-- App login refresh tokens are RS256 JWTs with a 30 day expiry (source: `services/auth-service.js:generateRefreshToken`).
-- OAuth refresh tokens are persisted and rotated (source: `services/auth-service.js:exchangeAuthorizationCodeForToken`, `exchangeRefreshTokenForAccessToken`).
-- Stored refresh tokens are hashed with SHA-256 in `refresh_tokens`; raw token values are not stored (source: `services/auth-service.js:issueAuthTokens`, `refreshLogin`, `exchangeAuthorizationCodeForToken`).
-- Authorization codes are single-use, with used-code hashes stored in `used_authorization_codes` (source: `services/auth-service.js:exchangeAuthorizationCodeForToken`).
+- Access tokens are RS256 JWTs and currently expire after 15 minutes.
+- App login refresh tokens are RS256 JWTs and currently expire after 30 days.
+- Stored refresh tokens are hashed before they are saved.
+- OAuth authorization codes are single-use.
+- Used authorization-code hashes are stored so a code cannot be reused.
+- RSA keys come from `public-key.pem` and `private-key.pem`.
 
-There is cleanup code for expired refresh tokens and authorization codes in `middleware/authentication.js`, but the scheduled cleanup block in `app.js` is currently commented out (source: `middleware/authentication.js:cleanRefreshTokens`, commented block in `app.js`). See [Feature State](./feature-state.md).
+Deleting or regenerating the RSA key files invalidates existing tokens. Only do that intentionally.
 
-## HTTP Authentication And Authorization
+Expired refresh-token and authorization-code cleanup code exists in `middleware/authentication.js`, but the interval that would run it during startup is currently commented out in `app.js`. See [Feature State](./feature-state.md).
+
+## HTTP Auth And Authorization
 
 `middleware/authentication.js` provides:
 
-- `isAuthenticated`: accepts API key auth or bearer access tokens and hydrates `req.user` (source: `middleware/authentication.js:isAuthenticated`).
-- `isVerified`: enforces email verification when `EMAIL_ENABLED=true`; guests bypass verification (source: `middleware/authentication.js:isVerified`, `modules/config.js:getConfig`).
-- `isIPBanned`: checks the refreshed in-memory IP allow/deny cache (source: `middleware/authentication.js:isIPBanned`, `refreshIPAccessCache`).
+| Function | Purpose |
+|---|---|
+| `isAuthenticated` | Accepts an API key or bearer token and sets `req.user` |
+| `isVerified` | Requires verified email when `EMAIL_ENABLED=true`; guests bypass this |
+| `isIPBanned` | Enforces IP allow/deny rules |
 
-Permission checks live in `middleware/permission-check.js` and related modules:
+`middleware/permission-check.js` provides:
 
-- `modules/scopes.js`: scope constants.
-- `modules/permissions.js`: scope-to-permission-level computation.
-- `modules/scope-resolver.js`: effective scope resolution.
-- `modules/roles.js`, `modules/role-reference.js`, `services/role-service.js`: global/class role definitions and persistence.
+| Function | Purpose |
+|---|---|
+| `hasScope(...)` | Checks a global scope |
+| `hasClassScope(...)` | Checks a class-level scope |
+| `isClassMember(...)` | Checks class membership when used by a route |
 
-Use scope checks for new route authorization. Numeric permission levels still exist for compatibility and computed summaries, but scopes are the more expressive model.
+New authorization logic should prefer scopes over numeric permission levels. Numeric levels still exist for compatibility and summaries.
 
-## Socket Authentication
+## Roles And Scopes
 
-Socket auth lives under `sockets/middleware/**` (source: `sockets/middleware/authentication.js:run`, `sockets/middleware/api.js:run`).
+Scopes are named permissions. Roles are collections of scopes.
 
-Socket middleware handles API socket behavior, authenticated user setup, inactivity tracking, and socket-side rate limiting. Keep permission decisions aligned with HTTP behavior by reusing services and shared permission helpers.
+Related files:
+
+| File | Purpose |
+|---|---|
+| `modules/scopes.js` | Scope constants |
+| `modules/permissions.js` | Scope-to-permission summaries |
+| `modules/scope-resolver.js` | Computes effective scopes for a user |
+| `modules/roles.js` | Role helpers |
+| `modules/role-reference.js` | Role definitions/reference data |
+| `services/role-service.js` | Persisted role and class-role behavior |
+
+When adding a new permission:
+
+1. Add or reuse a scope constant.
+2. Add service behavior that enforces the rule.
+3. Add HTTP and/or socket checks.
+4. Update role defaults if the scope should belong to built-in roles.
+5. Add tests for allowed and denied users.
+
+## Socket Auth
+
+Socket auth lives under `sockets/middleware/**`.
+
+Socket connections run through:
+
+1. Shared Express session middleware.
+2. IP allow/deny check.
+3. Socket auth/API middleware.
+4. Socket rate limiting and inactivity tracking.
+5. Event handlers.
+
+Keep socket authorization aligned with matching HTTP behavior. If a teacher cannot do something through HTTP, they should not be able to do it through a socket event either.
+
+## Environment Settings That Affect Auth
+
+| Setting | Effect |
+|---|---|
+| `EMAIL_ENABLED` | Enables email verification requirements and email-dependent flows |
+| `FRONTEND_URL` | Used by flows that need frontend links or redirects |
+| `GOOGLE_OIDC_*` | Enables Google OIDC login when configured |
+| `MICROSOFT_OIDC_*` | Enables Microsoft OIDC login when configured |
+| `WHITELIST_ENABLED` | Enables IP whitelist enforcement |
+| `BLACKLIST_ENABLED` | Enables IP blacklist enforcement |
+| `TRUST_PROXY` | Tells Express how to read client IPs behind a proxy |
+| `RATE_LIMIT_WINDOW_SECONDS` | Controls rate-limit window length |
+| `RATE_LIMIT_MULTIPLIER` | Scales rate limits |
 
 ## Common Pitfalls
 
-- Deleting or regenerating RSA keys immediately invalidates every token signed with the old keys — all users are logged out. Do this only intentionally.
-- `EMAIL_ENABLED=false` (the default for local development) silently bypasses email verification flows. Always test registration, password reset, and PIN reset with `EMAIL_ENABLED=true` against a real or fake SMTP target before shipping.
-- `TRUST_PROXY` must be set when running behind nginx or another reverse proxy. Without it, Express collapses all rate-limiting onto the proxy's IP and breaks IP-based access control.
-- Editing `database/init.sql` or existing migration files breaks any environment that has already applied them. Always add a new migration file instead.
-- Updating schema without also updating `modules/test-helpers/test-schema.sql` causes the test suite to run against a stale schema.
-- Do not issue database queries in a loop. Use a single batched `IN (...)` query instead. See [Common Pitfalls](./README.md#common-pitfalls) for an example.
-- Do not store state only in `stores/**` if it must survive a server restart. In-memory stores reset on every process start.
+- Do not persist important data only in `stores/**`.
+- Do not edit `database/init.sql` or old migrations.
+- Do not forget `modules/test-helpers/test-schema.sql` after schema changes.
+- Do not regenerate RSA keys casually.
+- Do not assume email flows were tested if `EMAIL_ENABLED=false`.
+- Do not add database calls inside loops.
+- Do not add a socket permission without checking the matching HTTP permission.

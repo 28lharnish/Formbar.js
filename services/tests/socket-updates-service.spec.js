@@ -155,7 +155,7 @@ describe("SocketUpdates classUpdate visibility", () => {
         jest.clearAllMocks();
     });
 
-    it("limits the payload to the viewer when they do not have students.read", () => {
+    it("omits students when the viewer does not have students.read", () => {
         const socket = makeSocket();
         const updates = new SocketUpdates(socket);
 

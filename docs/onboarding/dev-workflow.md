@@ -1,84 +1,229 @@
 # Developer Workflow
 
-When to read this: before starting a ticket, making a schema change, or opening a PR.
+Read this before starting a ticket, changing schema, adding an endpoint, or opening a PR.
 
 Back to: [Onboarding Home](./README.md)
 
 ## Local Setup
 
+Install dependencies:
+
 ```bash
 npm install
+```
+
+Create a local database if you do not have one:
+
+```bash
 npm run init-db
+```
+
+If the database already exists, run migrations instead:
+
+```bash
 npm run migrate
+```
+
+Start the server:
+
+```bash
 npm run dev
 ```
 
-The default port is `420`, so local API docs are available at `http://localhost:420/docs` (source: `modules/config.js:getConfig`, `modules/web-server.js:createServer`).
+Open API docs:
 
-`modules/config.js` copies `.env-template` to `.env` when `.env` is missing and generates RSA key files when needed (source: `modules/config.js:getConfig`, `generateKeyPair`). Review `.env-template` before assuming email, OIDC, CORS, IP access, or rate-limit settings are enabled.
+```text
+http://localhost:420/docs
+```
+
+## Local Environment Notes
+
+`modules/config.js` copies `.env-template` to `.env` if `.env` is missing. Review `.env-template` before assuming optional integrations are enabled.
+
+Common local settings:
+
+| Setting | Why You Might Change It |
+|---|---|
+| `PORT` | Run the backend on a different port |
+| `FRONTEND_URL` | Point auth/email flows at your local frontend |
+| `ENABLE_CORS` | Allow browser calls from a separately hosted frontend during development |
+| `EMAIL_ENABLED` | Test email verification, password reset, and PIN reset honestly |
+| `GOOGLE_OIDC_*`, `MICROSOFT_OIDC_*` | Enable OIDC login providers |
 
 ## Daily Commands
 
-- `npm run dev`: run the server with `nodemon` (source: `package.json:scripts.dev`).
-- `npm start`: run the server once with `node app` (source: `package.json:scripts.start`).
-- `npm test`: run the Jest suite (source: `package.json:scripts.test`).
-- `npm run init-db`: initialize `database/database.db` from `database/init.sql`, then run migrations (source: `package.json:scripts.init-db`, `database/init.js:initializeDatabase`).
-- `npm run migrate`: run SQL and JS migrations (source: `package.json:scripts.migrate`, `database/migrate.js:executeMigration`).
-- `npm run format`: format JavaScript files with Prettier (source: `package.json:scripts.format`).
-- `npm run format:check`: check JavaScript formatting with Prettier (source: `package.json:scripts.format:check`).
+| Command | What It Does |
+|---|---|
+| `npm run dev` | Starts the server with `nodemon` |
+| `npm start` | Starts the server once with `node app` |
+| `npm test` | Runs the Jest suite |
+| `npm run init-db` | Creates `database/database.db`, then runs migrations |
+| `npm run migrate` | Runs all migrations against the current database |
+| `npm run format` | Formats JavaScript files with Prettier |
+| `npm run format:check` | Checks JavaScript formatting |
+| `node docs/onboarding/build-html.js` | Rebuilds the formatted onboarding HTML pages from markdown |
+
+## Before You Start A Ticket
+
+1. Pull or update your branch if that is part of your workflow.
+2. Read the relevant onboarding doc.
+3. Search for similar code with `rg`.
+4. Identify the owner:
+   - HTTP request: `api/v1/controllers/**`
+   - Socket event: `sockets/**`
+   - Shared rule: `services/**`
+   - Schema/data shape: `database/migrations/**`
+   - Auth/scope: `middleware/**`, `modules/scopes.js`, `services/role-service.js`
+5. Run a focused test before changing code when practical. It gives you a baseline.
+
+Useful searches:
+
+```bash
+rg "router\\.post" api/v1/controllers/class
+rg "hasClassScope" api/v1/controllers sockets
+rg "dbGetAll" services
+rg "SocketUpdates" services sockets
+```
+
+## Standard Change Flow
+
+1. Find the nearest existing pattern.
+2. Put business logic in a service.
+3. Keep controllers and socket handlers thin.
+4. Use typed errors from `errors/**`.
+5. Add or update tests.
+6. Run the focused test.
+7. Run `npm run format:check` or `npm run format`.
+8. Run `npm test` when practical.
+
+## Adding A REST Endpoint
+
+1. Add or update a file under `api/v1/controllers/**`.
+2. Use `/api/v1` as the public versioned path.
+3. Add route middleware for auth, verification, class membership, and scopes as needed.
+4. Call a service for the main behavior.
+5. Keep response shape consistent with nearby routes.
+6. Add OpenAPI JSDoc if the endpoint is public.
+7. Add controller tests, usually under `api/v1/controllers/tests/*.spec.js`.
+
+Controller sketch:
+
+```js
+module.exports = (router) => {
+    router.post("/class/:id/example", isAuthenticated, hasClassScope(SCOPE), async (req, res) => {
+        const result = await exampleService.doThing(req.params.id, req.user, req.body);
+        res.json(result);
+    });
+};
+```
+
+## Adding A Socket Event
+
+1. Add or update a file under `sockets/**`.
+2. Export `run(socket, socketUpdates)`.
+3. Register one or more `socket.on(...)` handlers.
+4. Use `modules/socket-event-middleware.js` helpers when nearby socket files do.
+5. Call services for business logic.
+6. Emit updates through `socketUpdates` when broadcasting class or user state.
+7. Add socket tests under `sockets/tests/*.spec.js`.
+
+Socket sketch:
+
+```js
+module.exports = {
+    run(socket, socketUpdates) {
+        socket.on("example:event", async (payload) => {
+            // validate, call service, emit result
+        });
+    },
+};
+```
+
+## Changing Schema
+
+Follow this checklist every time:
+
+1. Add a new migration. Do not edit `database/init.sql` or old migrations.
+2. Make the migration safe to run more than once.
+3. Update `modules/test-helpers/test-schema.sql`.
+4. Update service queries.
+5. Add or update tests.
+6. Run `npm run migrate` locally.
+7. Run the relevant tests.
+
+Read [Data And Auth](./data-and-auth.md) before writing migrations. The migration runner re-runs all migration files every time.
+
+## Changing Auth Or Permissions
+
+1. Identify whether the rule is global or class-specific.
+2. Prefer scopes over numeric permission levels.
+3. Add or update constants in `modules/scopes.js` when needed.
+4. Update role defaults or role resolution when needed.
+5. Enforce the rule in HTTP middleware and matching socket paths.
+6. Test allowed and denied cases.
+
+Common files:
+
+| File | Use |
+|---|---|
+| `middleware/authentication.js` | Login state, API keys, JWTs, email verification, IP checks |
+| `middleware/permission-check.js` | HTTP scope and class membership middleware |
+| `modules/socket-event-middleware.js` | Socket event auth/scope helpers |
+| `modules/scopes.js` | Scope constants |
+| `services/role-service.js` | Role persistence and class roles |
 
 ## Test Layout
 
-- Controller/API tests: `api/v1/controllers/tests/*.spec.js`
-- Service tests: `services/tests/*.spec.js`
-- Socket tests: `sockets/tests/*.spec.js`
-- Middleware tests: `middleware/tests/*.spec.js`
-- Module tests: `modules/tests/*.spec.js`
-- Shared helpers: `modules/test-helpers/**`
+Tests are grouped by the code they cover:
 
-Jest configuration lives in `jest.config.js`, with setup in `jest.setup.js`. The layout above is based on the existing `*.spec.js` files in those directories.
+| Location | Covers |
+|---|---|
+| `api/v1/controllers/tests/*.spec.js` | REST endpoints |
+| `services/tests/*.spec.js` | Service logic |
+| `sockets/tests/*.spec.js` | Socket behavior |
+| `middleware/tests/*.spec.js` | Express middleware |
+| `modules/tests/*.spec.js` | Shared modules and helpers |
+| `modules/test-helpers/**` | Shared test database and request helpers |
 
-## Change Workflow
+Most service and controller tests use an in-memory SQLite database from `modules/test-helpers/db.js`, initialized with `modules/test-helpers/test-schema.sql`. That keeps tests isolated from your local `database/database.db`.
 
-1. Find the owning feature area in `services/**`, `api/v1/controllers/**`, or `sockets/**`.
-2. Put shared behavior in the service layer when both HTTP and socket code care about it (source: controller and socket imports from `@services/**`).
-3. Add or update API/socket wrappers around the service behavior.
-4. Add focused tests to the broadest existing suite that can clearly cover the behavior.
-5. Run the relevant test file or suite, then run `npm test` when practical.
-6. Run `npm run format:check` or `npm run format` before handing off (source: `package.json:scripts.format`, `format:check`).
+Run one focused Jest file when iterating:
 
-## API Work
+```bash
+npm test -- api/v1/controllers/tests/class-polls.spec.js
+```
 
-Prefer endpoint-level tests for API changes. The controller tests use Supertest helpers under `api/v1/controllers/tests/helpers` (source: `api/v1/controllers/tests/helpers/test-app.js`).
+Then run the full suite when practical:
 
-When adding endpoints:
-
-- Use `/api/v1` paths.
-- Add route-specific auth, verification, class membership, and scope middleware.
-- Keep response shape consistent with nearby controllers.
-- Add OpenAPI JSDoc annotations when the endpoint is public.
-- Reuse `errors/**` types so `middleware/error-handler.js` can shape responses consistently.
-
-## Schema Work
-
-Follow repository rules strictly:
-
-- Do not modify `database/init.sql`.
-- Do not edit existing migration files.
-- Add a new migration for schema or data behavior changes.
-- Keep migration filenames in sequence with existing history.
-- Update test schema/helpers when tests depend on the changed shape.
-
-**Every migration must be idempotent.** The runner has no tracking table — it re-executes every file on every `npm run migrate` call. SQL migrations should use `IF NOT EXISTS` / `IF EXISTS` guards wherever SQLite supports them, or rely on the runner's error-catch behaviour for statements like `ALTER TABLE ADD COLUMN` that have no such guard. JS migrations should either be genuinely safe to run multiple times, or check whether the work is already done and throw `new Error('ALREADY_DONE')` to signal the runner to skip. Full guidance and examples are in [Data and Auth — Writing Idempotent Migrations](./data-and-auth.md#writing-idempotent-migrations).
-
-When practical, verify persistence by checking the migrated on-disk database, not only isolated unit tests.
+```bash
+npm test
+```
 
 ## Debugging Tips
 
-- If routes do not appear in Swagger, check the controller file path and JSDoc annotations.
-- If a route works under `/api` but not `/api/v1`, inspect legacy rewrite assumptions in `app.js`.
-- If a socket connects but events fail, check middleware order and the active user/class state stores. Also confirm the module exports `run(socket, socketUpdates)`.
-- If rate limiting looks global, check `TRUST_PROXY` and request IP behavior.
-- If a feature behaves correctly in isolation but fails after restart, it is likely relying on an in-memory store that was not persisted to the database.
+| Problem | First Checks |
+|---|---|
+| App will not start | Does `database/database.db` exist? Did migrations run? |
+| Route returns 404 | Is the controller under `api/v1/controllers/**` and exporting a function? |
+| Route returns auth error | Check bearer token/API key, `isAuthenticated`, `isVerified`, class membership, and scopes |
+| Swagger is missing an endpoint | Check OpenAPI JSDoc and that the file is inside `api/v1/**` |
+| Socket event does nothing | Check `run(socket, socketUpdates)` export and event name |
+| Socket permission differs from HTTP | Compare socket helper usage to route middleware |
+| Data disappears after restart | Check whether it was stored only in `stores/**` |
+| Rate limiting affects everyone | Check `TRUST_PROXY` and request IP behavior |
 
-See [Common Pitfalls](./README.md#common-pitfalls) in the onboarding home for a fuller list of things that trip up new contributors.
+## Before Handing Off
+
+Use this quick checklist:
+
+```text
+[ ] Code follows nearby patterns.
+[ ] Controllers/socket handlers stay thin.
+[ ] Shared rules live in services.
+[ ] Schema changes include a new idempotent migration.
+[ ] Test schema is updated when schema changes.
+[ ] Tests cover success and important failure cases.
+[ ] Focused tests pass.
+[ ] Formatting is checked.
+[ ] Any skipped full-suite test is mentioned in handoff notes.
+```

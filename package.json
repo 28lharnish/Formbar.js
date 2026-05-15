@@ -10,7 +10,8 @@
         "init-db": "node database/init.js",
         "migrate": "node database/migrate.js",
         "format": "prettier --write \"**/*.js\"",
-        "format:check": "prettier --check \"**/*.js\""
+        "format:check": "prettier --check \"**/*.js\"",
+        "build:docs": "node docs/onboarding/build-html.js"
     },
     "_moduleAliases": {
         "@modules": "modules",

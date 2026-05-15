@@ -1,66 +1,187 @@
 # Project Map
 
-When to read this: before making your first code change or looking for the owner of a behavior.
+Read this when you need to know where code lives or where to put a change.
 
 Back to: [Onboarding Home](./README.md)
 
-## Top-Level Layout
+## Mental Model
 
-- `api/`: versioned HTTP API modules. The current public API is mounted from `api/v1/controllers` (source: `app.js:getJSFiles`, route mounting loop).
-- `services/`: domain and business logic used by controllers, sockets, tests, and startup bootstrap code (source: imports in `api/v1/controllers/**`, `sockets/**`, and `app.js`).
-- `sockets/`: Socket.IO middleware and event handlers for realtime classroom behavior (source: `sockets/init.js:initSocketRoutes`).
-- `middleware/`: Express middleware for request logging, rate limiting, authentication, permission checks, JSON parsing, and errors (source: `app.js` middleware setup, `middleware/authentication.js`, `middleware/permission-check.js`).
-- `modules/`: shared infrastructure such as config, database helpers, crypto, logging, permissions, roles, OIDC, proxy trust, and utilities (source: `package.json:_moduleAliases`, imports under `services/**`).
-- `stores/`: in-memory state and caches used at runtime (source: `services/classroom-service.js`, `services/socket-updates-service.js`, `services/poll-service.js`).
-- `database/`: SQLite initialization, migration runner, seed/import data, and migration files (source: `database/init.js:initializeDatabase`, `database/migrate.js:executeMigration`).
-- `errors/`: typed application error classes consumed by middleware and controllers (source: `middleware/error-handler.js`, imports from `@errors/**`).
-- `email-templates/`: Handlebars templates for account, password, and PIN emails (source: `modules/mail.js`, `services/user-service.js`).
-- `docs/components/schemas/`: OpenAPI schema components used by Swagger generation (source: `modules/web-server.js:createServer` `apis` option).
+Formbar.js is organized by responsibility:
 
-## Dependency Shape
+```text
+api/v1/controllers/  HTTP entry points
+sockets/             realtime entry points
+services/            shared business rules
+modules/             shared infrastructure helpers
+stores/              temporary in-memory state
+database/            SQLite schema and migrations
+middleware/          Express request pipeline
+errors/              typed errors
+```
 
-Prefer this flow:
+Most feature work touches at least one entry point and one service.
+
+## Top-Level Directories
+
+| Path | What It Is | Beginner Rule |
+|---|---|---|
+| `api/v1/controllers/` | Express route modules for the REST API | Use this for HTTP paths like `GET /api/v1/user/me` |
+| `sockets/` | Socket.IO middleware and event handlers | Use this for realtime events |
+| `services/` | Business logic shared by HTTP, sockets, startup, and tests | Put rules here first when behavior is not purely HTTP-specific |
+| `middleware/` | Express middleware | Use this for request-wide concerns such as auth, scopes, logging, rate limiting, and error handling |
+| `modules/` | Reusable infrastructure | Use this for database helpers, config, crypto, email, permissions, OIDC, logging, and small utilities |
+| `stores/` | In-memory runtime state | Use this only for data that can disappear on restart |
+| `database/` | SQLite init and migrations | Add new migrations here for schema or data-shape changes |
+| `errors/` | Typed application errors | Throw these so responses are normalized by the error handler |
+| `email-templates/` | Handlebars templates | Edit these for outgoing email content |
+| `docs/components/schemas/` | OpenAPI schema YAML | Edit these when public API response/request models change |
+
+## Dependency Direction
+
+Prefer this direction:
 
 ```text
 controllers/sockets -> services -> modules/stores/database
 ```
 
-Controllers and sockets should stay thin. They should validate request shape, call services, and translate service results into HTTP responses or socket events. Shared behavior should move down into services so HTTP and realtime code paths stay aligned.
+Avoid this:
+
+```text
+services -> controllers
+modules -> services
+stores -> controllers
+```
+
+The goal is simple: entry points know about the outside world, services know the product rules, and modules/stores/database provide support.
 
 ## Where To Add Code
 
-- New REST endpoint: add a module under `api/v1/controllers/**`, then place shared behavior in `services/**`.
-- New socket event: add or update a module under `sockets/**`; route domain work through a service.
-- New schema/table/column behavior: add a new migration under `database/migrations/**` and update the affected service queries.
-- New shared helper: place it under `modules/**` when more than one area needs it.
-- New runtime cache or live state: place it under `stores/**` when it must not be persisted directly.
-- New OpenAPI model: add or update YAML under `docs/components/schemas/**` and JSDoc annotations in controllers.
+| You Need To... | Add Or Change |
+|---|---|
+| Add a REST endpoint | A file under `api/v1/controllers/**`; shared logic in `services/**` |
+| Add a socket event | A file under `sockets/**`; shared logic in `services/**` |
+| Add a database table or column | A new migration under `database/migrations/**`; update services and tests |
+| Add a reusable helper | `modules/**`, if it is infrastructure or utility code |
+| Add temporary live state | `stores/**`, if it should reset on restart |
+| Add a new typed error | `errors/**` |
+| Add public API docs | Controller JSDoc plus `docs/components/schemas/**` if a shared schema is useful |
 
-## API Controller Layout
+## HTTP Controller Layout
 
-`app.js` recursively loads `.js` files under `api/<version>/controllers`, skipping tests (source: `app.js:getJSFiles`). Current route groups include:
+`app.js` recursively loads JavaScript files from `api/<version>/controllers`. For this repo, the active version is `api/v1/controllers`.
 
-- Auth: register, login, refresh, guest login, OIDC providers/callbacks (source: `api/v1/controllers/auth/**`).
-- OAuth: authorize, token exchange, refresh, revoke (source: `api/v1/controllers/oauth/**`).
-- Users: profile, classes, scopes, permissions, verification, password reset, PIN reset/verify, API key regeneration, ban/unban, delete (source: `api/v1/controllers/user/**`).
-- Classes: create, get, start/end session, active state, settings, enroll/join/leave/unenroll/kick/ban, student list, code regeneration (source: `api/v1/controllers/class/**`, excluding nested tool folders).
-- Class tools: polls, breaks, help requests, timers, links, and class roles (source: `api/v1/controllers/class/polls/**`, `break/**`, `help/**`, `timer/**`, `links/**`, `roles/**`).
-- Digipogs and pools: transfers, awards, pool membership, payout, user pool data (source: `api/v1/controllers/digipogs/**`, `api/v1/controllers/pools/**`, `api/v1/controllers/user/pools.js`).
-- System/admin: config, certs, logs, IP access management, manager dashboard data, notifications, app registration, API permission checks (source: `api/v1/controllers/config.js`, `certs.js`, `logs.js`, `ip.js`, `manager/manager.js`, `notifications/**`, `apps/register-app.js`, `api-permission-check.js`).
+Each controller file exports a function that receives an Express router:
 
-`api/v1/controllers/controller-template.js` is a commented example only; it is not a live route (source: `api/v1/controllers/controller-template.js`).
+```js
+module.exports = (router) => {
+    router.get("/example", middleware, async (req, res) => {
+        // request/response code here
+    });
+};
+```
+
+Common route groups:
+
+| Group | Path |
+|---|---|
+| Auth | `api/v1/controllers/auth/**` |
+| OAuth app flow | `api/v1/controllers/oauth/**` |
+| Users | `api/v1/controllers/user/**` |
+| Classes | `api/v1/controllers/class/**` |
+| Class polls | `api/v1/controllers/class/polls/**` |
+| Class tools | `api/v1/controllers/class/break/**`, `help/**`, `timer/**`, `links/**`, `roles/**` |
+| Digipogs | `api/v1/controllers/digipogs/**` |
+| Pools | `api/v1/controllers/pools/**` |
+| Admin/system | `config.js`, `certs.js`, `logs.js`, `ip.js`, `manager/**` |
+| Notifications | `api/v1/controllers/notifications/**` |
+| App registration | `api/v1/controllers/apps/**` |
+
+`api/v1/controllers/controller-template.js` is only an example. It is not a live route.
+
+## Service Layout
+
+Services are where most product behavior belongs.
+
+| Service | Owns |
+|---|---|
+| `auth-service.js` | Register, login, JWTs, refresh tokens, OAuth token exchange |
+| `user-service.js` | User profile, verification, password, PIN, email-related user flows |
+| `api-key-service.js` | API key hashing, lookup, and cache use |
+| `class-service.js` | Class lifecycle, settings, start/end, codes, active state |
+| `class-membership-service.js` | Enroll, join, leave, kick, ban, unban |
+| `classroom-service.js` | Live class/user state in `class-state-store` |
+| `poll-service.js` | Poll creation, active polls, responses, history, sharing |
+| `role-service.js` | Global roles, class roles, scope assignment |
+| `student-service.js` | Student-shaped user data |
+| `digipog-service.js` | Awards, transfers, pools, payouts |
+| `inventory-service.js` | Items and inventory |
+| `notification-service.js` | Notifications |
+| `app-service.js` | Registered external apps and redirect URIs |
+| `socket-updates-service.js` | Helpers that emit realtime updates |
+| `ip-service.js` | IP allowlist/denylist data |
+| `log-service.js` | Log queries |
+| `manager-service.js` | Manager/admin dashboard data |
+| `bootstrap-service.js` | Startup data seeding |
 
 ## Socket Layout
 
-`sockets/init.js` loads middleware from `sockets/middleware` by `order`, then recursively loads event modules under `sockets`, skipping `init.js`, `middleware`, and `tests` (source: `sockets/init.js:initSocketRoutes`).
+`sockets/init.js` does two things whenever a client connects:
 
-Current socket modules cover:
+1. Loads socket middleware from `sockets/middleware/**` in `order`.
+2. Recursively loads socket event modules under `sockets/**`.
 
-- Backward-compatible API socket auth and legacy event names (source: `sockets/backwards-compat.js`, `sockets/middleware/api.js`).
-- User logout and class update events (source: `sockets/user.js`, `sockets/updates.js`).
-- Joining/leaving active classes and rooms (source: `sockets/class.js`).
-- Break/help flows (source: `sockets/break.js`, `sockets/help.js`).
-- Digipog socket behavior (source: `sockets/digipogs.js`).
-- Poll creation, updates, responses, saves, shares, and removals (source: `sockets/polls/*.js`, `services/poll-service.js`).
+Every socket event file must export:
 
-For visual dependency maps, see [Architecture Diagrams](./architecture.md). For a full file inventory of every directory, see [Codebase Map](./codebase-map.md).
+```js
+module.exports = {
+    run(socket, socketUpdates) {
+        // socket.on(...) handlers here
+    },
+};
+```
+
+Important socket files:
+
+| File | Handles |
+|---|---|
+| `sockets/class.js` | Join/leave class rooms and class session behavior |
+| `sockets/user.js` | User-level realtime events |
+| `sockets/updates.js` | Class update pushes |
+| `sockets/break.js` | Break request flow |
+| `sockets/help.js` | Help request flow |
+| `sockets/digipogs.js` | Digipog realtime behavior |
+| `sockets/polls/*.js` | Poll create, respond, update, save, share, remove |
+| `sockets/backwards-compat.js` | Legacy socket event aliases |
+
+Socket middleware:
+
+| File | Handles |
+|---|---|
+| `sockets/middleware/authentication.js` | Socket user auth |
+| `sockets/middleware/api.js` | API socket compatibility |
+| `sockets/middleware/rate-limiter.js` | Socket rate limiting |
+| `sockets/middleware/inactivity.js` | Inactivity tracking |
+
+## A Typical Change
+
+Example: "Add an endpoint that lets a teacher clear a class timer."
+
+1. Find nearby routes in `api/v1/controllers/class/timer/**`.
+2. Find the owning behavior in `services/class-service.js` or a related timer helper.
+3. Add the route in the controller.
+4. Put shared rules in the service.
+5. Add or update tests in `api/v1/controllers/tests/class-timer.spec.js`.
+6. Run that test, then run the broader suite when practical.
+
+## How To Find Existing Patterns
+
+Use `rg` from the repo root:
+
+```bash
+rg "hasClassScope" api/v1/controllers/class
+rg "SocketUpdates" sockets services
+rg "dbGetAll" services
+rg "SCOPES.CLASS.POLL" .
+```
+
+Copy the structure of nearby code before creating a new pattern.
