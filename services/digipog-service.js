@@ -1022,11 +1022,13 @@ async function creditDigipogTransferRecipient(amount, recipientType, recipientId
 /**
  * Transfer digipogs between two users.
  * @param {Object} transferData - transferData.
+ * @param {Object} [options] - Trusted server-side options.
  * @returns {Promise<Object>}
  */
-async function transferDigipogs(transferData) {
+async function transferDigipogs(transferData, options = {}) {
     try {
         const { pin, reason = "", pool } = transferData;
+        const pinVerified = options.pinVerified === true;
         let from = transferData.from;
         let to = transferData.to;
         const amount = Math.floor(transferData.amount);
@@ -1054,7 +1056,7 @@ async function transferDigipogs(transferData) {
         }
         if (!to.type) to.type = "user";
 
-        if (!from || !from.id || !to || !to.id || !amount || reason === undefined || !pin) {
+        if (!from || !from.id || !to || !to.id || !amount || reason === undefined || (!pin && !pinVerified)) {
             return { success: false, message: "Missing required fields." };
         } else if (amount <= 0) {
             return { success: false, message: "Amount must be greater than zero." };
@@ -1098,15 +1100,17 @@ async function transferDigipogs(transferData) {
             fromAccount.pin = poolOwner.pin;
         }
 
-        if (!fromAccount.pin) {
+        if (!pinVerified && !fromAccount.pin) {
             recordAttempt(accountId, false);
             return { success: false, message: "Account PIN not configured." };
         }
 
-        const isPinValid = await compareBcrypt(String(pin), fromAccount.pin);
-        if (!isPinValid) {
-            recordAttempt(accountId, false);
-            return { success: false, message: "Invalid PIN." };
+        if (!pinVerified) {
+            const isPinValid = await compareBcrypt(String(pin), fromAccount.pin);
+            if (!isPinValid) {
+                recordAttempt(accountId, false);
+                return { success: false, message: "Invalid PIN." };
+            }
         }
 
         const fromBalance = from.type === "user" ? fromAccount.digipogs : fromAccount.amount;

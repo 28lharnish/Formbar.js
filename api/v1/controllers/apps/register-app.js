@@ -1,9 +1,30 @@
 const { isAuthenticated } = require("@middleware/authentication");
+const { isVerified } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 const appService = require("@services/app-service");
 
 const maxAppNameLength = 100;
 const maxAppDescriptionLength = 500;
+
+function parseRedirectUris(redirectUris) {
+    if (redirectUris === undefined || redirectUris === null || redirectUris === "") {
+        return [];
+    }
+
+    if (Array.isArray(redirectUris)) {
+        return redirectUris;
+    }
+
+    if (typeof redirectUris !== "string") {
+        throw new ValidationError("redirectUris must be an array.");
+    }
+
+    try {
+        return JSON.parse(redirectUris);
+    } catch {
+        throw new ValidationError("redirectUris must be a valid JSON array.");
+    }
+}
 
 /**
  * Register register-app controller routes.
@@ -42,6 +63,12 @@ module.exports = (router) => {
      *                 type: string
      *                 description: A short description of the application
      *                 example: "An app to assist students with homework"
+     *               redirectUris:
+     *                 type: array
+     *                 description: Registered OAuth redirect URIs for this application
+     *                 items:
+     *                   type: string
+     *                   format: uri
      *     responses:
      *       200:
      *         description: Application registered successfully
@@ -84,8 +111,9 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/apps/register", isAuthenticated, async (req, res) => {
-        const { name, description, redirectUris = [] } = req.body;
+    router.post("/apps/register", isAuthenticated, isVerified, async (req, res) => {
+        const { name, description, redirectUris } = req.body;
+        const convRedirectUris = parseRedirectUris(redirectUris);
 
         req.infoEvent("apps.register.attempt", "User is attempting to register a new app", { name });
 
@@ -110,7 +138,7 @@ module.exports = (router) => {
             });
         }
 
-        const { appId, apiKey, apiSecret } = await appService.createApp({ name, description, ownerId: req.user.id, redirectUris });
+        const { appId, apiKey, apiSecret } = await appService.createApp({ name, description, ownerId: req.user.id, redirectUris: convRedirectUris });
 
         req.infoEvent("apps.register.success", "App registered successfully", { appId });
 

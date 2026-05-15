@@ -1,10 +1,33 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
+const { SCOPES } = require("@modules/permissions");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
+
+const OAUTH_APP_SCOPE_ROUTES = [
+    { method: "GET", path: "/user/me", scopes: [SCOPES.APP.PROFILE.READ] },
+    { method: "GET", path: "/user/:id", scopes: [SCOPES.APP.PROFILE.READ] },
+    { method: "GET", path: "/user/:id/scopes", scopes: [SCOPES.APP.PROFILE.READ] },
+    { method: "GET", path: "/user/:id/classes", scopes: [SCOPES.APP.CLASSES.READ] },
+    { method: "GET", path: "/user/:id/class", scopes: [SCOPES.APP.CLASSES.READ] },
+    { method: "GET", path: "/user/:id/transactions", scopes: [SCOPES.APP.DIGIPOGS.READ] },
+    { method: "GET", path: "/user/:id/pools", scopes: [SCOPES.APP.DIGIPOGS.READ] },
+    { method: "POST", path: "/user/:id/inventory/:itemId", scopes: [SCOPES.APP.INVENTORY.GIVE_ITEM] },
+    { method: "POST", path: "/notifications", scopes: [SCOPES.APP.NOTIFICATIONS.SEND] },
+    { method: "GET", path: "/notifications", scopes: [SCOPES.APP.NOTIFICATIONS.READ] },
+    { method: "GET", path: "/notifications/:id", scopes: [SCOPES.APP.NOTIFICATIONS.READ] },
+    { method: "GET", path: "/class/:id", scopes: [SCOPES.APP.CLASSES.SESSION_READ] },
+    { method: "GET", path: "/class/:id/active", scopes: [SCOPES.APP.CLASSES.SESSION_READ] },
+    { method: "GET", path: "/class/:id/timer", scopes: [SCOPES.APP.CLASSES.SESSION_READ] },
+    { method: "GET", path: "/class/:id/students", scopes: [SCOPES.APP.CLASSES.SESSION_READ] },
+    { method: "GET", path: "/class/:id/polls", scopes: [SCOPES.APP.POLLS.READ] },
+    { method: "GET", path: "/class/:id/polls/current", scopes: [SCOPES.APP.POLLS.READ] },
+    { method: "POST", path: "/class/:id/polls/response", scopes: [SCOPES.APP.POLLS.VOTE] },
+    { method: "POST", path: "/digipogs/transfer", scopes: [SCOPES.APP.DIGIPOGS.TRANSFER] },
+];
 
 /** Express path params are strings; in-memory classrooms are keyed by numeric id from the DB. */
 function normalizeClassId(raw) {
@@ -13,6 +36,98 @@ function normalizeClassId(raw) {
     }
     const n = Number(raw);
     return Number.isNaN(n) ? raw : n;
+}
+
+function normalizeRoutePath(path) {
+    if (Array.isArray(path)) {
+        path = path[0];
+    }
+
+    if (typeof path !== "string") {
+        return "";
+    }
+
+    if (path.length > 1 && path.endsWith("/")) {
+        return path.slice(0, -1);
+    }
+
+    return path;
+}
+
+function getOAuthAppScopes(req) {
+    const appScopes = req.user?.scopes?.app || req.user?.oauth?.scopes || [];
+    return Array.isArray(appScopes) ? appScopes : [];
+}
+
+function getRequiredAppScopesForRequest(req) {
+    const method = req.method;
+    const routePath = normalizeRoutePath(req.route?.path || req.path || "");
+    const rule = OAUTH_APP_SCOPE_ROUTES.find((entry) => entry.method === method && normalizeRoutePath(entry.path) === routePath);
+    return rule?.scopes || null;
+}
+
+function assertOAuthHasAppScopes(req, scopes, message) {
+    const requiredScopes = Array.isArray(scopes) ? scopes : [scopes];
+    const appScopes = getOAuthAppScopes(req);
+    const missingScopes = requiredScopes.filter((scope) => !appScopes.includes(scope));
+
+    if (missingScopes.length > 0) {
+        throw new ForbiddenError(message || "The OAuth token does not grant access to this resource.", {
+            event: "permission.check.failed",
+            reason: "insufficient_oauth_scope",
+            scope: missingScopes,
+        });
+    }
+
+    req.oauthAppScopeSatisfied = true;
+}
+
+function enforceAppScopeForOAuth(req) {
+    if (!req.user?.oauth) {
+        return;
+    }
+
+    const requiredScopes = getRequiredAppScopesForRequest(req);
+    if (!requiredScopes) {
+        throw new ForbiddenError("OAuth tokens cannot access this resource.", {
+            event: "permission.check.failed",
+            reason: "oauth_route_not_allowed",
+            route: normalizeRoutePath(req.route?.path || req.path || ""),
+            method: req.method,
+        });
+    }
+
+    assertOAuthHasAppScopes(req, requiredScopes);
+}
+
+function hasAppScope(scopes, message) {
+    return function (req, res, next) {
+        if (req.user?.oauth) {
+            assertOAuthHasAppScopes(req, scopes, message);
+        }
+
+        return next();
+    };
+}
+
+function getRequiredOAuthSelfScope(req) {
+    const routePath = req.route?.path || req.path || "";
+
+    if (routePath.includes("/transactions")) {
+        return SCOPES.APP.DIGIPOGS.READ;
+    }
+    if (routePath.includes("/classes") || routePath.endsWith("/class")) {
+        return SCOPES.APP.CLASSES.READ;
+    }
+    if (routePath.includes("/pools")) {
+        return SCOPES.APP.DIGIPOGS.READ;
+    }
+
+    return SCOPES.APP.PROFILE.READ;
+}
+
+function oauthTokenHasScope(req, scope) {
+    return getOAuthAppScopes(req).includes(scope);
 }
 
 /**
@@ -26,6 +141,19 @@ function hasScope(scope) {
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.scope_check.not_authenticated", "Scope check failed: User is not authenticated");
             throw new AuthError("User is not authenticated");
+        }
+
+        if (req.user.oauth) {
+            const appScopes = req.user.scopes?.app || req.user.oauth.scopes || [];
+            if (appScopes.includes(scope)) {
+                return next();
+            }
+
+            throw new ForbiddenError("You do not have permission to access this resource.", {
+                event: "permission.check.failed",
+                reason: "insufficient_oauth_scope",
+                scope,
+            });
         }
 
         const user = classStateStore.getUser(req.user.email);
@@ -114,6 +242,13 @@ function isSelfOrHasScopes(scopes, message) {
 
         const targetId = Number(req.params.id);
         if (req.user.id === targetId) {
+            if (req.user.oauth && !oauthTokenHasScope(req, getRequiredOAuthSelfScope(req))) {
+                throw new ForbiddenError("You do not have permission to access this resource.", {
+                    event: "permission.check.failed",
+                    reason: "insufficient_oauth_scope",
+                    scope: getRequiredOAuthSelfScope(req),
+                });
+            }
             return next();
         }
 
@@ -253,6 +388,9 @@ function isClassMember() {
 }
 
 module.exports = {
+    enforceAppScopeForOAuth,
+    getRequiredAppScopesForRequest,
+    hasAppScope,
     hasScope,
     hasClassScope,
     isSelfOrHasScopes,

@@ -1,7 +1,22 @@
 const authService = require("@services/auth-service");
+const appService = require("@services/app-service");
 const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { isAuthenticated } = require("@middleware/authentication");
+
+function validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope, state }) {
+    if (response_type && response_type !== "code") {
+        throw new ValidationError("Unsupported response_type. Only 'code' is supported.", {
+            event: "oauth.authorize.failed",
+            reason: "unsupported_response_type",
+        });
+    }
+
+    requireQueryParam(client_id, "client_id");
+    requireQueryParam(redirect_uri, "redirect_uri");
+    requireQueryParam(scope, "scope");
+    requireQueryParam(state, "state");
+}
 
 /**
  * Register authorize controller routes.
@@ -9,6 +24,104 @@ const { isAuthenticated } = require("@middleware/authentication");
  * @returns {void}
  */
 module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/oauth/authorize/metadata:
+     *   get:
+     *     summary: Get OAuth authorization metadata
+     *     tags:
+     *       - OAuth
+     *     description: |
+     *       Returns public metadata about the OAuth client and requested authorization
+     *       before completing the authorization code flow.
+     *
+     *       **Required Permission:** Authenticated user (via session or JWT)
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: query
+     *         name: response_type
+     *         schema:
+     *           type: string
+     *           enum: [code]
+     *         description: Must be 'code' for authorization code flow (optional, defaults to 'code')
+     *       - in: query
+     *         name: client_id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The client application's identifier
+     *       - in: query
+     *         name: redirect_uri
+     *         required: true
+     *         schema:
+     *           type: string
+     *           format: uri
+     *         description: Registered redirect URI for the client application
+     *       - in: query
+     *         name: scope
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Space-delimited list of requested scopes
+     *       - in: query
+     *         name: state
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: CSRF protection token included for parity with the authorization request
+     *     responses:
+     *       200:
+     *         description: OAuth client metadata retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   description: Public OAuth client metadata and requested authorization details
+     *                   additionalProperties: true
+     *       400:
+     *         description: Missing required parameters, unsupported response_type, or unregistered client/redirect URI
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       401:
+     *         description: User not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     */
+    router.get("/oauth/authorize/metadata", isAuthenticated, async (req, res) => {
+        const { response_type, client_id, redirect_uri, scope, state } = req.query;
+        validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope, state });
+
+        const metadata = await appService.getPublicOAuthAppMetadata({
+            clientId: client_id,
+            redirectUri: redirect_uri,
+            requestedScopes: scope,
+        });
+
+        if (!metadata) {
+            throw new ValidationError("OAuth client or redirect_uri is not registered.", {
+                event: "oauth.authorize.metadata.failed",
+                reason: "invalid_client_or_redirect_uri",
+            });
+        }
+
+        res.json({
+            success: true,
+            data: metadata,
+        });
+    });
+
     /**
      * @swagger
      * /api/v1/oauth/authorize:
@@ -57,6 +170,8 @@ module.exports = (router) => {
      *           type: string
      *         description: CSRF protection token, returned unchanged in the redirect
      *     responses:
+     *       200:
+     *         description: Returns the redirect URL as JSON when requested with application/json
      *       302:
      *         description: Redirects to redirect_uri with authorization code and state
      *       400:
@@ -75,21 +190,10 @@ module.exports = (router) => {
     router.get("/oauth/authorize", isAuthenticated, async (req, res) => {
         const { response_type, client_id, redirect_uri, scope, state } = req.query;
         const { authorization } = req.headers;
+        const acceptHeader = req.get("accept") || "";
+        const wantsJson = req.query.response_mode === "json" || req.query.format === "json" || /\bapplication\/json\b/i.test(acceptHeader);
 
-        // If response_type is provided, validate it
-        // If not, we can assume default behavior
-        if (response_type && response_type !== "code") {
-            throw new ValidationError("Unsupported response_type. Only 'code' is supported.", {
-                event: "oauth.authorize.failed",
-                reason: "unsupported_response_type",
-            });
-        }
-
-        // Validate required parameters
-        requireQueryParam(client_id, "client_id");
-        requireQueryParam(redirect_uri, "redirect_uri");
-        requireQueryParam(scope, "scope");
-        requireQueryParam(state, "state");
+        validateAuthorizeQuery({ response_type, client_id, redirect_uri, scope, state });
 
         req.infoEvent("oauth.authorize.attempt", "OAuth authorization attempt", { client_id, scope });
 
@@ -110,6 +214,17 @@ module.exports = (router) => {
         url.searchParams.append("state", state);
 
         req.infoEvent("oauth.authorize.success", "Authorization code generated", { client_id });
+
+        if (wantsJson) {
+            res.json({
+                success: true,
+                data: {
+                    redirectUrl: url.toString(),
+                },
+            });
+            return;
+        }
+
         res.status(302).redirect(url.toString());
     });
 };

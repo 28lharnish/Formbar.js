@@ -6,6 +6,7 @@ const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
+const { enforceAppScopeForOAuth } = require("@middleware/permission-check");
 const AuthError = require("@errors/auth-error");
 
 const whitelistedIps = [];
@@ -128,6 +129,38 @@ async function isAuthenticated(req, res, next) {
     if (decodedToken.error) {
         req.warnEvent("auth.invalid_token", "Invalid access token provided", { error: decodedToken.error });
         throw new AuthError("Invalid access token provided.");
+    }
+
+    if (decodedToken.oauth) {
+        const userId = decodedToken.id || decodedToken.sub;
+        if (!userId) {
+            req.warnEvent("auth.missing_user_id", "Invalid OAuth access token provided: Missing user id");
+            throw new AuthError("Invalid access token provided.");
+        }
+
+        const dbUser = await dbGet("SELECT id, email, displayName, verified, digipogs FROM users WHERE id = ?", [userId]);
+        if (!dbUser) {
+            req.warnEvent("auth.user_not_found", `OAuth token user not found: ${userId}`, { userId });
+            throw new AuthError("User is not authenticated");
+        }
+
+        req.user = {
+            id: Number(dbUser.id),
+            userId: Number(dbUser.id),
+            email: dbUser.email,
+            displayName: dbUser.displayName,
+            verified: dbUser.verified,
+            digipogs: dbUser.digipogs,
+            permissions: decodedToken.permissions ?? 0,
+            classPermissions: decodedToken.classPermissions ?? null,
+            scopes: decodedToken.scopes || { global: [], class: [], app: decodedToken.oauth.scopes || [] },
+            oauth: decodedToken.oauth,
+        };
+
+        enforceAppScopeForOAuth(req);
+
+        next();
+        return;
     }
 
     const email = decodedToken.email;

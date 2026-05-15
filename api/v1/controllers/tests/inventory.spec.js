@@ -1,4 +1,5 @@
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
 const { registerItem, addItemToInventory } = require("@services/inventory-service");
@@ -41,6 +42,7 @@ jest.mock("@modules/config", () => {
 
 const itemController = require("../item");
 const inventoryController = require("../user/inventory");
+const { privateKey } = require("@modules/config");
 
 const app = createTestApp(itemController, inventoryController);
 
@@ -81,6 +83,27 @@ async function seedTestItem(overrides = {}) {
         ...overrides,
     });
     return id;
+}
+
+function signOAuthAccessToken(user, scopes) {
+    return jwt.sign(
+        {
+            id: user.id,
+            permissions: 0,
+            classPermissions: null,
+            scopes: {
+                global: [],
+                class: [],
+                app: scopes,
+            },
+            oauth: {
+                appId: 1,
+                scopes,
+            },
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "15m" }
+    );
 }
 
 describe("GET /api/v1/item/:id", () => {
@@ -184,6 +207,98 @@ describe("GET /api/v1/user/:id/inventory/", () => {
         const res = await request(app).get(`/api/v1/user/${user.id}/inventory/`);
 
         expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("POST /api/v1/user/:id/inventory/:itemId", () => {
+    it("returns 200 when a manager gives an item to another user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent({ email: "give-target@example.com", displayName: "Give Target" });
+        const itemId = await seedTestItem({ name: "Gift Potion" });
+
+        const res = await request(app)
+            .post(`/api/v1/user/${target.id}/inventory/${itemId}`)
+            .set("Authorization", `Bearer ${managerTokens.accessToken}`)
+            .send({ quantity: 3 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        const rows = await mockDatabase.dbGetAll("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [target.id, itemId]);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].quantity).toBe(3);
+    });
+
+    it("returns 403 when a non-manager tries to give themselves an item", async () => {
+        const { tokens, user } = await seedStudent();
+        const itemId = await seedTestItem();
+
+        const res = await request(app)
+            .post(`/api/v1/user/${user.id}/inventory/${itemId}`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ quantity: 1 });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("allows OAuth app tokens with app.inventory.give_item to give items to the authorized user", async () => {
+        const { user } = await seedStudent();
+        const itemId = await seedTestItem();
+        const accessToken = signOAuthAccessToken(user, ["app.inventory.give_item"]);
+
+        const res = await request(app)
+            .post(`/api/v1/user/${user.id}/inventory/${itemId}`)
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ quantity: 2 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        const rows = await mockDatabase.dbGetAll("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [user.id, itemId]);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].quantity).toBe(2);
+    });
+
+    it("does not allow OAuth app tokens to give items to another user", async () => {
+        const { user } = await seedStudent();
+        const { user: target } = await seedStudent({ email: "oauth-inventory-target@example.com", displayName: "OAuth Target" });
+        const itemId = await seedTestItem();
+        const accessToken = signOAuthAccessToken(user, ["app.inventory.give_item"]);
+
+        const res = await request(app)
+            .post(`/api/v1/user/${target.id}/inventory/${itemId}`)
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ quantity: 1 });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("requires app.inventory.give_item for OAuth item grants", async () => {
+        const { user } = await seedStudent();
+        const itemId = await seedTestItem();
+        const accessToken = signOAuthAccessToken(user, ["app.profile.read"]);
+
+        const res = await request(app)
+            .post(`/api/v1/user/${user.id}/inventory/${itemId}`)
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ quantity: 1 });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 for non-positive quantity", async () => {
+        const { tokens } = await seedManager();
+        const { user: target } = await seedStudent({ email: "bad-give-target@example.com", displayName: "Bad Give" });
+        const itemId = await seedTestItem();
+
+        const res = await request(app)
+            .post(`/api/v1/user/${target.id}/inventory/${itemId}`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ quantity: 0 });
+
+        expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
     });
 });

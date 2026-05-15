@@ -78,6 +78,7 @@ const addLinkController = require("../class/links/add");
 const changeLinkController = require("../class/links/change");
 const removeLinkController = require("../class/links/remove");
 const bannedController = require("../class/banned");
+const banController = require("../class/ban");
 const kickController = require("../class/kick");
 const regenerateCodeController = require("../class/regenerate-code");
 
@@ -101,6 +102,7 @@ const app = createTestApp(
     changeLinkController,
     removeLinkController,
     bannedController,
+    banController,
     kickController,
     regenerateCodeController
 );
@@ -1028,6 +1030,38 @@ describe("GET /api/v1/class/:id/banned", () => {
             offset: 0,
             hasMore: false,
         });
+    });
+});
+
+describe("POST /api/v1/class/:id/students/:userId/ban", () => {
+    it("returns 400 when the class id is not an integer", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-ban-invalid-class@example.com",
+            displayName: "BanTeacher1",
+            permissions: TEACHER_PERMISSIONS,
+        });
+
+        const res = await request(app).post("/api/v1/class/not-a-number/students/1/ban").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 when the student id is not an integer", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-ban-invalid-student@example.com",
+            displayName: "BanTeacher2",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "BAN1", className: "Ban Validation Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/students/not-a-number/ban`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
     });
 });
 

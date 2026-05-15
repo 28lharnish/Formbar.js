@@ -108,7 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_user_roles_role_class ON user_roles (roleId, clas
 -- Seed built-in roles (with colors)
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Banned', 1, '["global.system.blocked","class.system.blocked"]', '#808080');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Guest', 1, '["class.poll.read","class.links.read"]', '#95A5A6');
-INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Student', 1, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#3498DB');
+INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Student', 1, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.timer.read","class.help.request","class.links.read"]', '#3498DB');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Mod', 1, '["global.system.moderate","global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#2ECC71');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Teacher', 1, '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#F39C12');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Manager', 1, '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.system.admin","class.students.read","class.students.kick","class.students.ban","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#E74C3C');
@@ -307,7 +307,8 @@ CREATE TABLE IF NOT EXISTS "apps" (
     "description" TEXT,
     "owner_user_id" INTEGER NOT NULL,
     "share_item_id" INTEGER NOT NULL,
-    "pool_id" INTEGER NOT NULL
+    "pool_id" INTEGER NOT NULL,
+    "client_secret_hash" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS "app_redirect_uris" (
@@ -317,3 +318,17 @@ CREATE TABLE IF NOT EXISTS "app_redirect_uris" (
     UNIQUE ("app_id", "redirect_uri")
 );
 CREATE INDEX IF NOT EXISTS idx_app_redirect_uris_app ON app_redirect_uris (app_id);
+
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    app_id INTEGER NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    UNIQUE (user_id, app_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_grants_user_app ON oauth_grants (user_id, app_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_grants_app ON oauth_grants (app_id);

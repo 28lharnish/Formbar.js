@@ -1,6 +1,8 @@
 const { transferDigipogs } = require("@services/digipog-service");
 const { getTransferFromValue, normalizeTransferFrom } = require("@modules/digipog-transfer");
 const AppError = require("@errors/app-error");
+const ForbiddenError = require("@errors/forbidden-error");
+const { isAuthenticated } = require("@middleware/authentication");
 
 /**
  * Register transfer controller routes.
@@ -8,6 +10,14 @@ const AppError = require("@errors/app-error");
  * @returns {void}
  */
 module.exports = (router) => {
+    function authenticateIfBearerToken(req, res, next) {
+        if (!req.headers.authorization) {
+            return next();
+        }
+
+        return isAuthenticated(req, res, next);
+    }
+
     /**
      * @swagger
      * /api/v1/digipogs/transfer:
@@ -76,15 +86,23 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/digipogs/transfer", async (req, res) => {
-        const body = req.body || {};
-        const requestedFrom = normalizeTransferFrom(getTransferFromValue(body));
+    router.post("/digipogs/transfer", authenticateIfBearerToken, async (req, res) => {
+        const body = { ...(req.body || {}) };
+        delete body.pinVerified;
+        const requestedFrom = normalizeTransferFrom(getTransferFromValue(body)) || (req.user?.oauth ? { id: req.user.id, type: "user" } : null);
 
         if (!requestedFrom) {
             throw new AppError("Missing sender identifier.", {
                 statusCode: 400,
                 event: "digipogs.transfer.failed",
                 reason: "missing_sender",
+            });
+        }
+
+        if (req.user?.oauth && (requestedFrom.type !== "user" || Number(requestedFrom.id) !== Number(req.user.id))) {
+            throw new ForbiddenError("OAuth transfers can only be sent from the authorized user.", {
+                event: "digipogs.transfer.failed",
+                reason: "oauth_sender_mismatch",
             });
         }
 
@@ -99,7 +117,7 @@ module.exports = (router) => {
             amount: transferPayload.amount,
         });
 
-        const result = await transferDigipogs(transferPayload);
+        const result = await transferDigipogs(transferPayload, { pinVerified: Boolean(req.user?.oauth) });
         if (!result.success) {
             throw new AppError(result.message, { statusCode: 400, event: "digipogs.transfer.failed", reason: "transfer_error" });
         }

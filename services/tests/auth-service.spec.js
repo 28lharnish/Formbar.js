@@ -58,7 +58,7 @@ const {
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
 } = require("@services/auth-service");
-const { sha256 } = require("@modules/crypto");
+const { hashBcrypt, sha256 } = require("@modules/crypto");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -91,14 +91,11 @@ async function seedUser(overrides = {}) {
 }
 
 async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
-    await mockDatabase.dbRun("INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?, ?)", [
-        Number(OAUTH_CLIENT_ID),
-        "OAuth App",
-        "Test app",
-        1,
-        1,
-        1,
-    ]);
+    const clientSecretHash = await hashBcrypt(OAUTH_API_KEY);
+    await mockDatabase.dbRun(
+        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id, client_secret_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1, clientSecretHash]
+    );
     // Store the API key in the new api_keys table
     await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [
         sha256(OAUTH_API_KEY),
@@ -367,7 +364,7 @@ describe("OAuth authorization code flow", () => {
         const code = await generateAuthorizationCode({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "openid",
+            scope: "app.profile.read",
             authorization: tokens.accessToken,
         });
 
@@ -377,7 +374,7 @@ describe("OAuth authorization code flow", () => {
             code,
             redirect_uri: OAUTH_REDIRECT_URI,
             client_id: OAUTH_CLIENT_ID,
-            apiKey: OAUTH_API_KEY,
+            clientSecret: OAUTH_API_KEY,
         });
 
         expect(tokenResponse).toHaveProperty("access_token");
@@ -386,7 +383,7 @@ describe("OAuth authorization code flow", () => {
         expect(tokenResponse.expires_in).toBe(900);
     });
 
-    it("returns classPermissions in OAuth token responses for users in an active class", async () => {
+    it("limits OAuth token responses to the approved app scopes", async () => {
         const { tokens, user } = await seedUser();
         await seedOAuthClient();
         const classId = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["OAuth Class", user.id + 1000, 2468]);
@@ -411,7 +408,7 @@ describe("OAuth authorization code flow", () => {
         const code = await generateAuthorizationCode({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "openid",
+            scope: "app.profile.read",
             authorization: tokens.accessToken,
         });
 
@@ -419,14 +416,30 @@ describe("OAuth authorization code flow", () => {
             code,
             redirect_uri: OAUTH_REDIRECT_URI,
             client_id: OAUTH_CLIENT_ID,
-            apiKey: OAUTH_API_KEY,
+            clientSecret: OAUTH_API_KEY,
         });
-        expect(tokenResponse.classPermissions).toBe(4);
+        expect(tokenResponse.classPermissions).toBeNull();
+        expect(tokenResponse.scopes).toEqual({
+            global: [],
+            class: [],
+            app: ["app.profile.read"],
+        });
+        const decodedAccessToken = verifyToken(tokenResponse.access_token);
+        expect(decodedAccessToken.email).toBeUndefined();
+        expect(decodedAccessToken.displayName).toBe(user.displayName);
 
         const refreshed = await exchangeRefreshTokenForAccessToken({
             refresh_token: tokenResponse.refresh_token,
         });
-        expect(refreshed.classPermissions).toBe(4);
+        expect(refreshed.classPermissions).toBeNull();
+        expect(refreshed.scopes).toEqual({
+            global: [],
+            class: [],
+            app: ["app.profile.read"],
+        });
+        const decodedRefreshedAccessToken = verifyToken(refreshed.access_token);
+        expect(decodedRefreshedAccessToken.email).toBeUndefined();
+        expect(decodedRefreshedAccessToken.displayName).toBe(user.displayName);
     });
 
     it("rejects a code that has already been used (single-use enforcement)", async () => {
@@ -436,7 +449,7 @@ describe("OAuth authorization code flow", () => {
         const code = await generateAuthorizationCode({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "openid",
+            scope: "app.profile.read",
             authorization: tokens.accessToken,
         });
 
@@ -444,7 +457,7 @@ describe("OAuth authorization code flow", () => {
             code,
             redirect_uri: OAUTH_REDIRECT_URI,
             client_id: OAUTH_CLIENT_ID,
-            apiKey: OAUTH_API_KEY,
+            clientSecret: OAUTH_API_KEY,
         });
 
         await expect(
@@ -452,7 +465,7 @@ describe("OAuth authorization code flow", () => {
                 code,
                 redirect_uri: OAUTH_REDIRECT_URI,
                 client_id: OAUTH_CLIENT_ID,
-                apiKey: OAUTH_API_KEY,
+                clientSecret: OAUTH_API_KEY,
             })
         ).rejects.toThrow(/already been used/i);
     });
@@ -464,7 +477,7 @@ describe("OAuth authorization code flow", () => {
         const code = await generateAuthorizationCode({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "openid",
+            scope: "app.profile.read",
             authorization: tokens.accessToken,
         });
 
@@ -473,7 +486,7 @@ describe("OAuth authorization code flow", () => {
                 code,
                 redirect_uri: "http://localhost/different",
                 client_id: OAUTH_CLIENT_ID,
-                apiKey: OAUTH_API_KEY,
+                clientSecret: OAUTH_API_KEY,
             })
         ).rejects.toThrow(/redirect_uri/i);
     });
@@ -485,7 +498,7 @@ describe("OAuth authorization code flow", () => {
         const code = await generateAuthorizationCode({
             client_id: OAUTH_CLIENT_ID,
             redirect_uri: OAUTH_REDIRECT_URI,
-            scope: "openid",
+            scope: "app.profile.read",
             authorization: tokens.accessToken,
         });
 
@@ -494,7 +507,7 @@ describe("OAuth authorization code flow", () => {
                 code,
                 redirect_uri: OAUTH_REDIRECT_URI,
                 client_id: "other-app",
-                apiKey: OAUTH_API_KEY,
+                clientSecret: OAUTH_API_KEY,
             })
         ).rejects.toThrow(/client_id/i);
     });
@@ -505,7 +518,7 @@ describe("OAuth authorization code flow", () => {
             generateAuthorizationCode({
                 client_id: OAUTH_CLIENT_ID,
                 redirect_uri: OAUTH_REDIRECT_URI,
-                scope: "openid",
+                scope: "app.profile.read",
                 authorization: "invalid-token",
             })
         ).rejects.toThrow();

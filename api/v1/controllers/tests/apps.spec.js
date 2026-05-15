@@ -47,8 +47,9 @@ jest.mock("@modules/config", () => {
 });
 
 const registerAppController = require("../apps/register-app");
+const getAppController = require("../apps/get-app");
 
-const app = createTestApp(registerAppController);
+const app = createTestApp(registerAppController, getAppController);
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -123,6 +124,18 @@ describe("POST /api/v1/apps/register", () => {
         expect(res.body.success).toBe(false);
     });
 
+    it("returns 400 when redirectUris is invalid JSON", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+
+        const res = await request(app)
+            .post("/api/v1/apps/register")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ name: "My App", description: "A test app", redirectUris: "[not-json]" });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
     it("creates an app, pool, and share item on success", async () => {
         const { tokens, user } = await seedAuthenticatedUser(mockDatabase);
 
@@ -180,5 +193,32 @@ describe("POST /api/v1/apps/register", () => {
 
         const poolRows = await mockDatabase.dbGetAll("SELECT id, name FROM digipog_pools WHERE name = ?", [`${payload.name} Developer Pool`]);
         expect(poolRows).toHaveLength(2);
+    });
+});
+
+describe("GET /api/v1/apps/:id", () => {
+    it("returns 400 when the app id is not an integer", async () => {
+        const res = await request(app).get("/api/v1/apps/not-a-number");
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns the app for a valid app id", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "app-owner@example.com",
+            displayName: "App Owner",
+        });
+
+        const created = await request(app)
+            .post("/api/v1/apps/register")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ name: "Lookup App", description: "A test app" });
+
+        const res = await request(app).get(`/api/v1/apps/${created.body.data.appId}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.name).toBe("Lookup App");
     });
 });

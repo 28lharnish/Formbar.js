@@ -1,4 +1,5 @@
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore } = require("./helpers/test-app");
 
@@ -74,6 +75,7 @@ const pollClearController = require("../class/polls/clear");
 const pollResponseController = require("../class/polls/response");
 const pollCurrentController = require("../class/polls/current");
 const pollsController = require("../class/polls/polls");
+const { privateKey } = require("@modules/config");
 
 const app = createTestApp(
     createClassController,
@@ -126,6 +128,27 @@ async function setupClassWithStudentAndTeacher() {
     await seedClassMembership(mockDatabase, student.id, classId, 2);
     await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
     return { classId, teacherTokens, studentTokens, teacher, student };
+}
+
+function signOAuthAccessToken(userData, scopes) {
+    return jwt.sign(
+        {
+            id: userData.id,
+            permissions: 0,
+            classPermissions: null,
+            scopes: {
+                global: [],
+                class: [],
+                app: scopes,
+            },
+            oauth: {
+                appId: 1,
+                scopes,
+            },
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "15m" }
+    );
 }
 
 describe("POST /api/v1/class/:id/polls/create", () => {
@@ -319,6 +342,21 @@ describe("POST /api/v1/class/:id/polls/response", () => {
         // so ["4"] becomes the number 4 (via JSON.parse(["4"].toString()))
         expect(sendPollResponse).toHaveBeenCalledWith(String(classId), 4, "My answer", expect.objectContaining({ email: "student@test.com" }));
     });
+
+    it("allows OAuth app tokens with app.polls.vote to submit poll responses", async () => {
+        const { classId, student } = await setupClassWithStudentAndTeacher();
+        const { sendPollResponse } = require("@services/poll-service");
+        const accessToken = signOAuthAccessToken(student, ["app.polls.vote"]);
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/polls/response`)
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ response: ["4"], textRes: "OAuth answer" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(sendPollResponse).toHaveBeenCalledWith(String(classId), 4, "OAuth answer", expect.objectContaining({ email: "student@test.com" }));
+    });
 });
 
 describe("GET /api/v1/class/:id/polls/current", () => {
@@ -339,6 +377,16 @@ describe("GET /api/v1/class/:id/polls/current", () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data).toEqual({ status: "active", prompt: "Test?" });
         expect(getCurrentPoll).toHaveBeenCalledWith(String(classId), expect.objectContaining({ email: "teacher@test.com" }));
+    });
+
+    it("requires app.polls.read for OAuth app tokens", async () => {
+        const { classId, student } = await setupClassWithStudentAndTeacher();
+        const accessToken = signOAuthAccessToken(student, ["app.profile.read"]);
+
+        const res = await request(app).get(`/api/v1/class/${classId}/polls/current`).set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
     });
 });
 

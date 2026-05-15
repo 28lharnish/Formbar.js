@@ -225,9 +225,9 @@ describe("class socket", () => {
             seedTeacherSession();
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "classBanUser")[1];
-            await handler("student@test.com");
+            await handler(2);
 
-            expect(setClassroomBanStatus).toHaveBeenCalledWith(testData.classId, "student@test.com", true);
+            expect(setClassroomBanStatus).toHaveBeenCalledWith(testData.classId, 2, true);
             expect(socketUpdates.classBannedUsersUpdate).toHaveBeenCalled();
             expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId);
         });
@@ -238,9 +238,9 @@ describe("class socket", () => {
             seedTeacherSession();
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "classUnbanUser")[1];
-            await handler("student@test.com");
+            await handler(2);
 
-            expect(setClassroomBanStatus).toHaveBeenCalledWith(testData.classId, "student@test.com", false);
+            expect(setClassroomBanStatus).toHaveBeenCalledWith(testData.classId, 2, false);
             expect(socketUpdates.classBannedUsersUpdate).toHaveBeenCalled();
             expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId);
         });

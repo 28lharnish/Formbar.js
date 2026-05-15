@@ -1,4 +1,5 @@
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
 
@@ -48,6 +49,7 @@ const awardController = require("../digipogs/award");
 const transferController = require("../digipogs/transfer");
 const { hasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
+const { privateKey } = require("@modules/config");
 
 function nonDigipogPinScopeController(router) {
     router.post("/test-pin-scope", hasScope(SCOPES.GLOBAL.DIGIPOGS.TRANSFER), (req, res) => {
@@ -56,6 +58,27 @@ function nonDigipogPinScopeController(router) {
 }
 
 const app = createTestApp(awardController, transferController, nonDigipogPinScopeController);
+
+function signOAuthAccessToken(user, scopes) {
+    return jwt.sign(
+        {
+            id: user.id,
+            permissions: 0,
+            classPermissions: null,
+            scopes: {
+                global: [],
+                class: [],
+                app: scopes,
+            },
+            oauth: {
+                appId: 1,
+                scopes,
+            },
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "15m" }
+    );
+}
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -198,6 +221,24 @@ describe("POST /api/v1/digipogs/transfer", () => {
         expect(res.status).toBe(400);
     });
 
+    it("ignores client-supplied pinVerified on PIN-only transfers", async () => {
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
+
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
+        await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
+
+        const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
+            email: "pin-bypass-recipient@example.com",
+            displayName: "PIN Bypass Recipient",
+            permissions: 2,
+        });
+
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 10, pinVerified: true });
+
+        expect(res.status).toBe(400);
+    });
+
     it("returns 400 when amount is missing", async () => {
         const { user } = await seedAuthenticatedUser(mockDatabase);
 
@@ -303,6 +344,45 @@ describe("POST /api/v1/digipogs/transfer", () => {
         const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 10, pin: "wrong" });
 
         expect(res.status).toBe(400);
+    });
+
+    it("allows OAuth app tokens with app.digipogs.transfer to transfer without a PIN", async () => {
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
+        await mockDatabase.dbRun("UPDATE users SET digipogs = 100 WHERE id = ?", [sender.id]);
+        const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
+            email: "oauth-recipient@example.com",
+            displayName: "OAuth Recipient",
+            permissions: 2,
+        });
+        const accessToken = signOAuthAccessToken(sender, ["app.digipogs.transfer"]);
+
+        const res = await request(app)
+            .post("/api/v1/digipogs/transfer")
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ to: recipient.id, amount: 10 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        const senderAfter = await mockDatabase.dbGet("SELECT digipogs FROM users WHERE id = ?", [sender.id]);
+        expect(senderAfter.digipogs).toBe(90);
+    });
+
+    it("requires app.digipogs.transfer for OAuth transfer requests", async () => {
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
+        const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
+            email: "oauth-denied-recipient@example.com",
+            displayName: "Denied Recipient",
+            permissions: 2,
+        });
+        const accessToken = signOAuthAccessToken(sender, ["app.profile.read"]);
+
+        const res = await request(app)
+            .post("/api/v1/digipogs/transfer")
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ to: recipient.id, amount: 10 });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
     });
 });
 

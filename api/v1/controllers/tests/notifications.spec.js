@@ -1,4 +1,5 @@
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
 
@@ -41,6 +42,7 @@ jest.mock("@modules/config", () => {
 const getNotifications = require("../notifications/get-notifications");
 const markNotificationRead = require("../notifications/mark-notification-read");
 const deleteNotification = require("../notifications/delete-notification");
+const { privateKey } = require("@modules/config");
 
 const app = createTestApp(getNotifications, markNotificationRead, deleteNotification);
 
@@ -70,6 +72,84 @@ async function seedNotification(userId, type = "info", data = '{"message":"hello
     await mockDatabase.dbRun("INSERT INTO notifications (user_id, type, data) VALUES (?, ?, ?)", [userId, type, data]);
     return mockDatabase.dbGet("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 1", [userId]);
 }
+
+function signOAuthAccessToken(userData, scopes) {
+    return jwt.sign(
+        {
+            id: userData.id,
+            permissions: 0,
+            classPermissions: null,
+            scopes: {
+                global: [],
+                class: [],
+                app: scopes,
+            },
+            oauth: {
+                appId: 1,
+                scopes,
+            },
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "15m" }
+    );
+}
+
+describe("POST /api/v1/notifications", () => {
+    it("creates a notification for the authenticated user", async () => {
+        const res = await request(app)
+            .post("/api/v1/notifications")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ type: "info", data: { message: "hello" } });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.notificationId).toBeGreaterThan(0);
+
+        const notification = await mockDatabase.dbGet("SELECT * FROM notifications WHERE id = ?", [res.body.data.notificationId]);
+        expect(notification).toMatchObject({
+            user_id: user.id,
+            type: "info",
+            data: JSON.stringify({ message: "hello" }),
+        });
+    });
+
+    it("allows OAuth app tokens with app.notifications.send to create notifications", async () => {
+        const accessToken = signOAuthAccessToken(user, ["app.notifications.send"]);
+
+        const res = await request(app)
+            .post("/api/v1/notifications")
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ type: "app", data: { message: "from app" } });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        const notification = await mockDatabase.dbGet("SELECT * FROM notifications WHERE id = ?", [res.body.data.notificationId]);
+        expect(notification.user_id).toBe(user.id);
+        expect(notification.type).toBe("app");
+    });
+
+    it("requires app.notifications.send for OAuth app tokens", async () => {
+        const accessToken = signOAuthAccessToken(user, ["app.notifications.read"]);
+
+        const res = await request(app)
+            .post("/api/v1/notifications")
+            .set("Authorization", `Bearer ${accessToken}`)
+            .send({ type: "app", data: { message: "from app" } });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 when notification data is not an object", async () => {
+        const res = await request(app)
+            .post("/api/v1/notifications")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ type: "info", data: "not-object" });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+});
 
 describe("GET /api/v1/notifications", () => {
     it("returns an empty array when the user has no notifications", async () => {
@@ -124,6 +204,26 @@ describe("GET /api/v1/notifications", () => {
         const res = await request(app).get("/api/v1/notifications");
 
         expect(res.status).toBe(401);
+    });
+
+    it("requires app.notifications.read for OAuth app tokens", async () => {
+        const accessToken = signOAuthAccessToken(user, ["app.profile.read"]);
+
+        const res = await request(app).get("/api/v1/notifications").set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("allows OAuth app tokens with app.notifications.read to read notifications", async () => {
+        await seedNotification(user.id, "info", '{"msg":"oauth"}');
+        const accessToken = signOAuthAccessToken(user, ["app.notifications.read"]);
+
+        const res = await request(app).get("/api/v1/notifications").set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.notifications).toHaveLength(1);
     });
 });
 
@@ -187,6 +287,17 @@ describe("POST /api/v1/notifications/:id/mark-read", () => {
         const res = await request(app).post("/api/v1/notifications/1/mark-read");
 
         expect(res.status).toBe(401);
+    });
+
+    it("does not allow OAuth app tokens to mark notifications read", async () => {
+        const notification = await seedNotification(user.id, "info", '{"msg":"unread"}');
+        const accessToken = signOAuthAccessToken(user, ["app.notifications.read"]);
+
+        const res = await request(app).post(`/api/v1/notifications/${notification.id}/mark-read`).set("Authorization", `Bearer ${accessToken}`);
+
+        expect(res.status).toBe(403);
+        const updated = await mockDatabase.dbGet("SELECT * FROM notifications WHERE id = ?", [notification.id]);
+        expect(updated.is_read).toBe(0);
     });
 });
 
