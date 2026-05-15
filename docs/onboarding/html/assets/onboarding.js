@@ -90,12 +90,20 @@
         const state = {
             svg: null,
             scale: 1,
-            baseVX: 0, baseVY: 0, baseVW: 0, baseVH: 0,
-            vx: 0, vy: 0, vw: 0, vh: 0,
+            baseVX: 0,
+            baseVY: 0,
+            baseVW: 0,
+            baseVH: 0,
+            vx: 0,
+            vy: 0,
+            vw: 0,
+            vh: 0,
             dragging: false,
             pointerId: null,
-            startX: 0, startY: 0,
-            startVX: 0, startVY: 0,
+            startX: 0,
+            startY: 0,
+            startVX: 0,
+            startVY: 0,
         };
 
         function applyViewBox() {
@@ -157,9 +165,15 @@
 
             // Parse the original viewBox written by Mermaid
             const vbAttr = state.svg.getAttribute("viewBox");
-            let ox = 0, oy = 0, ow = 800, oh = 600;
+            let ox = 0,
+                oy = 0,
+                ow = 800,
+                oh = 600;
             if (vbAttr) {
-                const parts = vbAttr.trim().split(/[\s,]+/).map(Number);
+                const parts = vbAttr
+                    .trim()
+                    .split(/[\s,]+/)
+                    .map(Number);
                 if (parts.length >= 4 && parts.every(isFinite)) {
                     [ox, oy, ow, oh] = parts;
                 }
