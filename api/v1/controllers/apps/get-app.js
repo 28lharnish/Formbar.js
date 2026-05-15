@@ -1,5 +1,6 @@
 const appService = require("@services/app-service");
-const { requireQueryParam } = require("@modules/error-wrapper");
+const { requireParam } = require("@modules/error-wrapper");
+const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
     /**
@@ -59,8 +60,13 @@ module.exports = (router) => {
      *                   example: Application not found.
      */
     router.get("/apps/:id", async (req, res) => {
-        const appId = req.params.id;
-        requireQueryParam(appId, "id");
+        const { id } = req.params;
+        requireParam(id, "id");
+
+        const appId = Number(id);
+        if (!Number.isInteger(appId) || appId <= 0) {
+            throw new ValidationError("Invalid App Id", { reason: "invalid_app_id", event: "app.get.failed" });
+        }
 
         const app = await appService.getAppById(appId);
         if (!app) {

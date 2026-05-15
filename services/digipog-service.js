@@ -985,12 +985,13 @@ async function awardDigipogs(awardData, user) {
 /**
  * Transfer digipogs between two users.
  * @param {Object} transferData - transferData.
+ * @param {Object} [options] - Trusted server-side options.
  * @returns {Promise<Object>}
  */
-async function transferDigipogs(transferData) {
+async function transferDigipogs(transferData, options = {}) {
     try {
         const { pin, reason = "", pool } = transferData;
-        const pinVerified = transferData.pinVerified === true;
+        const pinVerified = options.pinVerified === true;
         let from = transferData.from;
         let to = transferData.to;
         const amount = Math.floor(transferData.amount);

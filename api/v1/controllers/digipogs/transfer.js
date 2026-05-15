@@ -87,7 +87,8 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.post("/digipogs/transfer", authenticateIfBearerToken, async (req, res) => {
-        const body = req.body || {};
+        const body = { ...(req.body || {}) };
+        delete body.pinVerified;
         const requestedFrom = normalizeTransferFrom(getTransferFromValue(body)) || (req.user?.oauth ? { id: req.user.id, type: "user" } : null);
 
         if (!requestedFrom) {
@@ -108,7 +109,6 @@ module.exports = (router) => {
         const transferPayload = {
             ...body,
             from: requestedFrom,
-            pinVerified: Boolean(req.user?.oauth),
         };
 
         req.infoEvent("digipogs.transfer.attempt", "Attempting to transfer digipogs", {
@@ -117,7 +117,7 @@ module.exports = (router) => {
             amount: transferPayload.amount,
         });
 
-        const result = await transferDigipogs(transferPayload);
+        const result = await transferDigipogs(transferPayload, { pinVerified: Boolean(req.user?.oauth) });
         if (!result.success) {
             throw new AppError(result.message, { statusCode: 400, event: "digipogs.transfer.failed", reason: "transfer_error" });
         }

@@ -2,8 +2,30 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { advancedEmitToClass } = require("@services/socket-updates-service");
 const { SCOPES } = require("@modules/permissions");
-const { requireQueryParam } = require("@modules/error-wrapper");
+const { requireParam } = require("@modules/error-wrapper");
+const ValidationError = require("@errors/validation-error");
 const membershipService = require("@services/class-membership-service");
+
+function parseRequiredPositiveIntegerParam(req, name, event) {
+    const value = req.params[name];
+    requireParam(value, name);
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new ValidationError(`Invalid ${name}.`, { event, reason: `invalid_${name}` });
+    }
+
+    return parsed;
+}
+
+function validateBanParams(req, res, next) {
+    req.classBanParams = {
+        classId: parseRequiredPositiveIntegerParam(req, "id", "class.ban.student.failed"),
+        userId: parseRequiredPositiveIntegerParam(req, "userId", "class.ban.student.failed"),
+    };
+
+    next();
+}
 
 /**
  * Register ban controller routes.
@@ -61,13 +83,10 @@ module.exports = (router) => {
     router.post(
         "/class/:id/students/:userId/ban",
         isAuthenticated,
+        validateBanParams,
         isOwnerOrHasScopes(membershipService.classroomOwnerCheck, SCOPES.CLASS.STUDENTS.BAN, "You do not have permission to ban this student."),
         async (req, res) => {
-            const classId = Number(req.params.id);
-            const userId = Number(req.params.userId);
-
-            requireQueryParam(classId, "id");
-            requireQueryParam(userId, "userId");
+            const { classId, userId } = req.classBanParams;
 
             req.infoEvent("class.ban.student.attempt", "Attempting to ban student from class", { classId, userId });
 

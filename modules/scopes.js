@@ -92,16 +92,16 @@ const SCOPES = {
 
     APP: {
         PROFILE: {
-            READ: "app.profile.read"
+            READ: "app.profile.read",
         },
 
         EMAIL: {
-            READ: "app.email.read"
+            READ: "app.email.read",
         },
 
         DIGIPOGS: {
             READ: "app.digipogs.read",
-            TRANSFER: "app.digipogs.transfer"
+            TRANSFER: "app.digipogs.transfer",
         },
 
         INVENTORY: {
@@ -110,18 +110,18 @@ const SCOPES = {
 
         CLASSES: {
             READ: "app.classes.read",
-            SESSION_READ: "app.classes.session.read"
+            SESSION_READ: "app.classes.session.read",
         },
 
         POLLS: {
             READ: "app.polls.read",
-            VOTE: "app.polls.vote"
+            VOTE: "app.polls.vote",
         },
 
         NOTIFICATIONS: {
             SEND: "app.notifications.send",
-            READ: "app.notifications.read"
-        }
+            READ: "app.notifications.read",
+        },
     },
 };
 

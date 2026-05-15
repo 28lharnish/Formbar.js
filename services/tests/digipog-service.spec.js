@@ -790,6 +790,39 @@ describe("transferDigipogs()", () => {
         expect(result.message).toMatch(/Missing required fields/);
     });
 
+    it("does not accept client-supplied pinVerified as a PIN bypass", async () => {
+        const sender = await seedUser({ digipogs: 100, pin: hashedPin });
+        const receiver = await seedUser({ digipogs: 0 });
+
+        const result = await transferDigipogs({
+            from: { id: sender.id, type: "user" },
+            to: { id: receiver.id, type: "user" },
+            amount: 10,
+            pinVerified: true,
+            reason: "",
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.message).toMatch(/Missing required fields/);
+    });
+
+    it("allows trusted server-side callers to skip PIN verification", async () => {
+        const sender = await seedUser({ digipogs: 100, pin: null });
+        const receiver = await seedUser({ digipogs: 0 });
+
+        const result = await transferDigipogs(
+            {
+                from: { id: sender.id, type: "user" },
+                to: { id: receiver.id, type: "user" },
+                amount: 10,
+                reason: "",
+            },
+            { pinVerified: true }
+        );
+
+        expect(result.success).toBe(true);
+    });
+
     it("rejects amount <= 0", async () => {
         const result = await transferDigipogs({
             from: { id: 1, type: "user" },

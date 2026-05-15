@@ -56,10 +56,11 @@ async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
         [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1, clientSecretHash]
     );
     // Use the new api_keys table to store the API key
-    await mockDatabase.dbRun(
-        "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
-        [sha256(OAUTH_CLIENT_SECRET), Number(OAUTH_CLIENT_ID), "app"]
-    );
+    await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [
+        sha256(OAUTH_CLIENT_SECRET),
+        Number(OAUTH_CLIENT_ID),
+        "app",
+    ]);
     await mockDatabase.dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [Number(OAUTH_CLIENT_ID), redirectUri]);
 }
 
@@ -197,15 +198,12 @@ describe("GET /api/v1/oauth/authorize", () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
         await seedOAuthClient();
 
-        const res = await request(app)
-            .get("/api/v1/oauth/authorize/metadata")
-            .set("Authorization", tokens.accessToken)
-            .query({
-                client_id: OAUTH_CLIENT_ID,
-                redirect_uri: OAUTH_REDIRECT_URI,
-                scope: "app.profile.read",
-                state: "xyz",
-            });
+        const res = await request(app).get("/api/v1/oauth/authorize/metadata").set("Authorization", tokens.accessToken).query({
+            client_id: OAUTH_CLIENT_ID,
+            redirect_uri: OAUTH_REDIRECT_URI,
+            scope: "app.profile.read",
+            state: "xyz",
+        });
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);

@@ -221,6 +221,24 @@ describe("POST /api/v1/digipogs/transfer", () => {
         expect(res.status).toBe(400);
     });
 
+    it("ignores client-supplied pinVerified on PIN-only transfers", async () => {
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
+
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
+        await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
+
+        const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
+            email: "pin-bypass-recipient@example.com",
+            displayName: "PIN Bypass Recipient",
+            permissions: 2,
+        });
+
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 10, pinVerified: true });
+
+        expect(res.status).toBe(400);
+    });
+
     it("returns 400 when amount is missing", async () => {
         const { user } = await seedAuthenticatedUser(mockDatabase);
 
