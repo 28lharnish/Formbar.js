@@ -1,5 +1,6 @@
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { isPoolOwnedByUser } = require("@services/digipog-service");
+const { buildPagination } = require("@modules/pagination");
+const { creditDigipogTransferRecipient, isPoolOwnedByUser } = require("@services/digipog-service");
 const { addItemToInventory } = require("@services/inventory-service");
 const { createNotification } = require("@services/notification-service");
 const NotFoundError = require("@errors/not-found-error");
@@ -45,7 +46,8 @@ function normalizeItems(items) {
  */
 async function checkItemsExistInRegistry(items) {
     const itemIds = items.map(({ itemId }) => itemId);
-    const rows = await dbGetAll("SELECT id FROM item_registry WHERE id IN (?)", [itemIds]);
+    const placeholders = itemIds.map(() => "?").join(",");
+    const rows = await dbGetAll(`SELECT id FROM item_registry WHERE id IN (${placeholders})`, itemIds);
     if (rows.length !== itemIds.length) {
         throw new ValidationError(`One or more items do not exist in the registry.`, { reason: "item_not_found" });
     }
@@ -191,33 +193,6 @@ async function checkPoolBalanceAvailability(poolId, amount) {
 }
 
 /**
- * Credit digipogs to a recipient (user balance or pool) with the standard 10%
- * transfer tax. Returns the tax actually applied so it can be sent to the dev pool.
- * @param {number} amount - Full gross amount being received.
- * @param {"inventory"|"pool"} recipientSourceType - Source type of the receiving party.
- * @param {number} recipientUserId
- * @param {number|null} recipientPoolId
- * @returns {Promise<number>} Tax amount deducted.
- */
-async function creditDigipogsWithTax(amount, recipientSourceType, recipientUserId, recipientPoolId) {
-    const taxedAmount = Math.floor(amount * 0.9) > 1 ? Math.floor(amount * 0.9) : 1;
-    const taxAmount = amount - taxedAmount;
-
-    if (recipientSourceType === "pool") {
-        await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxedAmount, recipientPoolId]);
-    } else {
-        await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [taxedAmount, recipientUserId]);
-    }
-
-    const devPool = await dbGet("SELECT id FROM digipog_pools WHERE id = ?", [0]);
-    if (devPool) {
-        await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxAmount, 0]);
-    }
-
-    return taxAmount;
-}
-
-/**
  * Format a raw database trade row into the public API shape.
  * @param {Object} row
  * @returns {Object}
@@ -259,6 +234,22 @@ function formatTrade(row) {
         failureReason: row.failure_reason || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+    };
+}
+
+/**
+ * Build a paginated trade bucket response.
+ * @param {Object[]} rows - Trade rows.
+ * @param {Object|null} countRow - Count query row.
+ * @param {number} limit
+ * @param {number} offset
+ * @returns {Object}
+ */
+function buildTradeBucket(rows, countRow, limit, offset) {
+    const items = rows.map(formatTrade);
+    return {
+        items,
+        ...buildPagination(countRow ? countRow.count : 0, limit, offset, items.length),
     };
 }
 
@@ -364,30 +355,10 @@ async function getTradesForUser(userId, { limit = 20, offset = 0 } = {}) {
     ]);
 
     return {
-        inbound: {
-            items: inbound.map(formatTrade),
-            total: inboundCount ? inboundCount.count : 0,
-            limit,
-            offset,
-        },
-        outbound: {
-            items: outbound.map(formatTrade),
-            total: outboundCount ? outboundCount.count : 0,
-            limit,
-            offset,
-        },
-        completed: {
-            items: completed.map(formatTrade),
-            total: completedCount ? completedCount.count : 0,
-            limit,
-            offset,
-        },
-        inactive: {
-            items: inactive.map(formatTrade),
-            total: inactiveCount ? inactiveCount.count : 0,
-            limit,
-            offset,
-        },
+        inbound: buildTradeBucket(inbound, inboundCount, limit, offset),
+        outbound: buildTradeBucket(outbound, outboundCount, limit, offset),
+        completed: buildTradeBucket(completed, completedCount, limit, offset),
+        inactive: buildTradeBucket(inactive, inactiveCount, limit, offset),
     };
 }
 
@@ -517,7 +488,11 @@ async function acceptTrade(tradeId, userId) {
         } else {
             // Digipogs from fromUser's pool go to toUser; credit destination depends
             // on toUser's own source type.
-            await creditDigipogsWithTax(trade.offered_digipogs, trade.to_source_type, toUserId, trade.to_pool_id);
+            await creditDigipogTransferRecipient(
+                trade.offered_digipogs,
+                trade.to_source_type === "pool" ? "pool" : "user",
+                trade.to_source_type === "pool" ? trade.to_pool_id : toUserId
+            );
         }
 
         // fromUser receives whatever toUser offered.
@@ -528,7 +503,11 @@ async function acceptTrade(tradeId, userId) {
         } else {
             // Digipogs from toUser's pool go to fromUser; credit destination depends
             // on fromUser's own source type.
-            await creditDigipogsWithTax(trade.requested_digipogs, trade.from_source_type, fromUserId, trade.from_pool_id);
+            await creditDigipogTransferRecipient(
+                trade.requested_digipogs,
+                trade.from_source_type === "pool" ? "pool" : "user",
+                trade.from_source_type === "pool" ? trade.from_pool_id : fromUserId
+            );
         }
 
         await dbRun("UPDATE trades SET status = 'completed', updated_at = ? WHERE id = ?", [now, tradeId]);

@@ -89,6 +89,7 @@ components:
                 - total
                 - limit
                 - offset
+                - hasMore
             properties:
                 items:
                     type: array
@@ -103,3 +104,6 @@ components:
                 offset:
                     type: integer
                     example: 0
+                hasMore:
+                    type: boolean
+                    example: false

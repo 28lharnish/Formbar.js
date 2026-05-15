@@ -99,6 +99,34 @@ describe("POST /api/v1/trades", () => {
         expect(res.body.data.tradeId).toBeGreaterThan(0);
     });
 
+    it("creates a trade with multiple distinct inventory items", async () => {
+        const { tokens: t1, user: u1 } = await seedAuthenticatedUser(mockDatabase, { email: "a@test.com", displayName: "UserA" });
+        const { user: u2 } = await seedAuthenticatedUser(mockDatabase, { email: "b@test.com", displayName: "UserB" });
+        await seedItem(1, "Sword");
+        await seedItem(2, "Shield");
+        await seedInventory(u1.id, 1, 5);
+        await seedInventory(u1.id, 2, 5);
+        await seedInventory(u2.id, 1, 3);
+
+        const res = await request(app)
+            .post("/api/v1/trades")
+            .set("Authorization", `Bearer ${t1.accessToken}`)
+            .send({
+                toUserId: u2.id,
+                offered: {
+                    source: { type: "inventory" },
+                    items: [
+                        { itemId: 1, quantity: 2 },
+                        { itemId: 2, quantity: 1 },
+                    ],
+                },
+                requested: { source: { type: "inventory" }, items: [{ itemId: 1, quantity: 1 }] },
+            });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.tradeId).toBeGreaterThan(0);
+    });
+
     it("returns 400 when toUserId is missing", async () => {
         const { tokens: t1 } = await seedAuthenticatedUser(mockDatabase);
 
@@ -165,7 +193,7 @@ describe("GET /api/v1/user/:id/trades", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.data).toMatchObject({
-            inbound: expect.objectContaining({ items: expect.any(Array), total: 0, limit: 20, offset: 0 }),
+            inbound: expect.objectContaining({ items: expect.any(Array), total: 0, limit: 20, offset: 0, hasMore: false }),
             outbound: expect.objectContaining({ items: expect.any(Array), total: 0 }),
             completed: expect.objectContaining({ items: expect.any(Array), total: 0 }),
             inactive: expect.objectContaining({ items: expect.any(Array), total: 0 }),

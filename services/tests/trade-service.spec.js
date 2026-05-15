@@ -22,6 +22,7 @@ jest.mock("@modules/database", () => {
 });
 
 const { normalizeItems, createTrade, getTradesForUser, getTradeById, acceptTrade, rejectTrade, cancelTrade } = require("@services/trade-service");
+const ValidationError = require("@errors/validation-error");
 
 async function seedUser(id, digipogs = 0) {
     await mockDatabase.dbRun("INSERT INTO users (id, email, password, API, secret, digipogs, verified) VALUES (?, ?, 'pw', ?, ?, ?, 1)", [
@@ -133,7 +134,7 @@ describe("normalizeItems()", () => {
                 throw new Error("Expected normalizeItems() to throw");
             } catch (error) {
                 expect(error).toBeDefined();
-                expect(error.name).toBe("ValidationError");
+                expect(error).toBeInstanceOf(ValidationError);
                 expect(error).not.toBeInstanceOf(TypeError);
             }
         });
@@ -260,6 +261,33 @@ describe("createTrade() - validation", () => {
         expect(tradeId).toBeGreaterThan(0);
     });
 
+    it("creates a trade with multiple distinct item IDs on an inventory side", async () => {
+        await seedItem(2);
+        await seedInventory(1, 2, 4);
+        await seedInventory(2, 2, 4);
+
+        const { tradeId } = await createTrade({
+            fromUserId: 1,
+            toUserId: 2,
+            offered: {
+                source: { type: "inventory" },
+                items: [
+                    { itemId: 1, quantity: 2 },
+                    { itemId: 2, quantity: 3 },
+                ],
+            },
+            requested: { source: { type: "inventory" }, items: [{ itemId: 2, quantity: 1 }] },
+        });
+
+        const trade = await mockDatabase.dbGet("SELECT offered_items FROM trades WHERE id = ?", [tradeId]);
+        expect(JSON.parse(trade.offered_items)).toEqual(
+            expect.arrayContaining([
+                { itemId: 1, quantity: 2 },
+                { itemId: 2, quantity: 3 },
+            ])
+        );
+    });
+
     it("notifies the recipient on create", async () => {
         const { tradeId } = await createTrade({
             fromUserId: 1,
@@ -363,6 +391,37 @@ describe("getTradesForUser()", () => {
         });
         const result = await getTradesForUser(1);
         expect(result.inactive.total).toBe(3);
+    });
+
+    it("includes standardized hasMore pagination metadata for each bucket", async () => {
+        await seedTrade({
+            fromUser: 2,
+            toUser: 1,
+            fromSourceType: "inventory",
+            toSourceType: "inventory",
+            offeredItems: [],
+            requestedItems: [],
+            status: "pending",
+        });
+        await seedTrade({
+            fromUser: 2,
+            toUser: 1,
+            fromSourceType: "inventory",
+            toSourceType: "inventory",
+            offeredItems: [],
+            requestedItems: [],
+            status: "pending",
+        });
+
+        const result = await getTradesForUser(1, { limit: 1, offset: 0 });
+
+        expect(result.inbound).toMatchObject({
+            total: 2,
+            limit: 1,
+            offset: 0,
+            hasMore: true,
+        });
+        expect(result.outbound.hasMore).toBe(false);
     });
 });
 

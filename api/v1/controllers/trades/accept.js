@@ -49,6 +49,8 @@ module.exports = (router) => {
      *                       description: Failure reason when accepted is false
      *       401:
      *         description: Not authenticated
+     *       400:
+     *         description: Invalid trade ID or trade is no longer pending
      *       403:
      *         description: User is not the recipient
      *       404:
