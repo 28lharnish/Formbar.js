@@ -1,355 +1,279 @@
 # Codebase Map
 
-When to read this: when you want to see every source directory and file in one place, or understand how a specific piece fits into the whole project.
+Read this when you want a detailed map of files and directories.
 
 Back to: [Onboarding Home](./README.md)
 
----
+For a shorter "where should I put my change?" guide, read [Project Map](./project-map.md).
 
-## Full Codebase Flowchart
-
-Every major directory and its key files. Arrows show the primary dependency direction.
+## Runtime Layers
 
 ```mermaid
 flowchart TB
-    AppJS["**app.js**\nProcess entry point\nMiddleware · route mounting · socket init · listen"]
+    App["app.js\nprocess entry point"]
 
-    subgraph Modules ["modules/ — shared infrastructure"]
-        WebServer["web-server.js\nExpress app · HTTP server\nSocket.IO · Swagger/OpenAPI"]
-        Config["config.js\nenv loading · RSA key gen\nrate-limit · port config"]
-        DB["database.js\ndbGet · dbRun · dbGetAll\nSQLite wrapper"]
-        Crypto["crypto.js\nhashing · signing helpers"]
-        Mail["mail.js\nHandlebars email renderer\nSMTP dispatch"]
-        OIDCMod["oidc.js\nOIDC provider init\nGoogle · Microsoft"]
-        Logger["logger.js\nWinston logger"]
-        Perms["permissions.js\nscopes.js\nscope-resolver.js\nrole-reference.js\nroles.js"]
-        SocketEvtMW["socket-event-middleware.js\nonSocketEvent · hasScope · hasClassScope"]
-        Misc["util.js · pagination.js · proxy-trust.js\npin-validation.js · password-validation.js\ndigipog-transfer.js · error-wrapper.js"]
+    subgraph Entry["Entry layer"]
+        HTTP["api/v1/controllers/**\nREST routes"]
+        Sockets["sockets/**\nSocket.IO"]
+        Middleware["middleware/**\nExpress middleware"]
     end
 
-    subgraph DBLayer ["database/ — persistence bootstrap"]
-        InitJS["init.js\ninitializeDatabase()"]
-        MigrateJS["migrate.js\nexecuteMigration()"]
-        InitSQL["init.sql\nbase schema — do not edit"]
-        SQLMigs["migrations/*.sql\nsequential SQL migrations"]
-        JSMigs["migrations/JSMigrations/*.js\ndata/logic migrations"]
+    subgraph Domain["Domain layer"]
+        Services["services/**\nbusiness rules"]
+        Errors["errors/**\ntyped errors"]
     end
 
-    subgraph HTTPMiddleware ["middleware/ — Express middleware chain"]
-        AuthMW["authentication.js\nisAuthenticated · isVerified\nisIPBanned · refreshIPAccessCache\nsyncUserIntoClassStateStore"]
-        PermCheck["permission-check.js\nhasScope · hasClassScope"]
-        RateLim["rate-limiter.js"]
-        ReqLog["request-logger.js"]
-        ParseJSON["parse-json.js"]
-        ErrHandler["error-handler.js\nnormalizes all thrown errors"]
+    subgraph Support["Support layer"]
+        Modules["modules/**\nshared infrastructure"]
+        Stores["stores/**\nin-memory state"]
+        Database["database/**\nSQLite init + migrations"]
+        Assets["email-templates/**\ndocs/components/schemas/**"]
     end
 
-    subgraph Errors ["errors/ — typed error classes"]
-        AppError["app-error.js"]
-        AuthError["auth-error.js"]
-        ValError["validation-error.js"]
-        ForbidError["forbidden-error.js"]
-        NotFound["not-found-error.js"]
-        Conflict["conflict-error.js"]
-        RateLimitErr["rate-limit-error.js"]
-    end
-
-    subgraph Controllers ["api/v1/controllers/ — REST endpoints"]
-        AuthCtrl["auth/**\nregister · login · refresh\nguest · OIDC providers/callbacks"]
-        OAuthCtrl["oauth/**\nauthorize · token exchange\nrefresh · revoke"]
-        UserCtrl["user/**\nprofile · verify · password\nPIN · API key · ban/unban · delete"]
-        ClassCtrl["class/**\ncreate · enroll · join/leave\nstart/end · settings · student list"]
-        ClassTools["class/polls · break · help\ntimer · links · roles"]
-        DigipogCtrl["digipogs/** · pools/**\ntransfers · awards · pool membership · payout"]
-        AdminCtrl["config · certs · logs · ip\nmanager · notifications · apps"]
-    end
-
-    subgraph Services ["services/ — domain and business logic"]
-        AuthSvc["auth-service.js\nregister · login · token issuance\nOAuth · OIDC · API keys"]
-        UserSvc["user-service.js\nprofile · verification · password\nPIN · email dispatch"]
-        ClassSvc["class-service.js\ncreate · join · start/end\nsettings · code management"]
-        MemberSvc["class-membership-service.js\nenroll · kick · ban"]
-        PollSvc["poll-service.js\ncreate · respond · share\nhistory · runtime state"]
-        RoleSvc["role-service.js\nassign · resolve · class roles"]
-        DigipogSvc["digipog-service.js\ntransfer · award · pools"]
-        InventorySvc["inventory-service.js\nitems · item registry"]
-        NotifSvc["notification-service.js"]
-        AppSvc["app-service.js\nOAuth app registration"]
-        ClassroomSvc["classroom-service.js\nclassStateStore management"]
-        SocketUpdatesSvc["socket-updates-service.js\nSocketUpdates class\nadvancedEmitToClass · emitToUser · classUpdate"]
-        ApiKeySvc["api-key-service.js\nresolveAPIKey · cache"]
-        BootstrapSvc["bootstrap-service.js\nensureFormbarDeveloperPool"]
-        IpSvc["ip-service.js"]
-        LogSvc["log-service.js"]
-        ManagerSvc["manager-service.js"]
-        StudentSvc["student-service.js"]
-    end
-
-    subgraph SocketLayer ["sockets/ — Socket.IO real-time layer"]
-        SocketInit["init.js\ninitSocketRoutes()\nloads middleware then event modules"]
-        subgraph SocketMWGroup ["sockets/middleware/"]
-            SockAuthMW["authentication.js  run()"]
-            SockApiMW["api.js  run()"]
-            SockRateLim["rate-limiter.js  run()"]
-            SockInact["inactivity.js  run()"]
-        end
-        subgraph SocketHandlers ["sockets/ event handlers"]
-            SockClass["class.js\njoin · leave · rooms"]
-            SockUser["user.js · updates.js"]
-            SockBreak["break.js · help.js"]
-            SockDigi["digipogs.js"]
-            SockPolls["polls/poll-creation.js\npolls/poll-response.js\npolls/update-poll.js\npolls/save-poll.js\npolls/share-poll.js\npolls/poll-removal.js"]
-            SockCompat["backwards-compat.js\nlegacy event aliases"]
-        end
-    end
-
-    subgraph Stores ["stores/ — in-memory runtime state"]
-        ClassStore["class-state-store.js\nlive class/session state"]
-        PollStore["poll-runtime-store.js\nactive poll runtime"]
-        SockStore["socket-state-store.js\nconnected socket tracking"]
-        CodeCache["class-code-cache-store.js"]
-        KeyCache["api-key-cache-store.js"]
-    end
-
-    subgraph Assets ["static assets"]
-        EmailTpls["email-templates/\nHandlebars templates\naccount · password · PIN"]
-        OpenAPISchemas["docs/components/schemas/\nOpenAPI YAML components"]
-    end
-
-    %% Entry point wiring
-    AppJS --> WebServer
-    AppJS --> Config
-    AppJS --> InitJS
-    AppJS --> HTTPMiddleware
-    AppJS --> Controllers
-    AppJS --> SocketInit
-
-    %% Database bootstrap
-    InitJS --> InitSQL
-    InitJS --> MigrateJS
-    MigrateJS --> SQLMigs
-    MigrateJS --> JSMigs
-
-    %% HTTP layer
-    Controllers --> HTTPMiddleware
-    Controllers --> Services
-    Controllers --> Errors
-    HTTPMiddleware --> Perms
-    ErrHandler --> Errors
-
-    %% Socket layer
-    SocketInit --> SocketMWGroup
-    SocketInit --> SocketHandlers
-    SocketHandlers --> Services
-    SocketHandlers --> SocketEvtMW
-    SocketEvtMW --> Perms
-
-    %% Service layer
-    Services --> DB
+    App --> HTTP
+    App --> Sockets
+    App --> Middleware
+    HTTP --> Services
+    Sockets --> Services
+    Middleware --> Services
+    HTTP --> Errors
+    Services --> Errors
+    Services --> Modules
     Services --> Stores
-    AuthSvc --> Crypto
-    AuthSvc --> OIDCMod
-    AuthSvc --> Perms
-    UserSvc --> Mail
-    ClassroomSvc --> ClassStore
-    SocketUpdatesSvc --> SockStore
-    PollSvc --> PollStore
-
-    %% Infrastructure
-    DB --> DBLayer
-    Mail --> EmailTpls
-    WebServer --> OpenAPISchemas
-    WebServer --> Logger
-    AppJS --> Logger
+    Modules --> Database
+    Modules --> Assets
 ```
 
----
-
-## Directory and File Inventory
-
-### Root
+## Root Files
 
 | File | Purpose |
 |---|---|
-| `app.js` | Process entry point. Wires all middleware, routes, sockets, and starts the HTTP listener. |
-| `jest.config.js` / `jest.setup.js` | Test runner configuration and global setup. |
-| `package.json` | Dependency list, `scripts` (dev, test, migrate, init-db, format). |
-| `.env-template` | Canonical list of all environment variables. Copy to `.env` to configure. |
+| `app.js` | Starts the process, applies middleware, mounts routes, initializes sockets, starts listening |
+| `package.json` | npm scripts, dependencies, module aliases |
+| `package-lock.json` | Locked dependency versions |
+| `jest.config.js` | Jest configuration |
+| `jest.setup.js` | Test setup |
+| `jsconfig.json` | Editor/module alias support |
+| `.env-template` | Canonical local environment template |
+| `.prettierrc` | Prettier configuration |
+| `.gitignore` | Ignored local/generated files |
+| `README.md` | Public project overview |
+| `LICENSE`, `TERMS.md`, `PRIVACY.md` | Project legal docs |
 
----
+## `api/v1/controllers/`
 
-### `api/v1/controllers/`
+REST route modules. Each live route file exports a function that receives an Express router. `app.js` loads these files dynamically.
 
-Versioned REST route handlers. Each file exports a registration function loaded by `app.js`. Skips files named `*.spec.js` and `controller-template.js`.
-
-| Route group | Directory |
+| Area | Files |
 |---|---|
-| Auth (register, login, refresh, guest, OIDC) | `auth/` |
-| OAuth (authorize, token, refresh, revoke) | `oauth/` |
-| Users (profile, verify, password, PIN, API key, ban) | `user/` |
-| Classes (create, enroll, join, start/end, settings) | `class/` |
-| Class tools (polls, break, help, timer, links, roles) | `class/polls/` `class/break/` etc. |
-| Digipogs and pools | `digipogs/` `pools/` |
-| System/admin | `config.js` `logs.js` `ip.js` `manager/` `notifications/` `apps/` |
+| Auth | `auth/register.js`, `auth/login.js`, `auth/refresh.js`, `auth/guest.js`, `auth/oidc/providers.js` |
+| OAuth | `oauth/authorize.js`, `oauth/token.js`, `oauth/revoke.js` |
+| Apps | `apps/register-app.js` |
+| User profile and account | `user/user.js`, `user/me/me.js`, `user/me/password.js`, `user/delete.js`, `user/verify.js` |
+| User roles and access | `user/perm.js`, `user/scopes.js`, `user/ban.js`, `user/api/regenerate.js` |
+| User class/pool/transaction data | `user/class.js`, `user/classes.js`, `user/pools.js`, `user/transactions.js` |
+| User PIN | `user/pin/pin.js`, `user/pin/reset.js`, `user/pin/verify.js` |
+| Classes | `class/create.js`, `class/class.js`, `class/delete.js`, `class/start.js`, `class/end.js`, `class/active.js`, `class/settings.js` |
+| Class membership | `class/enroll.js`, `class/join.js`, `class/leave.js`, `class/unenroll.js`, `class/kick.js`, `class/banned.js`, `class/students.js`, `class/regenerate-code.js` |
+| Class polls | `class/polls/create.js`, `current.js`, `response.js`, `end.js`, `clear.js`, `polls.js` |
+| Class breaks | `class/break/request.js`, `approve.js`, `deny.js`, `end.js` |
+| Class help | `class/help/request.js`, `delete.js` |
+| Class links | `class/links/add.js`, `change.js`, `links.js`, `remove.js` |
+| Class roles | `class/roles/roles.js`, `class/roles/assign.js` |
+| Class timer | `class/timer/start.js`, `pause.js`, `resume.js`, `end.js`, `clear.js`, `timer.js` |
+| Digipogs | `digipogs/award.js`, `digipogs/transfer.js` |
+| Pools | `pools/create.js`, `add-member.js`, `remove-member.js`, `payout.js`, `delete.js` |
+| Notifications | `notifications/get-notifications.js`, `mark-notification-read.js`, `delete-notification.js` |
+| System/admin | `config.js`, `certs.js`, `logs.js`, `ip.js`, `manager/manager.js`, `api-permission-check.js` |
+| Example only | `controller-template.js` |
 
----
+Tests for these routes live in `api/v1/controllers/tests/**`.
 
-### `services/`
+## `services/`
 
-All domain and business logic. Called by controllers, socket handlers, and tests. Do not call `modules/database.js` directly from a controller — route through a service.
+Business logic shared by controllers, sockets, tests, and startup.
 
 | File | Responsibility |
 |---|---|
-| `auth-service.js` | Registration, login, tokens, refresh, OAuth/OIDC flows |
-| `user-service.js` | Profile, verification, password, PIN, email |
-| `class-service.js` | Class lifecycle, join/leave, settings, codes |
-| `class-membership-service.js` | Enroll, kick, ban |
-| `classroom-service.js` | `classStateStore` CRUD for live session state |
-| `poll-service.js` | Poll create/respond/share/history, runtime store |
-| `role-service.js` | Role assignment, resolution, class roles |
-| `digipog-service.js` | Digipog transfers, awards, pools |
-| `inventory-service.js` | Items and item registry |
-| `notification-service.js` | User notifications |
-| `app-service.js` | OAuth app registration and lookup |
-| `socket-updates-service.js` | `SocketUpdates` class — all emit helpers |
-| `api-key-service.js` | API key resolution and caching |
-| `bootstrap-service.js` | Startup-time data seeding |
-| `ip-service.js` | IP allowlist/denylist management |
-| `log-service.js` | Log query helpers |
-| `manager-service.js` | Admin dashboard data |
-| `student-service.js` | Student-specific queries |
+| `api-key-service.js` | API key hashing, lookup, and cache behavior |
+| `app-service.js` | External app registration, secrets, redirect URIs |
+| `auth-service.js` | Register, login, JWTs, refresh, guest auth, OAuth token flow |
+| `bootstrap-service.js` | Startup data seeding |
+| `class-membership-service.js` | Enrollment, joins, leaves, kicks, bans |
+| `class-service.js` | Class lifecycle, class settings, codes, timers, active state |
+| `classroom-service.js` | Live class/user state wrappers around `class-state-store` |
+| `digipog-service.js` | Transfers, awards, pools, payouts, transactions |
+| `inventory-service.js` | Item registry and inventory |
+| `ip-service.js` | IP allowlist/denylist persistence |
+| `log-service.js` | Querying logs |
+| `manager-service.js` | Manager/admin dashboard data |
+| `notification-service.js` | Notifications |
+| `poll-service.js` | Active polls, responses, saved polls, sharing, history |
+| `role-service.js` | Global roles, class roles, scope assignment |
+| `socket-updates-service.js` | `SocketUpdates` emit helpers |
+| `student-service.js` | Student-shaped user/class data |
+| `user-service.js` | User profile, verification, password, PIN, email |
 
----
+Tests live in `services/tests/**`.
 
-### `sockets/`
+## `sockets/`
 
-Real-time Socket.IO layer. `init.js` loads `sockets/middleware/` by `order` value, then all `*.js` files recursively (skipping `init.js`, `middleware/`, and `tests/`). Every event module must export `run(socket, socketUpdates)`.
+Socket.IO realtime layer.
 
-| File | Events handled |
+| File | Responsibility |
 |---|---|
-| `class.js` | Join/leave class, room management |
-| `user.js` | User-level socket events |
-| `updates.js` | Class state update pushes |
-| `break.js` | Break flow |
-| `help.js` | Help request flow |
-| `digipogs.js` | Digipog socket events |
-| `backwards-compat.js` | Legacy event name aliases |
-| `polls/poll-creation.js` | Create poll |
+| `init.js` | Loads socket middleware and event modules for each connection |
+| `class.js` | Join/leave class rooms and class session realtime behavior |
+| `user.js` | User socket events |
+| `updates.js` | Class update events |
+| `break.js` | Break realtime behavior |
+| `help.js` | Help request realtime behavior |
+| `digipogs.js` | Digipog realtime behavior |
+| `backwards-compat.js` | Legacy socket aliases |
+| `polls/poll-creation.js` | Create active poll |
 | `polls/poll-response.js` | Submit poll response |
 | `polls/update-poll.js` | Update active poll |
-| `polls/save-poll.js` | Save custom poll |
-| `polls/share-poll.js` | Share poll to class |
+| `polls/save-poll.js` | Save poll template |
+| `polls/share-poll.js` | Share poll |
 | `polls/poll-removal.js` | Remove poll |
 
-Socket middleware runs first in sorted `order`:
+Socket middleware:
 
-| File | Role |
+| File | Responsibility |
 |---|---|
-| `middleware/authentication.js` | Authenticate socket user |
+| `middleware/authentication.js` | Socket authentication |
 | `middleware/api.js` | API socket compatibility |
-| `middleware/rate-limiter.js` | Per-socket rate limiting |
 | `middleware/inactivity.js` | Inactivity tracking |
+| `middleware/rate-limiter.js` | Socket rate limiting |
 
----
+Tests live in `sockets/tests/**`.
 
-### `middleware/`
+## `middleware/`
 
-Express middleware applied globally in `app.js`. Order matters: logger → rate limiter → session → parsers → IP check → routes → 404 → error handler.
+Express middleware used by HTTP requests.
 
-| File | Role |
+| File | Responsibility |
 |---|---|
-| `request-logger.js` | Per-request logging |
-| `rate-limiter.js` | IP/user rate limiting |
-| `parse-json.js` | Body parsing |
-| `authentication.js` | Token/API key auth, `req.user` hydration |
-| `permission-check.js` | `hasScope()`, `hasClassScope()` |
-| `error-handler.js` | Normalize all thrown errors to JSON |
+| `request-logger.js` | Logs each request and attaches request logging helpers |
+| `rate-limiter.js` | Request rate limiting |
+| `parse-json.js` | JSON parsing helper for routes that need explicit parsing |
+| `authentication.js` | API key/JWT auth, email verification, IP allow/deny cache |
+| `permission-check.js` | Scope and class membership middleware |
+| `error-handler.js` | Converts thrown errors into JSON responses |
 
----
+Tests live in `middleware/tests/**`.
 
-### `modules/`
+## `modules/`
 
-Shared infrastructure. Never contains domain business logic — that lives in `services/`.
+Shared infrastructure and utilities.
 
-| File | Role |
+| File | Responsibility |
 |---|---|
-| `web-server.js` | Creates Express + HTTP + Socket.IO + Swagger |
-| `config.js` | Reads `.env`, generates RSA keys, exposes `settings` |
-| `database.js` | `dbGet`, `dbRun`, `dbGetAll` — all SQLite access |
-| `crypto.js` | Hashing, comparison helpers |
-| `mail.js` | Renders Handlebars templates and dispatches email |
-| `oidc.js` | OIDC provider initialization |
-| `logger.js` | Winston-based logger |
-| `permissions.js` | Scope-to-permission-level mapping |
-| `scopes.js` | Scope string constants |
-| `scope-resolver.js` | Effective scope resolution for a user |
-| `roles.js` / `role-reference.js` | Global and class role definitions |
-| `socket-event-middleware.js` | `onSocketEvent()`, socket-level `hasScope()` |
-| `util.js` | General-purpose helpers |
+| `web-server.js` | Creates Express, HTTP, Socket.IO, and Swagger docs |
+| `config.js` | Reads env settings, creates `.env`, loads/generates RSA keys |
+| `database.js` | SQLite helpers: `dbGet`, `dbRun`, `dbGetAll` |
+| `crypto.js` | Hashing and comparison helpers |
+| `mail.js` | Renders and sends email |
+| `oidc.js` | OIDC provider setup |
+| `logger.js` | Winston logger setup |
+| `permissions.js` | Permission summaries from scopes |
+| `scopes.js` | Scope constants |
+| `scope-resolver.js` | Effective scope resolution |
+| `roles.js` | Role helpers |
+| `role-reference.js` | Role reference data |
+| `socket-event-middleware.js` | Socket event guards and wrappers |
+| `socket-error-handler.js` | Socket error formatting |
 | `pagination.js` | Pagination helpers |
-| `proxy-trust.js` | Express proxy trust configuration |
-| `pin-validation.js` | PIN format rules |
-| `password-validation.js` | Password format rules |
-| `digipog-transfer.js` | Digipog transfer computation |
-| `error-wrapper.js` | Wraps async route handlers |
+| `proxy-trust.js` | Express proxy trust parsing |
+| `password-validation.js` | Password rules |
+| `pin-validation.js` | PIN rules |
+| `digipog-transfer.js` | Digipog transfer calculation |
+| `error-wrapper.js` | Async route wrapper |
+| `util.js` | General helpers |
 
----
+Tests live in `modules/tests/**`.
 
-### `stores/`
+Shared test helpers live in `modules/test-helpers/**`.
 
-In-memory caches. Data here does not survive process restart. If state must survive restart, it belongs in the database.
+## `stores/`
 
-| File | What it holds |
+In-memory state. Data here is lost on restart.
+
+| File | Holds |
 |---|---|
-| `class-state-store.js` | Live class/session objects |
+| `class-state-store.js` | Live class and user state |
 | `poll-runtime-store.js` | Active poll state and answers |
-| `socket-state-store.js` | Active socket connections |
-| `class-code-cache-store.js` | Class code → class ID mapping |
-| `api-key-cache-store.js` | API key → user cache |
+| `socket-state-store.js` | Connected sockets and last activity |
+| `class-code-cache-store.js` | Class code to class ID cache |
+| `api-key-cache-store.js` | API key lookup cache |
 
----
+## `database/`
 
-### `database/`
+SQLite setup and migration history.
 
-| File/Directory | Role |
+| File Or Folder | Responsibility |
 |---|---|
-| `init.sql` | Base schema. **Do not edit.** |
-| `init.js` | Creates `database.db` from `init.sql` and runs migrations |
-| `migrate.js` | Collects and applies `.sql` and `.js` migrations in filename order |
-| `migrations/*.sql` | SQL DDL/DML migration history |
-| `migrations/JSMigrations/*.js` | Data or logic migrations in JavaScript |
+| `init.sql` | Base schema for new local DBs |
+| `init.js` | Creates `database/database.db` and runs migrations |
+| `migrate.js` | Runs all migrations |
+| `items.csv` | Item seed/source data used by item migration logic |
+| `modules/crypto.js` | Legacy crypto helper used by old migration code |
+| `migrations/*.sql` | SQL migrations |
+| `migrations/JSMigrations/*.js` | JS migrations |
 
----
+Do not edit `init.sql` or old migrations for new schema work.
 
-### `errors/`
+## `errors/`
 
-Typed error classes consumed by `middleware/error-handler.js`. Throw these from services and controllers rather than raw `Error` objects.
+Typed error classes:
 
-`AppError` · `AuthError` · `ValidationError` · `ForbiddenError` · `NotFoundError` · `ConflictError` · `RateLimitError`
+- `app-error.js`
+- `auth-error.js`
+- `conflict-error.js`
+- `forbidden-error.js`
+- `not-found-error.js`
+- `rate-limit-error.js`
+- `validation-error.js`
 
----
+Throw these from services and controllers so `middleware/error-handler.js` can return consistent HTTP errors.
 
-### `email-templates/`
+## Supporting Docs And Assets
 
-Handlebars templates rendered by `modules/mail.js`. One template per email type (account verification, password reset, PIN reset/verify).
+| Path | Purpose |
+|---|---|
+| `email-templates/password-reset.hbs` | Password reset email |
+| `email-templates/pin-reset.hbs` | PIN reset email |
+| `email-templates/verify-email.hbs` | Email verification email |
+| `docs/components/schemas/Class.yaml` | OpenAPI class schema |
+| `docs/components/schemas/Error.yaml` | OpenAPI error schema |
+| `docs/components/schemas/Notification.yaml` | OpenAPI notification schema |
+| `docs/components/schemas/Permission.yaml` | OpenAPI permission schema |
+| `docs/components/schemas/User.yaml` | OpenAPI user schema |
 
----
+## Test Inventory
 
-### `docs/components/schemas/`
-
-OpenAPI YAML schema components. Referenced by JSDoc annotations in controllers and loaded by `modules/web-server.js` when building the Swagger UI at `/docs`.
-
----
-
-### `tests/`
-
-Tests are co-located with the code they cover:
-
-| Test location | What it covers |
+| Location | Covers |
 |---|---|
 | `api/v1/controllers/tests/*.spec.js` | REST endpoint behavior |
-| `services/tests/*.spec.js` | Service-layer logic |
-| `sockets/tests/*.spec.js` | Socket event handling |
+| `services/tests/*.spec.js` | Service behavior |
+| `sockets/tests/*.spec.js` | Socket behavior |
 | `middleware/tests/*.spec.js` | Middleware behavior |
-| `modules/tests/*.spec.js` | Module utilities |
-| `modules/test-helpers/` | Shared Supertest app factory, test DB schema, request helpers |
+| `modules/tests/*.spec.js` | Shared module behavior |
+| `modules/test-helpers/db.js` | Test DB helpers |
+| `modules/test-helpers/test-schema.sql` | Test DB schema |
+| `modules/test-helpers/role-seeding.js` | Test role seed helpers |
+
+## Quick Ownership Guide
+
+| If You See A Bug In... | Look First In... |
+|---|---|
+| Login or refresh | `services/auth-service.js`, `middleware/authentication.js` |
+| API key access | `services/api-key-service.js` |
+| A REST endpoint | Matching file under `api/v1/controllers/**`, then the service it calls |
+| A socket event | Matching file under `sockets/**`, then the service it calls |
+| Class membership | `services/class-membership-service.js` |
+| Class state after restart | `services/class-service.js`, `stores/class-state-store.js`, database queries |
+| Poll responses | `services/poll-service.js`, `sockets/polls/**`, class poll controllers |
+| Role/scopes | `services/role-service.js`, `modules/scopes.js`, `modules/scope-resolver.js` |
+| Email | `modules/mail.js`, `email-templates/**`, `services/user-service.js` |
+| Swagger docs | Controller JSDoc, `docs/components/schemas/**`, `modules/web-server.js` |
