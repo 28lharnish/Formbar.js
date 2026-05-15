@@ -84,7 +84,7 @@ docs/onboarding/html/index.html
 After editing any onboarding markdown file, rebuild the HTML docs with:
 
 ```bash
-node docs/onboarding/build-html.js
+npm run build:docs
 ```
 
 Run tests:
