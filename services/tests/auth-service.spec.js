@@ -91,15 +91,20 @@ async function seedUser(overrides = {}) {
 }
 
 async function seedOAuthClient(redirectUri = OAUTH_REDIRECT_URI) {
-    await mockDatabase.dbRun(
-        "INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?, ?)",
-        [Number(OAUTH_CLIENT_ID), "OAuth App", "Test app", 1, 1, 1]
-    );
+    await mockDatabase.dbRun("INSERT INTO apps (id, name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?, ?)", [
+        Number(OAUTH_CLIENT_ID),
+        "OAuth App",
+        "Test app",
+        1,
+        1,
+        1,
+    ]);
     // Store the API key in the new api_keys table
-    await mockDatabase.dbRun(
-        "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
-        [sha256(OAUTH_API_KEY), Number(OAUTH_CLIENT_ID), "app"]
-    );
+    await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [
+        sha256(OAUTH_API_KEY),
+        Number(OAUTH_CLIENT_ID),
+        "app",
+    ]);
     await mockDatabase.dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [Number(OAUTH_CLIENT_ID), redirectUri]);
 }
 

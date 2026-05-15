@@ -1,6 +1,5 @@
 const { createTestDb } = require("@test-helpers/db");
 
-
 let mockDatabase;
 
 jest.mock("@modules/database", () => ({
@@ -32,14 +31,10 @@ afterAll(async () => {
 });
 
 async function seedUser(apiHash, email = "api-key-user@test.com") {
-    const userId = await mockDatabase.dbRun("INSERT INTO users (email, password, secret, displayName, digipogs, verified) VALUES (?, ?, ?, ?, ?, ?)", [
-        email,
-        "hashed-password",
-        `${email}-secret`,
-        email,
-        0,
-        1,
-    ]);
+    const userId = await mockDatabase.dbRun(
+        "INSERT INTO users (email, password, secret, displayName, digipogs, verified) VALUES (?, ?, ?, ?, ?, ?)",
+        [email, "hashed-password", `${email}-secret`, email, 0, 1]
+    );
 
     await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [apiHash, userId, "user"]);
 
@@ -103,10 +98,11 @@ describe("resolveAPIKey()", () => {
 
     it("returns null when a hash lookup resolves to an unsupported entity type", async () => {
         const apiKey = "app-key";
-        await mockDatabase.dbRun(
-            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
-            [sha256(apiKey), 123, "unsupported"]
-        );
+        await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [
+            sha256(apiKey),
+            123,
+            "unsupported",
+        ]);
         apiKeyCacheStore.get.mockReturnValue(undefined);
 
         const entity = await resolveAPIKey(apiKey);
@@ -116,10 +112,7 @@ describe("resolveAPIKey()", () => {
 
     it("returns null when a hash lookup points at a deleted entity", async () => {
         const apiKey = "deleted-user-key";
-        await mockDatabase.dbRun(
-            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
-            [sha256(apiKey), 999999, "user"]
-        );
+        await mockDatabase.dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [sha256(apiKey), 999999, "user"]);
         apiKeyCacheStore.get.mockReturnValue(undefined);
 
         const entity = await resolveAPIKey(apiKey);

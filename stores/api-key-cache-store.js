@@ -25,7 +25,7 @@ class ApiKeyCacheStore {
             return undefined;
         }
 
-        return {type: entry.entityType, id: entry.entityId};
+        return { type: entry.entityType, id: entry.entityId };
     }
 
     /**
@@ -44,7 +44,7 @@ class ApiKeyCacheStore {
 
         const entityKey = `${entityType}:${entityId}`;
         this._entityMap.set(entityKey, {
-            apiKey: apiKey
+            apiKey: apiKey,
         });
     }
 
@@ -60,7 +60,6 @@ class ApiKeyCacheStore {
         this._entityMap.delete(`${entry.entityType}:${entry.entityId}`);
         this._cache.delete(apiKey);
     }
-    
 
     /**
      * Clear every cached API key lookup.
@@ -87,7 +86,6 @@ class ApiKeyCacheStore {
             this._entityMap.delete(entityKey);
         }
     }
-
 }
 
 const apiKeyCacheStore = new ApiKeyCacheStore();

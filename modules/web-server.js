@@ -44,6 +44,7 @@ function createServer() {
                 { name: "OAuth", description: "OAuth 2.0 authorization flow", "x-order": 14 },
                 { name: "Apps", description: "Application registration and management", "x-order": 15 },
                 { name: "Pools", description: "Digipog pool management", "x-order": 16 },
+                { name: "Trades", description: "User-to-user item and digipog trade system", "x-order": 17 },
             ],
             components: {
                 securitySchemes: {
