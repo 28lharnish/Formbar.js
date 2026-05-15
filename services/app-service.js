@@ -65,10 +65,13 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
         });
         const poolId = await createPool({ name: `${name} Developer Pool`, description, ownerId });
 
-        const appId = await dbRun(
-            "INSERT INTO apps (name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?)",
-            [name, description, ownerId, shareItemId, poolId]
-        );
+        const appId = await dbRun("INSERT INTO apps (name, description, owner_user_id, share_item_id, pool_id) VALUES (?, ?, ?, ?, ?)", [
+            name,
+            description,
+            ownerId,
+            shareItemId,
+            poolId,
+        ]);
 
         for (const redirectUri of normalizedRedirectUris) {
             await dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [appId, redirectUri]);
@@ -78,11 +81,8 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
         const apiKey = crypto.randomBytes(64).toString("hex");
         const apiSecret = crypto.randomBytes(256).toString("hex");
         const apiKeyHash = sha256(apiKey);
-        
-        await dbRun(
-            "INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)",
-            [apiKeyHash, appId, "app"]
-        );
+
+        await dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [apiKeyHash, appId, "app"]);
 
         await addItemToInventory(ownerId, shareItemId, SHARES_PER_APP);
         await dbRun("COMMIT");
@@ -129,17 +129,17 @@ async function validateOAuthClientRedirect({ clientId, redirectUri }) {
  * @param {Object} params - params.
  * @returns {Promise<*>}
  */
-async function validateOAuthAPIKey({ clientId, redirectUri, apiKey}) {
+async function validateOAuthAPIKey({ clientId, redirectUri, apiKey }) {
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
         return null;
     }
-    
+
     const app = await resolveAPIKey(apiKey);
     if (!app) {
         return null;
     }
 
-    return (app.id === Number(clientId)) ? { ...app, redirectUri } : null;
+    return app.id === Number(clientId) ? { ...app, redirectUri } : null;
 }
 
 module.exports = {

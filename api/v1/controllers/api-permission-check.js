@@ -103,7 +103,7 @@ module.exports = (router) => {
         if (!user) {
             throw new ForbiddenError("Invalid API key.", { event: "api.permission.check.failed", reason: "invalid_api_key" });
         }
-        
+
         if (!user.loggedIn) {
             throw new ForbiddenError("User is not logged in.", { event: "api.permission.check.failed", reason: "not_logged_in" });
         }

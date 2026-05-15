@@ -494,8 +494,6 @@ function getUserClass(email) {
     }
 }
 
-
-
 /**
  * Gets the current user's data including class/session info.
  * @param {Object} userIdentifier - User lookup data.

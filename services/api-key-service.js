@@ -1,15 +1,15 @@
 const { dbGet, dbRun } = require("@modules/database");
-const {sha256 } = require("@modules/crypto");
+const { sha256 } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { getUserDataFromDb } = require("@services/user-service");
-const {randomBytes} = require("crypto");
+const { randomBytes } = require("crypto");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
 // maps entity types to functions that can resolve them by ID
 const entityResolvers = {
-    "user": getUserDataFromDb,
+    user: getUserDataFromDb,
 };
 
 // Lazy load app resolver to avoid circular dependency
@@ -19,7 +19,7 @@ Object.defineProperty(entityResolvers, "app", {
         return getAppById;
     },
     configurable: true,
-})
+});
 
 /**
  * Normalize a raw API key value from headers, query strings, or request bodies.
@@ -73,7 +73,11 @@ async function regenerateAPIKey(entityType, entityId) {
     const apiKey = randomBytes(32).toString("hex");
     const hashedAPIKey = hashAPIKey(apiKey);
     if (existingAPIKey) {
-        await dbRun("UPDATE api_keys SET api_key_hash = ?, created_at = CURRENT_TIMESTAMP WHERE entity_id = ? AND entity_type = ?", [hashedAPIKey, entityId, entityType]);
+        await dbRun("UPDATE api_keys SET api_key_hash = ?, created_at = CURRENT_TIMESTAMP WHERE entity_id = ? AND entity_type = ?", [
+            hashedAPIKey,
+            entityId,
+            entityType,
+        ]);
     } else {
         await dbRun("INSERT INTO api_keys (api_key_hash, entity_id, entity_type) VALUES (?, ?, ?)", [hashedAPIKey, entityId, entityType]);
     }
@@ -100,16 +104,9 @@ async function resolveAPIKey(rawAPIKey) {
     // Check the cache for this API key before hitting the database
     const cachedEntity = apiKeyCacheStore.get(apiKey);
     if (cachedEntity) {
-        const shaEntity = await dbGet(
-            "SELECT entity_id, entity_type FROM api_keys WHERE api_key_hash = ?",
-            [apiKeyHash]
-        );
+        const shaEntity = await dbGet("SELECT entity_id, entity_type FROM api_keys WHERE api_key_hash = ?", [apiKeyHash]);
 
-        if (
-            !shaEntity ||
-            shaEntity.entity_id !== cachedEntity.id ||
-            shaEntity.entity_type !== cachedEntity.type
-        ) {
+        if (!shaEntity || shaEntity.entity_id !== cachedEntity.id || shaEntity.entity_type !== cachedEntity.type) {
             apiKeyCacheStore.invalidateByAPIKey(apiKey);
         } else {
             const resolver = entityResolvers[cachedEntity.type];
