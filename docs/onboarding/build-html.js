@@ -57,6 +57,39 @@ const pages = [
 
 const pageBySource = new Map(pages.map((page) => [page.source.toLowerCase(), page]));
 
+/** Content between these markers is kept in markdown sources but omitted from generated HTML. */
+const OMIT_FROM_HTML_START = /<!--\s*omit-from-onboarding-html:start\s*-->/;
+const OMIT_FROM_HTML_END = /<!--\s*omit-from-onboarding-html:end\s*-->/;
+
+function stripOmitFromHtmlSections(markdown) {
+    const text = String(markdown).replace(/\r\n/g, "\n");
+    let result = "";
+    let pos = 0;
+
+    while (pos < text.length) {
+        const slice = text.slice(pos);
+        const startMatch = slice.match(OMIT_FROM_HTML_START);
+        if (!startMatch || startMatch.index === undefined) {
+            result += slice;
+            break;
+        }
+
+        const startIndex = pos + startMatch.index;
+        result += text.slice(pos, startIndex);
+        const afterStart = startIndex + startMatch[0].length;
+        const tail = text.slice(afterStart);
+        const endMatch = tail.match(OMIT_FROM_HTML_END);
+        if (!endMatch || endMatch.index === undefined) {
+            result += text.slice(startIndex);
+            break;
+        }
+
+        pos = afterStart + endMatch.index + endMatch[0].length;
+    }
+
+    return result.replace(/\n{3,}/g, "\n\n");
+}
+
 function escapeHtml(value) {
     return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
@@ -441,7 +474,8 @@ function build() {
     fs.mkdirSync(OUT_DIR, { recursive: true });
 
     pages.forEach((page, index) => {
-        const markdown = fs.readFileSync(path.join(ROOT_DIR, page.source), "utf8");
+        const rawMarkdown = fs.readFileSync(path.join(ROOT_DIR, page.source), "utf8");
+        const markdown = stripOmitFromHtmlSections(rawMarkdown);
         const parsed = renderMarkdown(markdown);
         const html = renderPage(page, parsed, index);
         fs.writeFileSync(path.join(OUT_DIR, page.output), html, "utf8");

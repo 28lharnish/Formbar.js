@@ -1,5 +1,6 @@
 # Formbar.js Onboarding
 
+<!-- omit-from-onboarding-html:start -->
 > **HTML docs are generated, not committed.** Run the following command from the repo root to build them:
 >
 > ```bash
@@ -9,6 +10,7 @@
 > Then open `docs/onboarding/html/index.html` in a browser.
 >
 > **This is the recommended way of viewing these documents.**
+<!-- omit-from-onboarding-html:end -->
 
 Start here if you are new to this project.
 
