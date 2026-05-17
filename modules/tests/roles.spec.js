@@ -41,6 +41,10 @@ describe("ROLES", () => {
         }
     });
 
+    it("Student class scopes include class.timer.read", () => {
+        expect(ROLES.Student.class).toContain(SCOPES.CLASS.TIMER.READ);
+    });
+
     it("Mod inherits all Student class scopes", () => {
         for (const scope of ROLES.Student.class) {
             expect(ROLES.Mod.class).toContain(scope);
