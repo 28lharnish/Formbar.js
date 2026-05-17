@@ -185,6 +185,30 @@ describe("POST /api/v1/class/:id/polls/templates/user", () => {
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
     });
+
+    it("returns 400 when prompt is missing", async () => {
+        const { classId, teacherTokens } = await setupClassWithTeacher();
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/polls/templates/user`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ ...templateBody, prompt: "   " });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 when answers are empty", async () => {
+        const { classId, teacherTokens } = await setupClassWithTeacher();
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/polls/templates/user`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ ...templateBody, answers: [] });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
 });
 
 describe("GET /api/v1/class/:id/polls/templates/class", () => {

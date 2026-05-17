@@ -505,6 +505,18 @@ describe("saveUserPollTemplate", () => {
     it("throws when name is empty", async () => {
         await expect(saveUserPollTemplate(1, { name: "  ", prompt: "Q", answers: [] }, teacherSession)).rejects.toThrow("Poll name is required");
     });
+
+    it("throws when prompt is empty", async () => {
+        await expect(saveUserPollTemplate(1, { name: "Poll", prompt: "  ", answers: [{ answer: "A" }] }, teacherSession)).rejects.toThrow(
+            "Poll prompt is required."
+        );
+    });
+
+    it("throws when answers are missing", async () => {
+        await expect(saveUserPollTemplate(1, { name: "Poll", prompt: "Q", answers: [] }, teacherSession)).rejects.toThrow(
+            "At least one poll answer is required."
+        );
+    });
 });
 
 describe("saveClassPollTemplate", () => {
@@ -534,7 +546,7 @@ describe("saveClassPollTemplate", () => {
 
         const row = await mockDatabase.dbGet("SELECT * FROM class_polls WHERE pollId=? AND classId=?", [result.pollId, classId]);
         expect(row).toBeTruthy();
-        expect(mockClassrooms[classId].students["teacher@test.com"].ownedPolls).toEqual([]);
+        expect(mockClassrooms[classId].students["teacher@test.com"].ownedPolls).toContain(result.pollId);
     });
 });
 

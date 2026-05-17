@@ -1,7 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 
 const { generateColors } = require("@modules/util");
-const { advancedEmitToClass, invalidateClassPollCache } = require("@services/socket-updates-service");
+const { advancedEmitToClass, invalidateClassPollCache, userUpdateSocket } = require("@services/socket-updates-service");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
@@ -215,14 +215,7 @@ function isAutoEndThresholdMet(classroom) {
  */
 function emitCustomPollUpdate(email) {
     if (!email) return;
-
-    const userSockets = userSocketUpdates.get(email);
-    if (userSockets && userSockets.size > 0) {
-        const firstSocketUpdates = userSockets.values().next().value;
-        if (firstSocketUpdates && typeof firstSocketUpdates.customPollUpdate === "function") {
-            firstSocketUpdates.customPollUpdate(email);
-        }
-    }
+    userUpdateSocket(email, "customPollUpdate", email);
 }
 
 function emitClassUpdate(classId, userSession) {
@@ -858,6 +851,15 @@ async function insertCustomPollTemplate(userId, pollData) {
         throw new ValidationError("Poll name is required.");
     }
 
+    const prompt = typeof pollData.prompt === "string" ? pollData.prompt.trim() : "";
+    if (!prompt) {
+        throw new ValidationError("Poll prompt is required.");
+    }
+
+    if (!Array.isArray(pollData.answers) || pollData.answers.length === 0) {
+        throw new ValidationError("At least one poll answer is required.");
+    }
+
     const textRes = pollData.textRes != null ? (pollData.textRes ? 1 : 0) : pollData.allowTextResponses ? 1 : 0;
 
     return dbRun(
@@ -865,8 +867,8 @@ async function insertCustomPollTemplate(userId, pollData) {
         [
             userId,
             name,
-            pollData.prompt ?? "",
-            JSON.stringify(pollData.answers ?? []),
+            prompt,
+            JSON.stringify(pollData.answers),
             textRes,
             pollData.blind ? 1 : 0,
             pollData.allowVoteChanges !== false ? 1 : 0,
@@ -941,7 +943,8 @@ async function saveClassPollTemplate(classId, pollData, userSession) {
     requireInternalParam(userSession, "userSession");
 
     const userId = userSession.userId ?? userSession.id;
-    getClassroom(classId);
+    const email = userSession.email;
+    const classroom = getClassroom(classId);
 
     const classroomRow = await dbGet("SELECT * FROM classroom WHERE id=?", [classId]);
     if (!classroomRow) {
@@ -951,6 +954,16 @@ async function saveClassPollTemplate(classId, pollData, userSession) {
     const pollId = await insertCustomPollTemplate(userId, pollData);
     await dbRun("INSERT INTO class_polls (pollId, classId) VALUES (?, ?)", [pollId, classroomRow.id]);
     invalidateClassPollCache(classroomRow.id);
+
+    if (email && classroom.students[email]) {
+        classStateStore.updateClassroomStudent(classId, email, (student) => {
+            if (!Array.isArray(student.ownedPolls)) {
+                student.ownedPolls = [];
+            }
+            student.ownedPolls.push(pollId);
+        });
+    }
+
     emitCustomPollUpdateForClass(classId);
 
     return {
