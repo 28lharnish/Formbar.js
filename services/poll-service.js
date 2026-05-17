@@ -139,6 +139,19 @@ function normalizeThresholdPercent(value) {
     return Math.min(threshold > 1 ? threshold / 100 : threshold, 1);
 }
 
+/**
+ * Whether clearing should insert a poll_history row for a poll that was never formally ended.
+ * @param {Object|null|undefined} poll - The in-memory poll snapshot about to be cleared.
+ * @returns {boolean} True when the poll is active or has a prompt or response options.
+ */
+function shouldArchivePollOnClear(poll) {
+    if (!poll) return false;
+    if (poll.status) return true;
+    const hasPrompt = typeof poll.prompt === "string" && poll.prompt.trim() !== "";
+    const hasResponses = Array.isArray(poll.responses) && poll.responses.length > 0;
+    return hasPrompt || hasResponses;
+}
+
 function hasStudentAnsweredPoll(student) {
     if (!student || !student.pollRes) return false;
 
@@ -548,7 +561,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     const savedPollResponses = pollSnapshot.responses;
 
     // If this poll was never ended, create a history row now so clear-without-end still archives.
-    if (!currentPollId) {
+    if (!currentPollId && shouldArchivePollOnClear(pollSnapshot)) {
         currentPollId = await savePollToHistory(classId, pollSnapshot);
     }
 
