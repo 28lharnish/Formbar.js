@@ -32,12 +32,18 @@ jest.mock("@services/classroom-service", () => ({
     classStateStore: {
         getClassroom: jest.fn((id) => mockClassrooms[id] || null),
         getUser: jest.fn(),
+        updateClassroomStudent: jest.fn((classId, email, updater) => {
+            const classroom = mockClassrooms[classId];
+            if (!classroom?.students?.[email]) return;
+            updater(classroom.students[email]);
+        }),
     },
 }));
 
 jest.mock("@services/socket-updates-service", () => ({
     advancedEmitToClass: jest.fn(),
     userUpdateSocket: jest.fn(),
+    invalidateClassPollCache: jest.fn(),
 }));
 
 jest.mock("../../sockets/init", () => ({
@@ -64,6 +70,10 @@ const {
     sendPollResponse,
     getPollResponses,
     deleteCustomPolls,
+    saveUserPollTemplate,
+    saveClassPollTemplate,
+    getUserPollTemplates,
+    getClassPollTemplates,
     getPreviousPolls,
     getCurrentPoll,
 } = require("@services/poll-service");
@@ -401,6 +411,130 @@ describe("getPollResponses", () => {
         );
 
         expect(result["Yes"].isCorrect).toBe(true);
+    });
+});
+
+describe("getUserPollTemplates", () => {
+    it("returns owned, shared, and public polls", async () => {
+        const ownedId = await mockDatabase.dbRun(
+            `INSERT INTO custom_polls (owner, name, prompt, answers, textRes, blind, allowVoteChanges, allowMultipleResponses, weight, public)
+             VALUES (?, ?, 'owned', '[]', 0, 0, 1, 0, 1, 0)`,
+            [42, "Owned"]
+        );
+        const sharedId = await mockDatabase.dbRun(
+            `INSERT INTO custom_polls (owner, name, prompt, answers, textRes, blind, allowVoteChanges, allowMultipleResponses, weight, public)
+             VALUES (?, ?, 'shared', '[]', 0, 0, 1, 0, 1, 0)`,
+            [99, "Shared"]
+        );
+        await mockDatabase.dbRun("INSERT INTO shared_polls (pollId, userId) VALUES (?, ?)", [sharedId, 42]);
+
+        const polls = await getUserPollTemplates(42);
+        const ids = polls.map((poll) => poll.id);
+
+        expect(ids).toContain(ownedId);
+        expect(ids).toContain(sharedId);
+        expect(ids).toContain(1);
+        expect(polls.find((poll) => poll.id === ownedId)).toMatchObject({
+            name: "Owned",
+            allowTextResponses: false,
+            owner: 42,
+        });
+    });
+});
+
+describe("getClassPollTemplates", () => {
+    it("returns polls linked to the class", async () => {
+        const classId = await mockDatabase.dbRun("INSERT INTO classroom (owner, name, key) VALUES (?, ?, ?)", [42, "Class", "KEY123"]);
+        const pollId = await mockDatabase.dbRun(
+            `INSERT INTO custom_polls (owner, name, prompt, answers, textRes, blind, allowVoteChanges, allowMultipleResponses, weight, public)
+             VALUES (?, ?, 'class', '[]', 0, 0, 1, 0, 1, 0)`,
+            [42, "Class Poll"]
+        );
+        await mockDatabase.dbRun("INSERT INTO class_polls (pollId, classId) VALUES (?, ?)", [pollId, classId]);
+
+        const polls = await getClassPollTemplates(classId);
+
+        expect(polls).toHaveLength(1);
+        expect(polls[0]).toMatchObject({ id: pollId, name: "Class Poll", prompt: "class" });
+    });
+
+    it("throws when the class does not exist", async () => {
+        await expect(getClassPollTemplates(9999)).rejects.toThrow("There is no class with that code.");
+    });
+});
+
+describe("saveUserPollTemplate", () => {
+    const teacherSession = { email: "teacher@test.com", userId: 42, id: 42 };
+
+    beforeEach(() => {
+        mockClassrooms[1] = {
+            students: {
+                "teacher@test.com": { ownedPolls: [] },
+            },
+        };
+    });
+
+    it("inserts a custom poll and updates ownedPolls", async () => {
+        const result = await saveUserPollTemplate(
+            1,
+            {
+                name: "My Template",
+                prompt: "Question?",
+                answers: [{ answer: "A", weight: 1, color: "#ff0000" }],
+                allowTextResponses: true,
+                blind: false,
+                allowVoteChanges: true,
+                allowMultipleResponses: false,
+                weight: 1,
+            },
+            teacherSession
+        );
+
+        expect(result.message).toBe("Poll saved successfully!");
+        expect(result.pollId).toEqual(expect.any(Number));
+
+        const saved = await mockDatabase.dbGet("SELECT * FROM custom_polls WHERE id=?", [result.pollId]);
+        expect(Number(saved.owner)).toBe(42);
+        expect(saved.textRes).toBe(1);
+        expect(mockClassrooms[1].students["teacher@test.com"].ownedPolls).toContain(result.pollId);
+
+        const classLink = await mockDatabase.dbGet("SELECT * FROM class_polls WHERE pollId=? AND classId=?", [result.pollId, 1]);
+        expect(classLink).toBeUndefined();
+    });
+
+    it("throws when name is empty", async () => {
+        await expect(saveUserPollTemplate(1, { name: "  ", prompt: "Q", answers: [] }, teacherSession)).rejects.toThrow("Poll name is required");
+    });
+});
+
+describe("saveClassPollTemplate", () => {
+    const teacherSession = { email: "teacher@test.com", userId: 42, id: 42 };
+
+    it("inserts a custom poll and links it to the class", async () => {
+        const classId = await mockDatabase.dbRun("INSERT INTO classroom (owner, name, key) VALUES (?, ?, ?)", [42, "Class", "KEY123"]);
+
+        mockClassrooms[classId] = { students: { "teacher@test.com": { ownedPolls: [] } } };
+
+        const result = await saveClassPollTemplate(
+            classId,
+            {
+                name: "Class Template",
+                prompt: "Question?",
+                answers: [{ answer: "A", weight: 1, color: "#ff0000" }],
+                allowTextResponses: false,
+                blind: false,
+                allowVoteChanges: true,
+                allowMultipleResponses: false,
+                weight: 1,
+            },
+            teacherSession
+        );
+
+        expect(result.message).toBe("Poll saved to class.");
+
+        const row = await mockDatabase.dbGet("SELECT * FROM class_polls WHERE pollId=? AND classId=?", [result.pollId, classId]);
+        expect(row).toBeTruthy();
+        expect(mockClassrooms[classId].students["teacher@test.com"].ownedPolls).toEqual([]);
     });
 });
 
