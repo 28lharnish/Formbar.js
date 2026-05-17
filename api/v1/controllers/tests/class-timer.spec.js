@@ -164,6 +164,16 @@ describe("GET /api/v1/class/:id/timer", () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data).toHaveProperty("timer");
     });
+
+    it("returns 200 with timer data for a student with timer read scope", async () => {
+        const { classId, studentTokens } = await setupClassWithStudentAndTeacher();
+
+        const res = await request(app).get(`/api/v1/class/${classId}/timer`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toHaveProperty("timer");
+    });
 });
 
 describe("POST /api/v1/class/:id/timer/start", () => {
