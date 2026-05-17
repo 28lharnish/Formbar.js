@@ -824,14 +824,14 @@ async function getClassPollTemplates(classId) {
 
     const classroomRow = await dbGet("SELECT id FROM classroom WHERE id = ?", [classId]);
     if (!classroomRow) {
-        throw new NotFoundError("There is no class with that code.");
+        throw new NotFoundError("There is no class with that id.");
     }
 
     const rows = await dbGetAll(
-        `SELECT cp.* FROM custom_polls cp
-         INNER JOIN class_polls clp ON clp.pollId = cp.id
-         WHERE clp.classId = ?
-         ORDER BY cp.id ASC`,
+        `SELECT custom_poll.* FROM custom_polls custom_poll
+         INNER JOIN class_polls class_poll ON class_poll.pollId = custom_poll.id
+         WHERE class_poll.classId = ?
+         ORDER BY custom_poll.id ASC`,
         [classId]
     );
 
