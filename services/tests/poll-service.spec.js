@@ -459,7 +459,7 @@ describe("getClassPollTemplates", () => {
     });
 
     it("throws when the class does not exist", async () => {
-        await expect(getClassPollTemplates(9999)).rejects.toThrow("There is no class with that code.");
+        await expect(getClassPollTemplates(9999)).rejects.toThrow("There is no class with that id.");
     });
 });
 

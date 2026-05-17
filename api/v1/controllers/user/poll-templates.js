@@ -1,27 +1,24 @@
 const { saveUserPollTemplate, getUserPollTemplates } = require("@services/poll-service");
-const { isOwnerOrHasScopes } = require("@middleware/permission-check");
+const { isSelfOrHasScopes } = require("@middleware/permission-check");
 const { parseJson } = require("@middleware/parse-json");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
-const membershipService = require("@services/class-membership-service");
 
 /**
- * Register save-template controller routes.
+ * Register user poll template controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/class/{id}/polls/templates/user:
+     * /api/v1/user/{id}/polls/templates:
      *   get:
      *     summary: Get saved poll templates in My Polls
      *     tags:
-     *       - Class - Polls
+     *       - Users
      *     description: |
-     *       Returns poll templates owned by, shared with, or marked public for the current user.
-     *
-     *       **Required Permission:** `class.poll.create`
+     *       Returns poll templates owned by, shared with, or marked public for the given user.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -31,31 +28,28 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Class ID
+     *         description: User ID
      *     responses:
      *       200:
      *         description: Poll templates retrieved
+     *       401:
+     *         description: Unauthenticated
      *       403:
      *         description: Insufficient permissions
      */
     router.get(
-        "/class/:id/polls/templates/user",
+        "/user/:id/polls/templates",
         isAuthenticated,
-        isOwnerOrHasScopes(
-            membershipService.classroomOwnerCheck,
-            SCOPES.CLASS.POLL.CREATE,
-            "You don't have permission to view saved polls for this class."
-        ),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to view this user's polls."),
         async (req, res) => {
-            const classId = req.params.id;
-            const userId = req.user.userId ?? req.user.id;
+            const userId = req.params.id;
 
-            req.infoEvent("class.poll.template.list.attempt", "Attempting to list user poll templates", { classId });
+            req.infoEvent("poll.template.list.attempt", "Attempting to list user poll templates", { targetUserId: userId });
 
             const polls = await getUserPollTemplates(userId);
 
-            req.infoEvent("class.poll.template.list.success", "User poll templates returned", {
-                classId,
+            req.infoEvent("poll.template.list.success", "User poll templates returned", {
+                targetUserId: userId,
                 pollCount: polls.length,
             });
 
@@ -68,15 +62,13 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/{id}/polls/templates:
+     * /api/v1/user/{id}/polls/templates:
      *   post:
      *     summary: Save a poll template to My Polls
      *     tags:
-     *       - Class - Polls
+     *       - Users
      *     description: |
-     *       Saves the poll editor configuration as a reusable custom poll owned by the current user.
-     *
-     *       **Required Permission:** `class.poll.create`
+     *       Saves the poll editor configuration as a reusable custom poll owned by the user.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -86,7 +78,7 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Class ID
+     *         description: User ID
      *     requestBody:
      *       required: true
      *       content:
@@ -120,29 +112,31 @@ module.exports = (router) => {
      *                 type: number
      *               public:
      *                 type: boolean
+     *               classId:
+     *                 type: number
+     *                 description: Optional. Active class ID to update in-memory student state.
      *     responses:
      *       200:
      *         description: Poll template saved
+     *       401:
+     *         description: Unauthenticated
      *       403:
      *         description: Insufficient permissions
      */
     router.post(
-        "/class/:id/polls/templates/user",
+        "/user/:id/polls/templates",
         isAuthenticated,
-        isOwnerOrHasScopes(
-            membershipService.classroomOwnerCheck,
-            SCOPES.CLASS.POLL.CREATE,
-            "You don't have permission to save polls for this class."
-        ),
+        isSelfOrHasScopes(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to save polls for this user."),
         parseJson,
         async (req, res) => {
-            const classId = req.params.id;
-            req.infoEvent("class.poll.template.save.attempt", "Attempting to save poll template", { classId });
+            const userId = req.params.id;
+            req.infoEvent("poll.template.save.attempt", "Attempting to save poll template", { targetUserId: userId });
 
-            const result = await saveUserPollTemplate(classId, req.body || {}, req.user);
+            const classId = req.body?.classId;
+            const result = await saveUserPollTemplate(classId || null, req.body || {}, req.user);
 
-            req.infoEvent("class.poll.template.save.success", "Poll template saved", {
-                classId,
+            req.infoEvent("poll.template.save.success", "Poll template saved", {
+                targetUserId: userId,
                 pollId: result.pollId,
             });
 

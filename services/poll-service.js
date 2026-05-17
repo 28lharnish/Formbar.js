@@ -897,28 +897,29 @@ function emitCustomPollUpdateForClass(classId) {
 /**
  * Saves a poll template to the current user's custom poll library.
  *
- * @param {number} classId - Active class ID used for in-memory student state.
+ * @param {number|null} classId - Active class ID used for in-memory student state (optional).
  * @param {Object} pollData - Poll template fields from the editor.
  * @param {Object} userSession - Authenticated user session.
  * @returns {Promise<{ pollId: number, message: string }>}
  */
 async function saveUserPollTemplate(classId, pollData, userSession) {
-    requireInternalParam(classId, "classId");
     requireInternalParam(pollData, "pollData");
     requireInternalParam(userSession, "userSession");
 
     const userId = userSession.userId ?? userSession.id;
     const email = userSession.email;
-    const classroom = getClassroom(classId);
     const pollId = await insertCustomPollTemplate(userId, pollData);
 
-    if (email && classroom.students[email]) {
-        classStateStore.updateClassroomStudent(classId, email, (student) => {
-            if (!Array.isArray(student.ownedPolls)) {
-                student.ownedPolls = [];
-            }
-            student.ownedPolls.push(pollId);
-        });
+    if (classId) {
+        const classroom = getClassroom(classId);
+        if (email && classroom.students[email]) {
+            classStateStore.updateClassroomStudent(classId, email, (student) => {
+                if (!Array.isArray(student.ownedPolls)) {
+                    student.ownedPolls = [];
+                }
+                student.ownedPolls.push(pollId);
+            });
+        }
     }
 
     emitCustomPollUpdate(email);

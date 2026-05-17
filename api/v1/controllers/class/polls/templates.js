@@ -39,7 +39,7 @@ module.exports = (router) => {
      *         description: Insufficient permissions
      */
     router.get(
-        "/class/:id/polls/templates/class",
+        "/class/:id/polls/templates",
         isAuthenticated,
         isOwnerOrHasScopes(
             membershipService.classroomOwnerCheck,
@@ -114,7 +114,7 @@ module.exports = (router) => {
      *         description: Insufficient permissions
      */
     router.post(
-        "/class/:id/polls/templates/class",
+        "/class/:id/polls/templates",
         isAuthenticated,
         isOwnerOrHasScopes(
             membershipService.classroomOwnerCheck,

@@ -59,8 +59,8 @@ jest.mock("@stores/socket-state-store", () => ({
 
 const createClassController = require("../class/create");
 const joinController = require("../class/join");
-const pollSaveUserTemplateController = require("../class/polls/save-template");
-const pollSaveClassTemplateController = require("../class/polls/save-class-template");
+const pollSaveUserTemplateController = require("../user/poll-templates");
+const pollSaveClassTemplateController = require("../class/polls/templates");
 
 const app = createTestApp(createClassController, joinController, pollSaveUserTemplateController, pollSaveClassTemplateController);
 
@@ -108,9 +108,9 @@ async function setupClassWithTeacher() {
     return { classId, teacherTokens, teacher };
 }
 
-describe("GET /api/v1/class/:id/polls/templates/user", () => {
+describe("GET /api/v1/user/:id/polls/templates", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/class/1/polls/templates/user");
+        const res = await request(app).get("/api/v1/user/1/polls/templates");
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
@@ -120,13 +120,11 @@ describe("GET /api/v1/class/:id/polls/templates/user", () => {
         const { classId, teacherTokens, teacher } = await setupClassWithTeacher();
 
         const saveRes = await request(app)
-            .post(`/api/v1/class/${classId}/polls/templates/user`)
+            .post(`/api/v1/user/${teacher.id}/polls/templates`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send(templateBody);
+            .send({ ...templateBody, classId });
 
-        const res = await request(app)
-            .get(`/api/v1/class/${classId}/polls/templates/user`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/user/${teacher.id}/polls/templates`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
@@ -145,9 +143,9 @@ describe("GET /api/v1/class/:id/polls/templates/user", () => {
     });
 });
 
-describe("POST /api/v1/class/:id/polls/templates/user", () => {
+describe("POST /api/v1/user/:id/polls/templates", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).post("/api/v1/class/1/polls/templates/user").send(templateBody);
+        const res = await request(app).post("/api/v1/user/1/polls/templates").send(templateBody);
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
@@ -157,9 +155,9 @@ describe("POST /api/v1/class/:id/polls/templates/user", () => {
         const { classId, teacherTokens, teacher } = await setupClassWithTeacher();
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/polls/templates/user`)
+            .post(`/api/v1/user/${teacher.id}/polls/templates`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send(templateBody);
+            .send({ ...templateBody, classId });
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
@@ -175,45 +173,45 @@ describe("POST /api/v1/class/:id/polls/templates/user", () => {
     });
 
     it("returns 400 when name is missing", async () => {
-        const { classId, teacherTokens } = await setupClassWithTeacher();
+        const { classId, teacherTokens, teacher } = await setupClassWithTeacher();
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/polls/templates/user`)
+            .post(`/api/v1/user/${teacher.id}/polls/templates`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ ...templateBody, name: "   " });
+            .send({ ...templateBody, classId, name: "   " });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
     });
 
     it("returns 400 when prompt is missing", async () => {
-        const { classId, teacherTokens } = await setupClassWithTeacher();
+        const { classId, teacherTokens, teacher } = await setupClassWithTeacher();
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/polls/templates/user`)
+            .post(`/api/v1/user/${teacher.id}/polls/templates`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ ...templateBody, prompt: "   " });
+            .send({ ...templateBody, classId, prompt: "   " });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
     });
 
     it("returns 400 when answers are empty", async () => {
-        const { classId, teacherTokens } = await setupClassWithTeacher();
+        const { classId, teacherTokens, teacher } = await setupClassWithTeacher();
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/polls/templates/user`)
+            .post(`/api/v1/user/${teacher.id}/polls/templates`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ ...templateBody, answers: [] });
+            .send({ ...templateBody, classId, answers: [] });
 
         expect(res.status).toBe(400);
         expect(res.body.success).toBe(false);
     });
 });
 
-describe("GET /api/v1/class/:id/polls/templates/class", () => {
+describe("GET /api/v1/class/:id/polls/templates", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/class/1/polls/templates/class");
+        const res = await request(app).get("/api/v1/class/1/polls/templates");
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
@@ -223,13 +221,11 @@ describe("GET /api/v1/class/:id/polls/templates/class", () => {
         const { classId, teacherTokens } = await setupClassWithTeacher();
 
         const saveRes = await request(app)
-            .post(`/api/v1/class/${classId}/polls/templates/class`)
+            .post(`/api/v1/class/${classId}/polls/templates`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send(templateBody);
 
-        const res = await request(app)
-            .get(`/api/v1/class/${classId}/polls/templates/class`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/class/${classId}/polls/templates`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
@@ -243,9 +239,9 @@ describe("GET /api/v1/class/:id/polls/templates/class", () => {
     });
 });
 
-describe("POST /api/v1/class/:id/polls/templates/class", () => {
+describe("POST /api/v1/class/:id/polls/templates", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).post("/api/v1/class/1/polls/templates/class").send(templateBody);
+        const res = await request(app).post("/api/v1/class/1/polls/templates").send(templateBody);
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
@@ -255,7 +251,7 @@ describe("POST /api/v1/class/:id/polls/templates/class", () => {
         const { classId, teacherTokens, teacher } = await setupClassWithTeacher();
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/polls/templates/class`)
+            .post(`/api/v1/class/${classId}/polls/templates`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send(templateBody);
 
