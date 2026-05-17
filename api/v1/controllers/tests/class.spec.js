@@ -83,6 +83,7 @@ const kickController = require("../class/kick");
 const regenerateCodeController = require("../class/regenerate-code");
 
 const { classStateStore, Classroom } = require("@services/classroom-service");
+const { userUpdateSocket } = require("@services/socket-updates-service");
 const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS, GUEST_PERMISSIONS, SCOPES } = require("@modules/permissions");
 
 const app = createTestApp(
@@ -539,6 +540,24 @@ describe("POST /api/v1/class/:id/start", () => {
 
         expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
+    });
+
+    it("broadcasts a classUpdate through the shared service when the class starts over HTTP", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            displayName: "Teacher",
+            permissions: 4,
+        });
+        const classId = await seedClassroom(user.id, { className: "HTTP Start Class" });
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+        userUpdateSocket.mockClear();
+
+        const res = await request(app).post(`/api/v1/class/${classId}/start`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(classStateStore.getClassroom(classId).isActive).toBe(true);
+        expect(userUpdateSocket).toHaveBeenCalledWith(user.email, "classUpdate", String(classId));
     });
 });
 

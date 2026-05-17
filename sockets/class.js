@@ -22,12 +22,14 @@ module.exports = {
     run(socket, socketUpdates) {
         // Starts a classroom session
         onSocketEvent(socket, "startClass", hasClassScope(SCOPES.CLASS.SESSION.START), async (socketContext) => {
-            startClass(await socketContext.resolveClassId());
+            const classId = await socketContext.resolveClassId();
+            await startClass(classId);
         });
 
         // Ends a classroom session
         onSocketEvent(socket, "endClass", hasClassScope(SCOPES.CLASS.SESSION.END), async (socketContext) => {
-            endClass(await socketContext.resolveClassId(), socketContext.session);
+            const classId = await socketContext.resolveClassId();
+            await endClass(classId, socketContext.session);
         });
 
         // Join a classroom session

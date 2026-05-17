@@ -203,6 +203,7 @@ async function startClass(classId) {
     // Activate the class and send the class active event
     classStateStore.getClassroom(classId).isActive = true;
     advancedEmitToClass("isClassActive", classId, {}, classStateStore.getClassroom(classId).isActive);
+    broadcastClassUpdate(classId);
 }
 
 /**
@@ -217,6 +218,9 @@ async function endClass(classId, userSession) {
 
     // Deactivate the class and send the class active event
     classStateStore.getClassroom(classId).isActive = false;
+
+    // You may notice that we're not calling a classUpdate here.
+    // This is because clearPoll indirectly calls it. Sorry.
     await clearPoll(classId, userSession, true);
 
     advancedEmitToClass("isClassActive", classId, {}, classStateStore.getClassroom(classId).isActive);
