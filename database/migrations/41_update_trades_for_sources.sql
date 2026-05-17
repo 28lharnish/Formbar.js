@@ -2,9 +2,9 @@
 -- Rebuilds the trades table to support source-based trading (inventory items or pool digipogs).
 -- Migrates old 'accepted' rows to 'completed'; preserves 'pending' and 'rejected' rows.
 
--- Guard: intentionally fails on re-run so the migration runner skips this migration
--- when it has already been applied. The table persists after first run.
-CREATE TABLE _migration_38_trades_sources_applied (id INTEGER PRIMARY KEY);
+-- Guard: divides by zero if from_source_type already exists on trades, causing the
+-- migration runner to skip this file on re-run. No extra table is created.
+SELECT 1 / (1 - (SELECT COUNT(*) FROM pragma_table_info('trades') WHERE name = 'from_source_type'));
 
 CREATE TABLE IF NOT EXISTS trades_v2 (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,

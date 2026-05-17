@@ -1,7 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 
 const { generateColors } = require("@modules/util");
-const { advancedEmitToClass } = require("@services/socket-updates-service");
+const { advancedEmitToClass, invalidateClassPollCache, userUpdateSocket } = require("@services/socket-updates-service");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
@@ -205,6 +205,17 @@ function isAutoEndThresholdMet(classroom) {
 
     const answeredStudents = eligibleStudents.filter(hasStudentAnsweredPoll).length;
     return answeredStudents / eligibleStudents.length >= threshold;
+}
+
+/**
+ * Notifies connected clients that custom poll lists changed for a user.
+ *
+ * @param {string} email - User email.
+ * @returns {void}
+ */
+function emitCustomPollUpdate(email) {
+    if (!email) return;
+    userUpdateSocket(email, "customPollUpdate", email);
 }
 
 function emitClassUpdate(classId, userSession) {
@@ -753,6 +764,216 @@ async function getCurrentPoll(classId, userData) {
 }
 
 /**
+ * Normalizes a custom_polls database row for API responses.
+ *
+ * @param {Object} row - Raw custom_polls row.
+ * @returns {Object|null}
+ */
+function formatCustomPollRow(row) {
+    if (!row) return null;
+
+    return {
+        id: row.id,
+        owner: row.owner != null ? Number(row.owner) : null,
+        name: row.name,
+        prompt: row.prompt,
+        answers: typeof row.answers === "string" ? JSON.parse(row.answers) : row.answers,
+        allowTextResponses: !!row.textRes,
+        blind: !!row.blind,
+        allowVoteChanges: !!row.allowVoteChanges,
+        allowMultipleResponses: !!row.allowMultipleResponses,
+        weight: row.weight,
+        public: !!row.public,
+    };
+}
+
+/**
+ * Returns saved poll templates for a user (owned, shared, and public).
+ *
+ * @param {number} userId - User ID.
+ * @returns {Promise<Object[]>}
+ */
+async function getUserPollTemplates(userId) {
+    requireInternalParam(userId, "userId");
+
+    const owned = await dbGetAll("SELECT * FROM custom_polls WHERE owner = ?", [userId]);
+    const shared = await dbGetAll(
+        `SELECT cp.* FROM custom_polls cp
+         INNER JOIN shared_polls sp ON sp.pollId = cp.id
+         WHERE sp.userId = ?`,
+        [userId]
+    );
+    const publicPolls = await dbGetAll("SELECT * FROM custom_polls WHERE public = 1");
+
+    const byId = new Map();
+    for (const row of [...owned, ...shared, ...publicPolls]) {
+        byId.set(row.id, formatCustomPollRow(row));
+    }
+
+    return Array.from(byId.values()).sort((a, b) => a.id - b.id);
+}
+
+/**
+ * Returns saved poll templates linked to a class.
+ *
+ * @param {number} classId - Class ID.
+ * @returns {Promise<Object[]>}
+ */
+async function getClassPollTemplates(classId) {
+    requireInternalParam(classId, "classId");
+
+    const classroomRow = await dbGet("SELECT id FROM classroom WHERE id = ?", [classId]);
+    if (!classroomRow) {
+        throw new NotFoundError("There is no class with that id.");
+    }
+
+    const rows = await dbGetAll(
+        `SELECT custom_poll.* FROM custom_polls custom_poll
+         INNER JOIN class_polls class_poll ON class_poll.pollId = custom_poll.id
+         WHERE class_poll.classId = ?
+         ORDER BY custom_poll.id ASC`,
+        [classId]
+    );
+
+    return rows.map(formatCustomPollRow);
+}
+
+/**
+ * Inserts a row into custom_polls for a poll editor template.
+ *
+ * @param {number} userId - Owning user ID.
+ * @param {Object} pollData - Poll template fields from the editor.
+ * @returns {Promise<number>} New custom poll ID.
+ */
+async function insertCustomPollTemplate(userId, pollData) {
+    const name = typeof pollData.name === "string" ? pollData.name.trim() : "";
+    if (!name) {
+        throw new ValidationError("Poll name is required.");
+    }
+
+    const prompt = typeof pollData.prompt === "string" ? pollData.prompt.trim() : "";
+    if (!prompt) {
+        throw new ValidationError("Poll prompt is required.");
+    }
+
+    if (!Array.isArray(pollData.answers) || pollData.answers.length === 0) {
+        throw new ValidationError("At least one poll answer is required.");
+    }
+
+    const textRes = pollData.textRes != null ? (pollData.textRes ? 1 : 0) : pollData.allowTextResponses ? 1 : 0;
+
+    return dbRun(
+        "INSERT INTO custom_polls (owner, name, prompt, answers, textRes, blind, allowVoteChanges, allowMultipleResponses, weight, public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            userId,
+            name,
+            prompt,
+            JSON.stringify(pollData.answers),
+            textRes,
+            pollData.blind ? 1 : 0,
+            pollData.allowVoteChanges !== false ? 1 : 0,
+            pollData.allowMultipleResponses ? 1 : 0,
+            pollData.weight ?? 1,
+            pollData.public ? 1 : 0,
+        ]
+    );
+}
+
+/**
+ * Notifies all members in an active class that custom poll lists changed.
+ *
+ * @param {number} classId - Class ID.
+ * @returns {void}
+ */
+function emitCustomPollUpdateForClass(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom?.students) return;
+
+    for (const studentEmail of Object.keys(classroom.students)) {
+        emitCustomPollUpdate(studentEmail);
+    }
+}
+
+/**
+ * Saves a poll template to the current user's custom poll library.
+ *
+ * @param {number|null} classId - Active class ID used for in-memory student state (optional).
+ * @param {Object} pollData - Poll template fields from the editor.
+ * @param {Object} userSession - Authenticated user session.
+ * @returns {Promise<{ pollId: number, message: string }>}
+ */
+async function saveUserPollTemplate(classId, pollData, userSession) {
+    requireInternalParam(pollData, "pollData");
+    requireInternalParam(userSession, "userSession");
+
+    const userId = userSession.userId ?? userSession.id;
+    const email = userSession.email;
+    const pollId = await insertCustomPollTemplate(userId, pollData);
+
+    if (classId) {
+        const classroom = getClassroom(classId);
+        if (email && classroom.students[email]) {
+            classStateStore.updateClassroomStudent(classId, email, (student) => {
+                if (!Array.isArray(student.ownedPolls)) {
+                    student.ownedPolls = [];
+                }
+                student.ownedPolls.push(pollId);
+            });
+        }
+    }
+
+    emitCustomPollUpdate(email);
+
+    return {
+        pollId,
+        message: "Poll saved successfully!",
+    };
+}
+
+/**
+ * Saves a poll template to the class library (visible to other teachers in the class).
+ *
+ * @param {number} classId - Class ID.
+ * @param {Object} pollData - Poll template fields from the editor.
+ * @param {Object} userSession - Authenticated user session.
+ * @returns {Promise<{ pollId: number, message: string }>}
+ */
+async function saveClassPollTemplate(classId, pollData, userSession) {
+    requireInternalParam(classId, "classId");
+    requireInternalParam(pollData, "pollData");
+    requireInternalParam(userSession, "userSession");
+
+    const userId = userSession.userId ?? userSession.id;
+    const email = userSession.email;
+    const classroom = getClassroom(classId);
+
+    const classroomRow = await dbGet("SELECT * FROM classroom WHERE id=?", [classId]);
+    if (!classroomRow) {
+        throw new NotFoundError("There is no class with that code.");
+    }
+
+    const pollId = await insertCustomPollTemplate(userId, pollData);
+    await dbRun("INSERT INTO class_polls (pollId, classId) VALUES (?, ?)", [pollId, classroomRow.id]);
+    invalidateClassPollCache(classroomRow.id);
+
+    if (email && classroom.students[email]) {
+        classStateStore.updateClassroomStudent(classId, email, (student) => {
+            if (!Array.isArray(student.ownedPolls)) {
+                student.ownedPolls = [];
+            }
+            student.ownedPolls.push(pollId);
+        });
+    }
+
+    emitCustomPollUpdateForClass(classId);
+
+    return {
+        pollId,
+        message: "Poll saved to class.",
+    };
+}
+
+/**
  * Deletes all custom polls owned by a user
  * @param {number} userId - The ID of the user whose custom polls should be deleted
  * @returns {Promise<void>}
@@ -826,6 +1047,10 @@ module.exports = {
     sendPollResponse,
     getPollResponses,
     deleteCustomPolls,
+    saveUserPollTemplate,
+    saveClassPollTemplate,
+    getUserPollTemplates,
+    getClassPollTemplates,
     pollRuntimeStore,
     deleteWatchedPoll,
 };
