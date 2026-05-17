@@ -88,7 +88,7 @@ function getConfig() {
 
         // Rate limiter defaults (can be overridden via env)
         rateLimit: {
-            basePoints: parseInt(process.env.RATE_LIMIT_BASE_POINTS, 10) || 100, // Base points applied before multiplier (default: 100 requests)
+            basePoints: parseInt(process.env.RATE_LIMIT_BASE_POINTS, 10) || 200, // Base points applied before multiplier (default: 100 requests)
             durationSeconds: parseInt(process.env.RATE_LIMIT_DURATION_SECONDS, 10) || 900, // Window duration in seconds (default: 15m)
         },
 
