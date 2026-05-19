@@ -12,6 +12,12 @@ const pages = [
         description: "Setup, project shape, task routing, glossary, and common pitfalls.",
     },
     {
+        source: "branches.md",
+        output: "branches.html",
+        navTitle: "Git Branches",
+        description: "What main, RC, and DEV are for and what each branch contains today.",
+    },
+    {
         source: "project-map.md",
         output: "project-map.html",
         navTitle: "Project Map",

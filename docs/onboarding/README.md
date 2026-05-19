@@ -110,13 +110,14 @@ Do not commit local secrets, generated keys, or database files.
 
 Read only what you need, but this order works well for a new contributor:
 
-1. [Project Map](./project-map.md): where code lives and where new code usually belongs.
-2. [Runtime Flow](./runtime-flow.md): what happens during startup, HTTP requests, and socket events.
-3. [Data And Auth](./data-and-auth.md): database rules, migrations, tokens, API keys, roles, and scopes.
-4. [Developer Workflow](./dev-workflow.md): commands, tests, and common change patterns.
-5. [Architecture Diagrams](./architecture.md): visual maps of the backend.
-6. [Codebase Map](./codebase-map.md): detailed directory and file inventory.
-7. [Feature State](./feature-state.md): what is implemented, partial, deprecated, or risky.
+1. [Git Branches](./branches.md): what `main`, `RC`, and `DEV` are for and what each contains today.
+2. [Project Map](./project-map.md): where code lives and where new code usually belongs.
+3. [Runtime Flow](./runtime-flow.md): what happens during startup, HTTP requests, and socket events.
+4. [Data And Auth](./data-and-auth.md): database rules, migrations, tokens, API keys, roles, and scopes.
+5. [Developer Workflow](./dev-workflow.md): commands, tests, and common change patterns.
+6. [Architecture Diagrams](./architecture.md): visual maps of the backend.
+7. [Codebase Map](./codebase-map.md): detailed directory and file inventory.
+8. [Feature State](./feature-state.md): what is implemented, partial, deprecated, or risky.
 
 ## If Your Task Is...
 
