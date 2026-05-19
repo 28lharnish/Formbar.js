@@ -65,16 +65,17 @@ Common local settings:
 
 ## Before You Start A Ticket
 
-1. Pull or update your branch if that is part of your workflow.
-2. Read the relevant onboarding doc.
-3. Search for similar code with `rg`.
-4. Identify the owner:
+1. Confirm you are on the right branch. Most backend work targets `DEV`; see [Git Branches](./branches.md) for how `main`, `RC`, and `DEV` differ.
+2. Pull or update your branch if that is part of your workflow.
+3. Read the relevant onboarding doc.
+4. Search for similar code with `rg`.
+5. Identify the owner:
    - HTTP request: `api/v1/controllers/**`
    - Socket event: `sockets/**`
    - Shared rule: `services/**`
    - Schema/data shape: `database/migrations/**`
    - Auth/scope: `middleware/**`, `modules/scopes.js`, `services/role-service.js`
-5. Run a focused test before changing code when practical. It gives you a baseline.
+6. Run a focused test before changing code when practical. It gives you a baseline.
 
 Useful searches:
 
