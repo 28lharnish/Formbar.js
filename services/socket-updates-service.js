@@ -395,25 +395,27 @@ function getPollResponseInformation(classData) {
                 continue;
             }
 
+            const buttonRes = studentData.pollRes?.buttonRes;
+
             // Count student as responded if they have any valid response and aren't excluded
-            if (Array.isArray(studentData.pollRes.buttonRes)) {
-                if (studentData.pollRes.buttonRes.length > 0) {
+            if (Array.isArray(buttonRes)) {
+                if (buttonRes.length > 0) {
                     totalResponses++;
                 }
-            } else if (studentData.pollRes.buttonRes && studentData.pollRes.buttonRes !== "") {
+            } else if (buttonRes && buttonRes !== "") {
                 totalResponses++;
             }
 
             // Add to the count for each response option
-            if (Array.isArray(studentData.pollRes.buttonRes)) {
-                for (let res of studentData.pollRes.buttonRes) {
+            if (Array.isArray(buttonRes)) {
+                for (let res of buttonRes) {
                     const responseObj = classData.poll.responses.find((r) => r.answer === res);
                     if (responseObj) {
                         responseObj.responses++;
                     }
                 }
-            } else if (studentData.pollRes.buttonRes) {
-                const responseObj = classData.poll.responses.find((r) => r.answer === studentData.pollRes.buttonRes);
+            } else if (buttonRes) {
+                const responseObj = classData.poll.responses.find((r) => r.answer === buttonRes);
                 if (responseObj) {
                     responseObj.responses++;
                 }
@@ -425,6 +427,25 @@ function getPollResponseInformation(classData) {
         totalResponses,
         totalResponders: totalStudentsIncluded.length,
     };
+}
+
+/**
+ * Build a poll snapshot with response counts populated.
+ * @param {Object} classData - classData.
+ * @returns {Object|undefined}
+ */
+function buildClassPollData(classData) {
+    if (!classData?.poll) {
+        return classData?.poll;
+    }
+
+    const classDataClone = structuredClone(classData);
+    const { totalResponses, totalResponders } = getPollResponseInformation(classDataClone);
+
+    classDataClone.poll.totalResponses = totalResponses;
+    classDataClone.poll.totalResponders = totalResponders;
+
+    return classDataClone.poll;
 }
 
 /**
@@ -730,6 +751,7 @@ module.exports = {
     userSockets,
     PASSIVE_SOCKETS,
     invalidateClassPollCache,
+    buildClassPollData,
 
     // Socket functions
     emitToUser,
