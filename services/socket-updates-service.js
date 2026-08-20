@@ -146,11 +146,13 @@ function getClassUpdateAccess(viewer, classroom, controlPanelOverride = false) {
  * @returns {Object}
  */
 function getClassStudentSnapshot(student) {
+	console.log(student)
+
     return {
         id: student.id,
         displayName: student.displayName,
         activeClass: student.activeClass,
-        roles: { global: [], class: student.roles?.class || [] },
+        roles: { global: student.roles?.global || [], class: student.roles?.class || [] },
         pollRes: student.pollRes,
         help: student.help,
         break: student.break,
@@ -493,7 +495,7 @@ function getClassUpdateData(classData, access, options = { studentEmail: null })
         settings: access.canReadSettings ? classData.settings : undefined,
         roles: access.canReadRoles ? classData.availableRoles || [] : undefined,
         students: access.canReadStudents
-            ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student, email)]))
+            ? Object.fromEntries(studentEntries.map(([email, student]) => [student.id, getClassStudentSnapshot(student)]))
             : undefined,
     };
 
