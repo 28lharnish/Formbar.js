@@ -146,8 +146,6 @@ function getClassUpdateAccess(viewer, classroom, controlPanelOverride = false) {
  * @returns {Object}
  */
 function getClassStudentSnapshot(student) {
-	console.log(student)
-
     return {
         id: student.id,
         displayName: student.displayName,
