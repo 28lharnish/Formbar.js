@@ -32,12 +32,18 @@ jest.mock("@services/classroom-service", () => ({
     classStateStore: {
         getClassroom: jest.fn((id) => mockClassrooms[id] || null),
         getUser: jest.fn(),
+        updateClassroomStudent: jest.fn((classId, email, updater) => {
+            const classroom = mockClassrooms[classId];
+            if (!classroom?.students?.[email]) return;
+            updater(classroom.students[email]);
+        }),
     },
 }));
 
 jest.mock("@services/socket-updates-service", () => ({
     advancedEmitToClass: jest.fn(),
     userUpdateSocket: jest.fn(),
+    invalidateClassPollCache: jest.fn(),
 }));
 
 jest.mock("../../sockets/init", () => ({
@@ -58,7 +64,19 @@ jest.mock("@stores/poll-runtime-store", () => ({
     },
 }));
 
-const { getPollResponses, deleteCustomPolls, getPreviousPolls, getCurrentPoll } = require("@services/poll-service");
+const {
+    createPoll,
+    updatePoll,
+    sendPollResponse,
+    getPollResponses,
+    deleteCustomPolls,
+    saveUserPollTemplate,
+    saveClassPollTemplate,
+    getUserPollTemplates,
+    getClassPollTemplates,
+    getPreviousPolls,
+    getCurrentPoll,
+} = require("@services/poll-service");
 const { classStateStore } = require("@services/classroom-service");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -77,6 +95,9 @@ async function migratePollHistoryTable(db) {
                 "blind"                    INTEGER NOT NULL DEFAULT 0,
                 "allowTextResponses"       INTEGER NOT NULL DEFAULT 0,
                 "createdAt"                INTEGER NOT NULL,
+                "auto_end_timer"           INTEGER,
+                "auto_end_threshold"       INTEGER,
+                "blind_until_ended"        INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY ("id" AUTOINCREMENT)
             );
             `,
@@ -112,6 +133,167 @@ function makeClassData({ pollStatus = true, responses = [], students = {} } = {}
 function makeStudent(buttonRes = "", textRes = "") {
     return { pollRes: { buttonRes, textRes } };
 }
+
+describe("poll auto-end options", () => {
+    const teacherSession = { email: "teacher@test.com", id: 1 };
+    const basePollData = {
+        prompt: "Question?",
+        answers: [{ answer: "A" }, { answer: "B" }],
+        blind: false,
+        weight: 1,
+        excludedRespondents: [],
+        allowVoteChanges: true,
+        allowTextResponses: false,
+        allowMultipleResponses: false,
+    };
+
+    function setupActiveClassroom(overrides = {}) {
+        mockClassrooms[1] = {
+            isActive: true,
+            timer: { active: false, endTime: 0 },
+            poll: {
+                status: false,
+                prompt: "",
+                responses: [],
+                allowTextResponses: false,
+                allowMultipleResponses: false,
+                blind: false,
+                blindUntilEnded: false,
+                weight: 1,
+                excludedRespondents: [],
+            },
+            students: {
+                "student1@test.com": { id: 10, email: "student1@test.com", pollRes: { buttonRes: "", textRes: "" }, isOffline: false },
+                "student2@test.com": { id: 11, email: "student2@test.com", pollRes: { buttonRes: "", textRes: "" }, isOffline: false },
+            },
+            ...overrides,
+        };
+        return mockClassrooms[1];
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers({ now: 1_000_000 });
+        const { pollRuntimeStore } = require("@stores/poll-runtime-store");
+        pollRuntimeStore.hasPogMeterIncreased.mockReturnValue(true);
+    });
+
+    afterEach(() => {
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    it("defaults blind polls to blind-until-ended and unblinds them when ended", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, blind: true }, teacherSession);
+
+        expect(classroom.poll.blind).toBe(true);
+        expect(classroom.poll.blindUntilEnded).toBe(true);
+
+        await updatePoll(1, { status: false }, teacherSession);
+
+        expect(classroom.poll.status).toBe(false);
+        expect(classroom.poll.blind).toBe(false);
+    });
+
+    it("auto-ends after the configured timer and leaves the ended poll visible", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000 }, teacherSession);
+
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.endTime).toBe(1_001_000);
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(false);
+        expect(classroom.poll.prompt).toBe("Question?");
+        expect(classroom.poll.responses).toHaveLength(2);
+    });
+
+    it("ignores non-number auto-end timer values instead of coercing them to milliseconds", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: true }, teacherSession);
+
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.autoEndTimer).toBeNull();
+        expect(classroom.poll.endTime).toBeNull();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(true);
+    });
+
+    it("ignores numeric string auto-end timer values instead of coercing them", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: "1000" }, teacherSession);
+
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.autoEndTimer).toBeNull();
+        expect(classroom.poll.endTime).toBeNull();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(true);
+    });
+
+    it("caps the auto-end countdown to the remaining active class timer", async () => {
+        const classroom = setupActiveClassroom({
+            timer: { active: true, endTime: 1_000_500 },
+        });
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000 }, teacherSession);
+
+        expect(classroom.poll.endTime).toBe(1_000_500);
+
+        await jest.advanceTimersByTimeAsync(499);
+        expect(classroom.poll.status).toBe(true);
+
+        await jest.advanceTimersByTimeAsync(1);
+        expect(classroom.poll.status).toBe(false);
+    });
+
+    it("starts the auto-end countdown only after the response threshold is met", async () => {
+        const classroom = setupActiveClassroom();
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000, autoEndThreshold: 50 }, teacherSession);
+
+        await jest.advanceTimersByTimeAsync(1000);
+        expect(classroom.poll.status).toBe(true);
+        expect(classroom.poll.endTime).toBeNull();
+
+        await sendPollResponse(1, "A", "", { email: "student1@test.com", id: 10 });
+
+        expect(classroom.poll.endTime).toBe(1_002_000);
+
+        await jest.advanceTimersByTimeAsync(999);
+        expect(classroom.poll.status).toBe(true);
+
+        await jest.advanceTimersByTimeAsync(1);
+        expect(classroom.poll.status).toBe(false);
+    });
+
+    it("does not count stale responses from the previous poll toward the threshold", async () => {
+        const classroom = setupActiveClassroom({
+            students: {
+                "student1@test.com": { id: 10, email: "student1@test.com", pollRes: { buttonRes: "A", textRes: "" }, isOffline: false },
+                "student2@test.com": { id: 11, email: "student2@test.com", pollRes: { buttonRes: "B", textRes: "" }, isOffline: false },
+            },
+        });
+
+        await createPoll(1, { ...basePollData, autoEndTimer: 1000, autoEndThreshold: 80 }, teacherSession);
+
+        expect(classroom.students["student1@test.com"].pollRes.buttonRes).toBe("");
+        expect(classroom.students["student2@test.com"].pollRes.buttonRes).toBe("");
+        expect(classroom.poll.endTime).toBeNull();
+
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(classroom.poll.status).toBe(true);
+    });
+});
 
 describe("getPollResponses", () => {
     it("returns empty object when poll.status is false", () => {
@@ -223,12 +405,148 @@ describe("getPollResponses", () => {
     it("preserves extra properties on response objects", () => {
         const result = getPollResponses(
             makeClassData({
-                responses: [{ answer: "Yes", weight: 1, color: "#0F0", correct: true }],
+                responses: [{ answer: "Yes", weight: 1, color: "#0F0", isCorrect: true }],
                 students: {},
             })
         );
 
-        expect(result["Yes"].correct).toBe(true);
+        expect(result["Yes"].isCorrect).toBe(true);
+    });
+});
+
+describe("getUserPollTemplates", () => {
+    it("returns owned, shared, and public polls", async () => {
+        const ownedId = await mockDatabase.dbRun(
+            `INSERT INTO custom_polls (owner, name, prompt, answers, textRes, blind, allowVoteChanges, allowMultipleResponses, weight, public)
+             VALUES (?, ?, 'owned', '[]', 0, 0, 1, 0, 1, 0)`,
+            [42, "Owned"]
+        );
+        const sharedId = await mockDatabase.dbRun(
+            `INSERT INTO custom_polls (owner, name, prompt, answers, textRes, blind, allowVoteChanges, allowMultipleResponses, weight, public)
+             VALUES (?, ?, 'shared', '[]', 0, 0, 1, 0, 1, 0)`,
+            [99, "Shared"]
+        );
+        await mockDatabase.dbRun("INSERT INTO shared_polls (pollId, userId) VALUES (?, ?)", [sharedId, 42]);
+
+        const polls = await getUserPollTemplates(42);
+        const ids = polls.map((poll) => poll.id);
+
+        expect(ids).toContain(ownedId);
+        expect(ids).toContain(sharedId);
+        expect(ids).toContain(1);
+        expect(polls.find((poll) => poll.id === ownedId)).toMatchObject({
+            name: "Owned",
+            allowTextResponses: false,
+            owner: 42,
+        });
+    });
+});
+
+describe("getClassPollTemplates", () => {
+    it("returns polls linked to the class", async () => {
+        const classId = await mockDatabase.dbRun("INSERT INTO classroom (owner, name, key) VALUES (?, ?, ?)", [42, "Class", "KEY123"]);
+        const pollId = await mockDatabase.dbRun(
+            `INSERT INTO custom_polls (owner, name, prompt, answers, textRes, blind, allowVoteChanges, allowMultipleResponses, weight, public)
+             VALUES (?, ?, 'class', '[]', 0, 0, 1, 0, 1, 0)`,
+            [42, "Class Poll"]
+        );
+        await mockDatabase.dbRun("INSERT INTO class_polls (pollId, classId) VALUES (?, ?)", [pollId, classId]);
+
+        const polls = await getClassPollTemplates(classId);
+
+        expect(polls).toHaveLength(1);
+        expect(polls[0]).toMatchObject({ id: pollId, name: "Class Poll", prompt: "class" });
+    });
+
+    it("throws when the class does not exist", async () => {
+        await expect(getClassPollTemplates(9999)).rejects.toThrow("There is no class with that id.");
+    });
+});
+
+describe("saveUserPollTemplate", () => {
+    const teacherSession = { email: "teacher@test.com", userId: 42, id: 42 };
+
+    beforeEach(() => {
+        mockClassrooms[1] = {
+            students: {
+                "teacher@test.com": { ownedPolls: [] },
+            },
+        };
+    });
+
+    it("inserts a custom poll and updates ownedPolls", async () => {
+        const result = await saveUserPollTemplate(
+            1,
+            {
+                name: "My Template",
+                prompt: "Question?",
+                answers: [{ answer: "A", weight: 1, color: "#ff0000" }],
+                allowTextResponses: true,
+                blind: false,
+                allowVoteChanges: true,
+                allowMultipleResponses: false,
+                weight: 1,
+            },
+            teacherSession
+        );
+
+        expect(result.message).toBe("Poll saved successfully!");
+        expect(result.pollId).toEqual(expect.any(Number));
+
+        const saved = await mockDatabase.dbGet("SELECT * FROM custom_polls WHERE id=?", [result.pollId]);
+        expect(Number(saved.owner)).toBe(42);
+        expect(saved.textRes).toBe(1);
+        expect(mockClassrooms[1].students["teacher@test.com"].ownedPolls).toContain(result.pollId);
+
+        const classLink = await mockDatabase.dbGet("SELECT * FROM class_polls WHERE pollId=? AND classId=?", [result.pollId, 1]);
+        expect(classLink).toBeUndefined();
+    });
+
+    it("throws when name is empty", async () => {
+        await expect(saveUserPollTemplate(1, { name: "  ", prompt: "Q", answers: [] }, teacherSession)).rejects.toThrow("Poll name is required");
+    });
+
+    it("throws when prompt is empty", async () => {
+        await expect(saveUserPollTemplate(1, { name: "Poll", prompt: "  ", answers: [{ answer: "A" }] }, teacherSession)).rejects.toThrow(
+            "Poll prompt is required."
+        );
+    });
+
+    it("throws when answers are missing", async () => {
+        await expect(saveUserPollTemplate(1, { name: "Poll", prompt: "Q", answers: [] }, teacherSession)).rejects.toThrow(
+            "At least one poll answer is required."
+        );
+    });
+});
+
+describe("saveClassPollTemplate", () => {
+    const teacherSession = { email: "teacher@test.com", userId: 42, id: 42 };
+
+    it("inserts a custom poll and links it to the class", async () => {
+        const classId = await mockDatabase.dbRun("INSERT INTO classroom (owner, name, key) VALUES (?, ?, ?)", [42, "Class", "KEY123"]);
+
+        mockClassrooms[classId] = { students: { "teacher@test.com": { ownedPolls: [] } } };
+
+        const result = await saveClassPollTemplate(
+            classId,
+            {
+                name: "Class Template",
+                prompt: "Question?",
+                answers: [{ answer: "A", weight: 1, color: "#ff0000" }],
+                allowTextResponses: false,
+                blind: false,
+                allowVoteChanges: true,
+                allowMultipleResponses: false,
+                weight: 1,
+            },
+            teacherSession
+        );
+
+        expect(result.message).toBe("Poll saved to class.");
+
+        const row = await mockDatabase.dbGet("SELECT * FROM class_polls WHERE pollId=? AND classId=?", [result.pollId, classId]);
+        expect(row).toBeTruthy();
+        expect(mockClassrooms[classId].students["teacher@test.com"].ownedPolls).toContain(result.pollId);
     });
 });
 

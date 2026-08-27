@@ -37,6 +37,7 @@ const SCOPES = {
             END: "class.poll.end",
             DELETE: "class.poll.delete",
             SHARE: "class.poll.share",
+            READ_CORRECT_ANSWERS: "class.poll.read_correct_answers",
         },
 
         ROLES: {
@@ -86,6 +87,40 @@ const SCOPES = {
         LINKS: {
             READ: "class.links.read",
             MANAGE: "class.links.manage",
+        },
+    },
+
+    APP: {
+        PROFILE: {
+            READ: "app.profile.read",
+        },
+
+        EMAIL: {
+            READ: "app.email.read",
+        },
+
+        DIGIPOGS: {
+            READ: "app.digipogs.read",
+            TRANSFER: "app.digipogs.transfer",
+        },
+
+        INVENTORY: {
+            GIVE_ITEM: "app.inventory.give_item",
+        },
+
+        CLASSES: {
+            READ: "app.classes.read",
+            SESSION_READ: "app.classes.session.read",
+        },
+
+        POLLS: {
+            READ: "app.polls.read",
+            VOTE: "app.polls.vote",
+        },
+
+        NOTIFICATIONS: {
+            SEND: "app.notifications.send",
+            READ: "app.notifications.read",
         },
     },
 };

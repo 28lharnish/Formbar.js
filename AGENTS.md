@@ -27,6 +27,7 @@
 - Follow the existing formatting, naming, and file organization conventions.
 - Do not reformat unrelated files.
 - Do not add decorative section-divider comments, such as long lines of dashes, box-drawing characters, or labels like `// --- Helpers ---`. Use normal comments only when they explain non-obvious behavior.
+- Add JSDocs with types to functions
 
 ## Verification Preference
 

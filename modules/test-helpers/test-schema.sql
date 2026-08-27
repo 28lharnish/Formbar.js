@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS "users" (
     "pin"         TEXT    DEFAULT NULL,
     "displayName" TEXT,
     "verified"    INTEGER NOT NULL DEFAULT 0,
+    "pog_meter"   INTEGER NOT NULL DEFAULT 0 CHECK (pog_meter >= 0),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON users (displayName);
@@ -64,6 +65,16 @@ CREATE TABLE IF NOT EXISTS "classusers" (
 CREATE INDEX IF NOT EXISTS idx_classusers_class_student ON classusers (classId, studentId);
 CREATE INDEX IF NOT EXISTS idx_classusers_student_class ON classusers (studentId, classId);
 
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL, -- 'user' or 'app'
+    entity_id INTEGER NOT NULL, -- user_id or app_id
+    api_key_hash TEXT NOT NULL UNIQUE, -- SHA-256 hash of the API key
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_entity ON api_keys (entity_type, entity_id);
+
 -- Named roles (final state: includes color column)
 CREATE TABLE IF NOT EXISTS "roles" (
     "id"      INTEGER NOT NULL UNIQUE,
@@ -97,7 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_user_roles_role_class ON user_roles (roleId, clas
 -- Seed built-in roles (with colors)
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Banned', 1, '["global.system.blocked","class.system.blocked"]', '#808080');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Guest', 1, '["class.poll.read","class.links.read"]', '#95A5A6');
-INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Student', 1, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#3498DB');
+INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Student', 1, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.timer.read","class.help.request","class.links.read"]', '#3498DB');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Mod', 1, '["global.system.moderate","global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#2ECC71');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Teacher', 1, '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#F39C12');
 INSERT INTO "roles" ("name", "isDefault", "scopes", "color") VALUES ('Manager', 1, '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.system.admin","class.students.read","class.students.kick","class.students.ban","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#E74C3C');
@@ -132,17 +143,28 @@ VALUES (4, NULL, 'Multiple Choice', 'Multiple Choice', '[{"answer":"A","weight":
 -- Poll answers
 CREATE TABLE IF NOT EXISTS "poll_answers" (
     "pollId"         INTEGER NOT NULL,
+    "classId"        INTEGER NOT NULL,
     "userId"         INTEGER NOT NULL,
+    "responseIds"    TEXT,
     "buttonResponse" TEXT,
-    "textResponse"   TEXT
+    "textResponse"   TEXT,
+    "createdAt"      INTEGER,
+    PRIMARY KEY ("userId", "pollId")
 );
 
 -- Poll history
 CREATE TABLE IF NOT EXISTS "poll_history" (
-    "id"    INTEGER NOT NULL UNIQUE,
-    "class" INTEGER NOT NULL,
-    "data"  TEXT    NOT NULL,
-    "date"  TEXT    NOT NULL,
+    "id"                     INTEGER NOT NULL UNIQUE,
+    "class"                  INTEGER NOT NULL,
+    "prompt"                 TEXT,
+    "responses"              TEXT,
+    "allowMultipleResponses" INTEGER NOT NULL DEFAULT 0,
+    "blind"                  INTEGER NOT NULL DEFAULT 0,
+    "allowTextResponses"     INTEGER NOT NULL DEFAULT 0,
+    "createdAt"              INTEGER NOT NULL,
+    "auto_end_timer"         INTEGER,
+    "auto_end_threshold"     INTEGER,
+    "blind_until_ended"      INTEGER NOT NULL DEFAULT 0 CHECK ("blind_until_ended" IN (0, 1)),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
@@ -240,7 +262,6 @@ CREATE TABLE IF NOT EXISTS "inventory" (
     "user_id"  INTEGER NOT NULL,
     "item_id"  INTEGER NOT NULL,
     "quantity" INTEGER NOT NULL DEFAULT 1 CHECK ("quantity" > 0),
-    UNIQUE ("user_id", "item_id"),
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
@@ -254,21 +275,30 @@ CREATE TABLE IF NOT EXISTS "item_registry" (
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
--- Trades (migration 20)
+-- Trades (final state after migration 38_update_trades_for_sources)
 CREATE TABLE IF NOT EXISTS "trades" (
-    "id"              INTEGER NOT NULL,
-    "from_user"       INTEGER NOT NULL,
-    "to_user"         INTEGER NOT NULL,
-    "offered_items"   TEXT    NOT NULL,
-    "requested_items" TEXT    NOT NULL,
-    "status"          TEXT    NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'accepted', 'rejected')),
-    "created_at"      TEXT    NOT NULL,
-    "updated_at"      TEXT    NOT NULL,
+    "id"                 INTEGER NOT NULL,
+    "from_user"          INTEGER NOT NULL,
+    "to_user"            INTEGER NOT NULL,
+    "from_source_type"   TEXT    NOT NULL DEFAULT 'inventory' CHECK (from_source_type IN ('inventory', 'pool')),
+    "from_pool_id"       INTEGER,
+    "to_source_type"     TEXT    NOT NULL DEFAULT 'inventory' CHECK (to_source_type IN ('inventory', 'pool')),
+    "to_pool_id"         INTEGER,
+    "offered_items"      TEXT,
+    "requested_items"    TEXT,
+    "offered_digipogs"   INTEGER,
+    "requested_digipogs" INTEGER,
+    "status"             TEXT    NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'completed', 'rejected', 'canceled', 'failed')),
+    "failure_reason"     TEXT,
+    "created_at"         TEXT    NOT NULL,
+    "updated_at"         TEXT    NOT NULL,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 CREATE INDEX IF NOT EXISTS idx_trades_from_user ON trades (from_user);
 CREATE INDEX IF NOT EXISTS idx_trades_to_user ON trades (to_user);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades (status);
+CREATE INDEX IF NOT EXISTS idx_trades_from_user_status ON trades (from_user, status);
+CREATE INDEX IF NOT EXISTS idx_trades_to_user_status ON trades (to_user, status);
 
 -- Apps and registered OAuth redirect URIs
 CREATE TABLE IF NOT EXISTS "apps" (
@@ -278,8 +308,7 @@ CREATE TABLE IF NOT EXISTS "apps" (
     "owner_user_id" INTEGER NOT NULL,
     "share_item_id" INTEGER NOT NULL,
     "pool_id" INTEGER NOT NULL,
-    "api_key_hash" TEXT NOT NULL UNIQUE,
-    "api_secret_hash" TEXT NOT NULL
+    "client_secret_hash" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS "app_redirect_uris" (
@@ -289,3 +318,17 @@ CREATE TABLE IF NOT EXISTS "app_redirect_uris" (
     UNIQUE ("app_id", "redirect_uri")
 );
 CREATE INDEX IF NOT EXISTS idx_app_redirect_uris_app ON app_redirect_uris (app_id);
+
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    app_id INTEGER NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    UNIQUE (user_id, app_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_oauth_grants_user_app ON oauth_grants (user_id, app_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_grants_app ON oauth_grants (app_id);

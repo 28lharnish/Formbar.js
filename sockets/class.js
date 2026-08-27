@@ -22,12 +22,14 @@ module.exports = {
     run(socket, socketUpdates) {
         // Starts a classroom session
         onSocketEvent(socket, "startClass", hasClassScope(SCOPES.CLASS.SESSION.START), async (socketContext) => {
-            startClass(await socketContext.resolveClassId());
+            const classId = await socketContext.resolveClassId();
+            await startClass(classId);
         });
 
         // Ends a classroom session
         onSocketEvent(socket, "endClass", hasClassScope(SCOPES.CLASS.SESSION.END), async (socketContext) => {
-            endClass(await socketContext.resolveClassId(), socketContext.session);
+            const classId = await socketContext.resolveClassId();
+            await endClass(classId, socketContext.session);
         });
 
         // Join a classroom session
@@ -212,9 +214,9 @@ module.exports = {
 
         /**
          * Bans a user from the classroom
-         * @param {string} email - The email of the user to ban.
+         * @param {string} id - The ID of the user to ban.
          */
-        onSocketEvent(socket, "classBanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (socketContext, email) => {
+        onSocketEvent(socket, "classBanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (socketContext, id) => {
             try {
                 const classId = await socketContext.resolveClassId();
 
@@ -223,15 +225,15 @@ module.exports = {
                     return;
                 }
 
-                if (!email) {
-                    socket.emit("message", "No email provided. (Please contact the programmer)");
+                if (!id) {
+                    socket.emit("message", "No user ID provided. (Please contact the programmer)");
                     return;
                 }
 
-                await setClassroomBanStatus(classId, email, true);
+                await setClassroomBanStatus(classId, id, true);
                 socketUpdates.classBannedUsersUpdate();
                 socketUpdates.classUpdate(classId);
-                socket.emit("message", `Banned ${email}`);
+                socket.emit("message", `Banned ${id}`);
             } catch (err) {
                 handleSocketError(err, socket, "classBanUser", "There was a server error try again.");
             }
@@ -239,9 +241,9 @@ module.exports = {
 
         /**
          * Unbans a user from the classroom
-         * @param {string} email - The email of the user to unban.
+         * @param {string} id - The ID of the user to unban.
          */
-        onSocketEvent(socket, "classUnbanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (socketContext, email) => {
+        onSocketEvent(socket, "classUnbanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (socketContext, id) => {
             try {
                 const classId = await socketContext.resolveClassId();
 
@@ -250,16 +252,16 @@ module.exports = {
                     return;
                 }
 
-                if (!email) {
-                    socket.emit("message", "No email provided. (Please contact the programmer)");
+                if (!id) {
+                    socket.emit("message", "No user ID provided. (Please contact the programmer)");
                     return;
                 }
 
                 // Remove the Banned role — user reverts to Guest (implicit)
-                await setClassroomBanStatus(classId, email, false);
+                await setClassroomBanStatus(classId, id, false);
                 socketUpdates.classBannedUsersUpdate();
                 socketUpdates.classUpdate(classId);
-                socket.emit("message", `Unbanned ${email}`);
+                socket.emit("message", `Unbanned ${id}`);
             } catch (err) {
                 handleSocketError(err, socket, "classUnbanUser", "There was a server error try again.");
             }

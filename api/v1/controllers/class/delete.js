@@ -1,4 +1,5 @@
 const { isAuthenticated } = require("@middleware/authentication");
+const { isOwnerOrHasScopes } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { userHasScope } = require("@modules/scope-resolver");

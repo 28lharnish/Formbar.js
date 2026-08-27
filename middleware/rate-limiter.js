@@ -1,195 +1,185 @@
-const { getUserDataFromDb } = require("@services/user-service");
+const { RateLimiterMemory } = require("rate-limiter-flexible");
+const RateLimitError = require("@errors/rate-limit-error");
 const { resolveAPIKey } = require("@services/api-key-service");
-const { dbGet } = require("@modules/database");
 const { verifyToken } = require("@services/auth-service");
-const { settings } = require("@modules/config");
-const { computeGlobalPermissionLevel, STUDENT_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
-const { getUserScopes } = require("@modules/scope-resolver");
 
-// In-memory rate limit storage
-// Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
-const rateLimits = {};
-
-const TIMED_RATE_LIMIT_WINDOW_MS = 60000;
-const UNAUTHENTICATED_USER_RATE_LIMIT = 25;
-const AUTHENTICATED_USER_RATE_LIMIT = 120;
-const AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS = 25;
-const TEACHER_RATE_LIMIT = 225;
-const GLOBAL_BUCKET_MULTIPLIER = 4;
-const MAX_PATH_BUCKETS_PER_IDENTITY = 250;
+const RATE_LIMIT_DURATION_SECONDS = 15 * 60;
+const RATE_LIMIT_MESSAGE = "Too many requests, please try again later.";
 
 /**
- * Strip the bearer prefix from an Authorization header before token validation.
+ * Normalize an address so IPv4-mapped IPv6 and empty values remain stable keys.
  *
- * @param {*} value - value.
- * @returns {*}
+ * @param {*} ipAddress - Client IP address.
+ * @returns {string}
  */
-function getBearerToken(value) {
-    return typeof value === "string" ? value.replace(/^Bearer\s+/i, "") : null;
-}
-
-/**
- * Collapse variable path segments so similar routes share a stable rate-limit bucket.
- *
- * @param {*} path - path.
- * @returns {*}
- */
-function normalizeRateLimitPath(path) {
-    return String(path || "/")
-        .split("/")
-        .map((segment) => {
-            if (!segment) return segment;
-            if (/^\d+$/.test(segment)) return ":id";
-            if (/^[0-9a-f-]{16,}$/i.test(segment)) return ":token";
-            if (segment.length > 24) return ":value";
-            return segment;
-        })
-        .join("/");
-}
-
-/**
- * Detect auth routes that should use the stricter login and token exchange limits.
- *
- * @param {*} path - path.
- * @returns {boolean}
- */
-function isAuthPath(path) {
-    return /(?:^|\/)auth(?:\/|$)/.test(path);
-}
-
-/**
- * Pick a non-critical bucket to evict when one identity has too many tracked paths.
- *
- * @param {*} userRequests - userRequests.
- * @param {*} path - path.
- * @param {*} globalPath - globalPath.
- * @returns {*}
- */
-function getBucketKeyToEvict(userRequests, path, globalPath) {
-    return Object.keys(userRequests).find((key) => key !== path && key !== globalPath && key !== "hasBeenMessaged");
-}
-
-/**
- * Resolve a stable identity from the request so API keys, JWTs, and IPs share consistent limits.
- *
- * @param {import("express").Request} req - req.
- * @returns {Promise<*>}
- */
-async function resolveRateLimitIdentity(req) {
-    const fallbackIdentity = `ip:${req.ip || "unknown"}`;
-
-    const apiKeyHeader = req.headers.api;
-    const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
-    if (apiKey) {
-        const apiKeyUser = await resolveAPIKey(apiKey);
-        if (apiKeyUser?.id) {
-            const userData = await getUserDataFromDb(apiKeyUser.id);
-            if (userData?.id) {
-                return { identifier: `user:${userData.id}`, user: userData };
-            }
-        }
-        return { identifier: fallbackIdentity, user: null };
+function normalizeIpAddress(ipAddress) {
+    if (!ipAddress) {
+        return "unknown";
     }
 
-    const authorizationHeader = req.headers.authorization;
-    if (authorizationHeader) {
-        const decodedToken = verifyToken(getBearerToken(authorizationHeader));
-        if (decodedToken && !decodedToken.error && decodedToken.email) {
-            const userRow = await dbGet("SELECT id FROM users WHERE email = ?", [decodedToken.email]);
-            if (userRow?.id) {
-                const userData = await getUserDataFromDb(userRow.id);
-                if (userData?.id) {
-                    return { identifier: `user:${userData.id}`, user: userData };
+    const normalizedIp = String(ipAddress);
+    return normalizedIp.startsWith("::ffff:") ? normalizedIp.slice(7) : normalizedIp;
+}
+
+/**
+ * Convert a possible account id to a limiter key.
+ *
+ * @param {*} userId - Authenticated user id.
+ * @returns {string|null}
+ */
+function getAccountRateLimitKey(userId) {
+    if (userId === undefined || userId === null || userId === "") {
+        return null;
+    }
+
+    return `account:${userId}`;
+}
+
+/**
+ * Resolve an account key from a bearer authorization header, when present.
+ *
+ * @param {*} authorizationHeader - Authorization header value.
+ * @returns {string|null}
+ */
+function getAuthorizationRateLimitKey(authorizationHeader) {
+    if (typeof authorizationHeader !== "string" || !authorizationHeader.trim()) {
+        return null;
+    }
+
+    const bearerToken = authorizationHeader.replace(/^Bearer\s+/i, "");
+    const decodedToken = verifyToken(bearerToken);
+    if (!decodedToken || decodedToken.error) {
+        return null;
+    }
+
+    return getAccountRateLimitKey(decodedToken.id);
+}
+
+/**
+ * Resolve an account key from an API key value, when present.
+ *
+ * @param {*} apiKeyValue - API key from headers or query.
+ * @returns {Promise<string|null>}
+ */
+async function getApiKeyRateLimitKey(apiKeyValue) {
+    if (typeof apiKeyValue !== "string" || !apiKeyValue.trim()) {
+        return null;
+    }
+
+    const apiKeyUser = await resolveAPIKey(apiKeyValue);
+    return getAccountRateLimitKey(apiKeyUser?.id);
+}
+
+/**
+ * Resolve the request limiter key by account first, then by IP fallback.
+ *
+ * @param {import("express").Request} req - Express request.
+ * @returns {Promise<string>}
+ */
+async function getRequestRateLimitKey(req) {
+    const sessionRateLimitKey = getAccountRateLimitKey(req.user?.id);
+    if (sessionRateLimitKey) {
+        return sessionRateLimitKey;
+    }
+
+    const authorizationRateLimitKey = getAuthorizationRateLimitKey(req.headers.authorization);
+    if (authorizationRateLimitKey) {
+        return authorizationRateLimitKey;
+    }
+
+    const apiRateLimitKey = await getApiKeyRateLimitKey(typeof req.headers.api === "string" ? req.headers.api : req.query?.api);
+    if (apiRateLimitKey) {
+        return apiRateLimitKey;
+    }
+
+    return `ip:${normalizeIpAddress(req.ip)}`;
+}
+
+/**
+ * Resolve the socket limiter key by account first, then by IP fallback.
+ *
+ * @param {import("socket.io").Socket} socket - Socket connection.
+ * @returns {string}
+ */
+function getSocketRateLimitKey(socket) {
+    const sessionRateLimitKey = getAccountRateLimitKey(socket.request?.session?.userId);
+    if (sessionRateLimitKey) {
+        return sessionRateLimitKey;
+    }
+
+    const authorizationRateLimitKey = getAuthorizationRateLimitKey(socket.request?.headers?.authorization);
+    if (authorizationRateLimitKey) {
+        return authorizationRateLimitKey;
+    }
+
+    const socketIpAddress = socket.handshake?.address || socket.request?.socket?.remoteAddress;
+    return `ip:${normalizeIpAddress(socketIpAddress)}`;
+}
+
+/**
+ * Create shared HTTP + socket rate-limit middleware using one in-memory limiter.
+ *
+ * @param {*} options - Configuration options.
+ * @param {number} options.rateLimitMultiplier - Multiplier applied to the base limit.
+ * @returns {*}
+ */
+const { settings, rateLimit: rateLimitConfig } = require("@modules/config.js");
+
+function createRateLimiter(options = {}) {
+    const basePoints = Number.isFinite(options.basePoints) ? options.basePoints : (rateLimitConfig?.basePoints ?? 60);
+    const durationSeconds = Number.isFinite(options.durationSeconds)
+        ? options.durationSeconds
+        : (rateLimitConfig?.durationSeconds ?? RATE_LIMIT_DURATION_SECONDS);
+    const multiplier = options.rateLimitMultiplier ?? settings?.rateLimitMultiplier ?? 1;
+
+    const points = Math.max(1, Math.round(basePoints * multiplier));
+
+    // Separate in-memory limiters for HTTP and socket traffic so they don't share budgets
+    const httpLimiter = new RateLimiterMemory({ points, duration: durationSeconds });
+    const socketLimiter = new RateLimiterMemory({ points, duration: durationSeconds });
+
+    return {
+        httpMiddleware: async (req, res, next) => {
+            let rateLimitKey;
+            try {
+                rateLimitKey = await getRequestRateLimitKey(req);
+            } catch (err) {
+                next(err);
+                return;
+            }
+
+            try {
+                await httpLimiter.consume(rateLimitKey);
+                next();
+            } catch (err) {
+                next(new RateLimitError(RATE_LIMIT_MESSAGE, { event: "rate-limit.exceeded", reason: "rate_limit_exceeded" }));
+            }
+        },
+        socketMiddleware: (socket, next) => {
+            socket.use(async ([event], nextEvent) => {
+                try {
+                    await socketLimiter.consume(getSocketRateLimitKey(socket));
+                    nextEvent();
+                } catch (err) {
+                    // Emit a user-facing message event (consistent with other socket notifications)
+                    socket.emit("message", {
+                        message: RATE_LIMIT_MESSAGE,
+                        event,
+                    });
                 }
-            }
-        }
-    }
-
-    return { identifier: fallbackIdentity, user: null };
-}
-
-/**
- * Enforce per-identity request caps and fail fast with 429 before the handlers do extra work.
- *
- * @param {import("express").Request} req - req.
- * @param {import("express").Response} res - res.
- * @param {import("express").NextFunction} next - next.
- * @returns {Promise<*>}
- */
-async function rateLimiter(req, res, next) {
-    const { identifier, user } = await resolveRateLimitIdentity(req);
-    const currentTime = Date.now();
-    const timeFrame = settings.rateLimitWindowMs ?? TIMED_RATE_LIMIT_WINDOW_MS;
-    const permissionLevel = user ? computeGlobalPermissionLevel(getUserScopes(user).global) : 0;
-
-    let maximumRequests = UNAUTHENTICATED_USER_RATE_LIMIT; // Default limit for unauthenticated users
-    if (permissionLevel >= TEACHER_PERMISSIONS) {
-        maximumRequests = TEACHER_RATE_LIMIT;
-    } else if (permissionLevel >= STUDENT_PERMISSIONS) {
-        maximumRequests = isAuthPath(req.path) ? AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS : AUTHENTICATED_USER_RATE_LIMIT;
-    }
-
-    // Apply the configurable multiplier so test runs can relax limits.
-    maximumRequests = Math.max(1, Math.round(maximumRequests * (settings.rateLimitMultiplier ?? 1)));
-
-    // Initialize rate limit log for the user if it doesn't exist
-    if (!rateLimits[identifier]) {
-        rateLimits[identifier] = {};
-    }
-
-    // Get the user's request log
-    const userRequests = rateLimits[identifier];
-    const path = normalizeRateLimitPath(req.path);
-    const globalPath = "__global__";
-
-    // Initialize request array for this path if it doesn't exist
-    if (!userRequests[path]) {
-        userRequests[path] = [];
-    }
-    if (!userRequests[globalPath]) {
-        userRequests[globalPath] = [];
-    }
-
-    const bucketKeys = Object.keys(userRequests).filter((key) => key !== "hasBeenMessaged");
-    if (bucketKeys.length > MAX_PATH_BUCKETS_PER_IDENTITY) {
-        const keyToEvict = getBucketKeyToEvict(userRequests, path, globalPath);
-        if (keyToEvict) {
-            delete userRequests[keyToEvict];
-        }
-    }
-
-    // Remove timestamps that are outside the time frame
-    for (const key of [path, globalPath]) {
-        while (userRequests[key].length && currentTime - userRequests[key][0] > timeFrame) {
-            userRequests[key].shift();
-            userRequests["hasBeenMessaged"] = false;
-        }
-    }
-
-    // Check if the user has exceeded the limit
-    // If they have, send a rate limit response
-    // Otherwise, log the request and proceed
-    if (userRequests[path].length >= maximumRequests || userRequests[globalPath].length >= maximumRequests * GLOBAL_BUCKET_MULTIPLIER) {
-        if (!userRequests["hasBeenMessaged"]) {
-            userRequests["hasBeenMessaged"] = true;
-            req.warnEvent("rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
-                identifier,
-                path,
-                limit: maximumRequests,
-                permissionLevel,
             });
-        }
 
-        // Always respond while over-limit; otherwise the request hangs forever.
-        return res.status(429).json({ error: `You are being rate limited. Please try again in ${timeFrame / 1000} seconds.` });
-    }
-
-    userRequests[path].push(currentTime);
-    userRequests[globalPath].push(currentTime);
-    next();
+            next();
+        },
+    };
 }
 
 module.exports = {
-    rateLimiter,
-    getBucketKeyToEvict,
+    createRateLimiter,
+    getRequestRateLimitKey,
+    getSocketRateLimitKey,
+    normalizeIpAddress,
+    getAccountRateLimitKey,
+    getAuthorizationRateLimitKey,
+    getApiKeyRateLimitKey,
 };

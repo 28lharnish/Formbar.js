@@ -54,7 +54,7 @@ async function markNotificationAsRead(notificationId) {
  * @returns {Promise<number>}
  */
 async function createNotification(userId, type, data) {
-    await dbRun("INSERT INTO notifications (user_id, type, data) VALUES (?, ?, ?)", [userId, type, JSON.stringify(data)]);
+    return dbRun("INSERT INTO notifications (user_id, type, data) VALUES (?, ?, ?)", [userId, type, JSON.stringify(data)]);
 }
 
 /**

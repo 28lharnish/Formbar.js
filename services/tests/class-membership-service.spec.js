@@ -67,6 +67,7 @@ jest.mock("@services/class-service", () => ({
 
 jest.mock("@services/student-service", () => ({
     getIdFromEmail: jest.fn(() => 1),
+    getEmailFromId: jest.fn(() => "student@test.com"),
 }));
 
 jest.mock("../../sockets/init", () => ({
@@ -89,7 +90,7 @@ const { emitToUser, advancedEmitToClass } = require("@services/socket-updates-se
 const { classStateStore } = require("@services/classroom-service");
 const classService = require("@services/class-service");
 const { findRoleByPermissionLevel } = require("@services/role-service");
-const { getIdFromEmail } = require("@services/student-service");
+const { getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { userSocketUpdates } = require("../../sockets/init");
 const { BANNED_PERMISSIONS, SCOPES } = require("@modules/permissions");
 const AppError = require("@errors/app-error");
@@ -144,9 +145,15 @@ describe("deleteClassroom", () => {
         const room = await seedClassroom();
         await seedClassUser(room.id, 1);
         await seedClassUser(room.id, 2);
-        const pollId = await mockDatabase.dbRun("INSERT INTO poll_history (class, data, date) VALUES (?, ?, ?)", [room.id, "{}", "2026-04-21"]);
-        await mockDatabase.dbRun("INSERT INTO poll_answers (pollId, userId, buttonResponse, textResponse) VALUES (?, ?, ?, ?)", [
+        const pollId = await mockDatabase.dbRun("INSERT INTO poll_history (class, prompt, responses, createdAt) VALUES (?, ?, ?, ?)", [
+            room.id,
+            "Exit?",
+            "[]",
+            Date.now(),
+        ]);
+        await mockDatabase.dbRun("INSERT INTO poll_answers (pollId, classId, userId, buttonResponse, textResponse) VALUES (?, ?, ?, ?, ?)", [
             pollId,
+            room.id,
             2,
             "A",
             null,
@@ -307,12 +314,11 @@ describe("getClassLinksPaginated", () => {
 });
 
 describe("setClassroomBanStatus", () => {
-    it("returns false when user does not exist", async () => {
-        getIdFromEmail.mockResolvedValueOnce(null);
+    it("throws NotFoundError when user does not exist", async () => {
+        getEmailFromId.mockResolvedValueOnce(null);
 
-        const result = await setClassroomBanStatus(10, "missing@test.com", true);
+        await expect(setClassroomBanStatus(10, 5, true)).rejects.toThrow(NotFoundError);
 
-        expect(result).toBe(false);
         expect(findRoleByPermissionLevel).not.toHaveBeenCalled();
         expect(classService.classKickStudent).not.toHaveBeenCalled();
     });
@@ -336,7 +342,7 @@ describe("setClassroomBanStatus", () => {
             availableRoles: [{ id: 8, name: "Blocked Alias", scopes: [SCOPES.CLASS.SYSTEM.BLOCKED] }],
         };
 
-        const result = await setClassroomBanStatus(room.id, "student@test.com", true);
+        const result = await setClassroomBanStatus(room.id, 1, true);
 
         const roles = await mockDatabase.dbGetAll("SELECT userId, roleId, classId FROM user_roles WHERE userId=? AND classId=?", [1, room.id]);
         expect(result).toBe(true);
@@ -358,7 +364,7 @@ describe("setClassroomBanStatus", () => {
             roles: { global: [{ id: 3, name: "Mod" }], class: [{ id: 1, name: "Banned" }] },
         });
 
-        const result = await setClassroomBanStatus(room.id, "student@test.com", false);
+        const result = await setClassroomBanStatus(room.id, 1, false);
 
         const roles = await mockDatabase.dbGetAll("SELECT userId, roleId, classId FROM user_roles WHERE userId=? AND classId=?", [1, room.id]);
         expect(result).toBe(true);
@@ -372,8 +378,8 @@ describe("setClassroomBanStatus", () => {
         expect(classService.classKickStudent).toHaveBeenCalledWith(1, room.id, { exitRoom: true, ban: false });
     });
 
-    it("throws AppError when classroomId or email are missing", async () => {
-        await expect(setClassroomBanStatus(null, "student@test.com", true)).rejects.toThrow(AppError);
+    it("throws AppError when classroomId or userId are missing", async () => {
+        await expect(setClassroomBanStatus(null, 1, true)).rejects.toThrow(AppError);
         await expect(setClassroomBanStatus(1, null, true)).rejects.toThrow(AppError);
     });
 });

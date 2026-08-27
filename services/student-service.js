@@ -88,8 +88,9 @@ function createStudentFromUserData(userData, options = {}) {
         student.permissions = userData.permissions;
     }
 
-    if (userData.pogMeter != null) {
-        student.pogMeter = userData.pogMeter;
+    // Pog meter is stored as pog_meter in the database, but we store it as pogMeter in the student object
+    if (userData.pogMeter != null || userData.pog_meter != null) {
+        student.pogMeter = userData.pogMeter ?? userData.pog_meter;
     }
 
     if (userData.digipogs != null) {

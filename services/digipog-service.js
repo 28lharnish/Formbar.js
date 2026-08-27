@@ -983,13 +983,52 @@ async function awardDigipogs(awardData, user) {
 }
 
 /**
+ * Calculate the standard digipog transfer tax.
+ * @param {number} amount - Gross transfer amount.
+ * @returns {{taxedAmount: number, taxAmount: number}}
+ */
+function calculateDigipogTransferTax(amount) {
+    const taxedAmount = Math.floor(amount * 0.9) > 1 ? Math.floor(amount * 0.9) : 1;
+    return {
+        taxedAmount,
+        taxAmount: amount - taxedAmount,
+    };
+}
+
+/**
+ * Credit a digipog transfer recipient and route tax to the developer pool when present.
+ * @param {number} amount - Gross transfer amount.
+ * @param {"user"|"pool"} recipientType - Recipient account type.
+ * @param {number} recipientId - Recipient account ID.
+ * @returns {Promise<number>} Tax amount deducted.
+ */
+async function creditDigipogTransferRecipient(amount, recipientType, recipientId) {
+    const { taxedAmount, taxAmount } = calculateDigipogTransferTax(amount);
+
+    if (recipientType === "user") {
+        await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [taxedAmount, recipientId]);
+    } else {
+        await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxedAmount, recipientId]);
+    }
+
+    const devPool = await dbGet("SELECT id FROM digipog_pools WHERE id = ?", [0]);
+    if (devPool) {
+        await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxAmount, 0]);
+    }
+
+    return taxAmount;
+}
+
+/**
  * Transfer digipogs between two users.
  * @param {Object} transferData - transferData.
+ * @param {Object} [options] - Trusted server-side options.
  * @returns {Promise<Object>}
  */
-async function transferDigipogs(transferData) {
+async function transferDigipogs(transferData, options = {}) {
     try {
         const { pin, reason = "", pool } = transferData;
+        const pinVerified = options.pinVerified === true;
         let from = transferData.from;
         let to = transferData.to;
         const amount = Math.floor(transferData.amount);
@@ -1017,7 +1056,7 @@ async function transferDigipogs(transferData) {
         }
         if (!to.type) to.type = "user";
 
-        if (!from || !from.id || !to || !to.id || !amount || reason === undefined || !pin) {
+        if (!from || !from.id || !to || !to.id || !amount || reason === undefined || (!pin && !pinVerified)) {
             return { success: false, message: "Missing required fields." };
         } else if (amount <= 0) {
             return { success: false, message: "Amount must be greater than zero." };
@@ -1061,15 +1100,17 @@ async function transferDigipogs(transferData) {
             fromAccount.pin = poolOwner.pin;
         }
 
-        if (!fromAccount.pin) {
+        if (!pinVerified && !fromAccount.pin) {
             recordAttempt(accountId, false);
             return { success: false, message: "Account PIN not configured." };
         }
 
-        const isPinValid = await compareBcrypt(String(pin), fromAccount.pin);
-        if (!isPinValid) {
-            recordAttempt(accountId, false);
-            return { success: false, message: "Invalid PIN." };
+        if (!pinVerified) {
+            const isPinValid = await compareBcrypt(String(pin), fromAccount.pin);
+            if (!isPinValid) {
+                recordAttempt(accountId, false);
+                return { success: false, message: "Invalid PIN." };
+            }
         }
 
         const fromBalance = from.type === "user" ? fromAccount.digipogs : fromAccount.amount;
@@ -1077,9 +1118,6 @@ async function transferDigipogs(transferData) {
             recordAttempt(accountId, false);
             return { success: false, message: "Insufficient funds." };
         }
-
-        const taxedAmount = Math.floor(amount * 0.9) > 1 ? Math.floor(amount * 0.9) : 1;
-        const taxAmount = amount - taxedAmount;
 
         let toAccount;
         if (to.type === "user") {
@@ -1117,13 +1155,7 @@ async function transferDigipogs(transferData) {
                     throw new Error("Insufficient funds.");
                 }
             }
-            if (to.type === "user") {
-                await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [taxedAmount, to.id]);
-            } else {
-                await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxedAmount, to.id]);
-            }
-            const devPool = await dbGet("SELECT id FROM digipog_pools WHERE id = ?", [0]);
-            if (devPool) await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxAmount, 0]);
+            await creditDigipogTransferRecipient(amount, to.type, to.id);
             await dbRun("COMMIT");
         } catch (err) {
             try {
@@ -1164,6 +1196,7 @@ module.exports = {
     getUserTransactionsPaginated,
     awardDigipogs,
     transferDigipogs,
+    creditDigipogTransferRecipient,
 
     // Pool helpers
     createPool,

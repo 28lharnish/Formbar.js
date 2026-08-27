@@ -110,7 +110,7 @@ function makeClassroom() {
                 roles: { global: [], class: [] },
                 scopes: {
                     global: [],
-                    class: [SCOPES.CLASS.POLL.READ],
+                    class: [SCOPES.CLASS.POLL.READ, SCOPES.CLASS.TIMER.READ],
                 },
                 pollRes: { buttonRes: "A", textRes: "", date: null },
                 help: true,
@@ -168,16 +168,28 @@ describe("SocketUpdates classUpdate visibility", () => {
                 settings: undefined,
                 roles: undefined,
                 students: undefined,
-                myId: 11,
-                myRoles: [],
+                timer: { active: true, sound: false },
                 poll: expect.objectContaining({
                     totalResponses: 1,
                     totalResponders: 1,
                 }),
             })
         );
-        const payload = socket.emit.mock.calls[0][1];
-        expect(payload.students).toBeUndefined();
+    });
+
+    it("omits timer when the viewer does not have timer.read", () => {
+        mockClassrooms[1].students["student@example.com"].scopes.class = [SCOPES.CLASS.POLL.READ];
+        const socket = makeSocket();
+        const updates = new SocketUpdates(socket);
+
+        updates.classUpdate(1, { global: false });
+
+        expect(socket.emit).toHaveBeenCalledWith(
+            "classUpdate",
+            expect.objectContaining({
+                timer: undefined,
+            })
+        );
     });
 
     it("includes broader class data when the viewer has the matching scopes", () => {

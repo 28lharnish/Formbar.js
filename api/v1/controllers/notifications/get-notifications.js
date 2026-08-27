@@ -1,6 +1,7 @@
-const { getNotificationsForUserPaginated, getNotificationById } = require("@services/notification-service");
+const { createNotification, getNotificationsForUserPaginated, getNotificationById } = require("@services/notification-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { buildPagination, parsePaginationQuery } = require("@modules/pagination");
+const { requireBodyParam } = require("@modules/error-wrapper");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
@@ -14,6 +15,72 @@ const MAX_NOTIFICATION_LIMIT = 100;
  * @returns {void}
  */
 module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/notifications:
+     *   post:
+     *     summary: Create a notification for the authenticated user
+     *     tags:
+     *       - Notifications
+     *     description: |
+     *       Creates a notification belonging to the currently authenticated user.
+     *
+     *       **OAuth scope:** `app.notifications.send`
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - type
+     *               - data
+     *             properties:
+     *               type:
+     *                 type: string
+     *               data:
+     *                 type: object
+     *     responses:
+     *       200:
+     *         description: Notification created successfully
+     */
+    router.post("/notifications", isAuthenticated, async (req, res) => {
+        const { type, data } = req.body || {};
+
+        requireBodyParam(type, "type");
+        requireBodyParam(data, "data");
+
+        if (typeof type !== "string" || !type.trim()) {
+            throw new ValidationError("Notification type must be a non-empty string.", {
+                event: "notifications.create.failed",
+                reason: "invalid_type",
+            });
+        }
+
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+            throw new ValidationError("Notification data must be an object.", {
+                event: "notifications.create.failed",
+                reason: "invalid_data",
+            });
+        }
+
+        req.infoEvent("notifications.create.attempt", "Creating notification for authenticated user", { type });
+
+        const notificationId = await createNotification(req.user.id, type.trim(), data);
+
+        req.infoEvent("notifications.create.success", "Notification created", { notificationId });
+
+        res.json({
+            success: true,
+            data: {
+                notificationId,
+            },
+        });
+    });
+
     /**
      * @swagger
      * /api/v1/notifications:

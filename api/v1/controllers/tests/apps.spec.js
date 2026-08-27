@@ -47,24 +47,20 @@ jest.mock("@modules/config", () => {
 });
 
 const registerAppController = require("../apps/register-app");
+const getAppController = require("../apps/get-app");
 
-const app = createTestApp(registerAppController);
+const app = createTestApp(registerAppController, getAppController);
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
-    await mockDatabase.dbRun(`CREATE TABLE IF NOT EXISTS apps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        description TEXT,
-        owner_user_id INTEGER NOT NULL,
-        share_item_id INTEGER NOT NULL,
-        pool_id INTEGER NOT NULL,
-        api_key_hash TEXT NOT NULL UNIQUE,
-        api_secret_hash TEXT NOT NULL
-    )`);
 });
 
 afterEach(async () => {
+    await mockDatabase.dbRun("DELETE FROM app_redirect_uris");
+    await mockDatabase.dbRun("DELETE FROM api_keys WHERE entity_type = 'app'");
+    await mockDatabase.dbRun("DELETE FROM inventory");
+    await mockDatabase.dbRun("DELETE FROM item_registry");
+    await mockDatabase.dbRun("DELETE FROM digipog_pools");
     await mockDatabase.dbRun("DELETE FROM apps");
     await mockDatabase.reset();
     clearClassStateStore();
@@ -128,6 +124,18 @@ describe("POST /api/v1/apps/register", () => {
         expect(res.body.success).toBe(false);
     });
 
+    it("returns 400 when redirectUris is invalid JSON", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+
+        const res = await request(app)
+            .post("/api/v1/apps/register")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ name: "My App", description: "A test app", redirectUris: "[not-json]" });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
     it("creates an app, pool, and share item on success", async () => {
         const { tokens, user } = await seedAuthenticatedUser(mockDatabase);
 
@@ -145,8 +153,11 @@ describe("POST /api/v1/apps/register", () => {
         const appRow = await mockDatabase.dbGet("SELECT * FROM apps WHERE id = ?", [res.body.data.appId]);
         expect(appRow.name).toBe("My App");
         expect(appRow.owner_user_id).toBe(user.id);
-        expect(appRow.api_key_hash).toMatch(/^[0-9a-f]{64}$/);
-        expect(appRow.api_secret_hash).toMatch(/^[0-9a-f]{64}$/);
+
+        // Verify API key is stored in the api_keys table
+        const apiKeyRow = await mockDatabase.dbGet("SELECT * FROM api_keys WHERE entity_id = ? AND entity_type = 'app'", [res.body.data.appId]);
+        expect(apiKeyRow).toBeDefined();
+        expect(apiKeyRow.api_key_hash).toBe(require("@modules/crypto").sha256(res.body.data.apiKey));
 
         const shareItem = await mockDatabase.dbGet("SELECT * FROM item_registry WHERE id = ?", [appRow.share_item_id]);
         expect(shareItem.name).toBe("My App Share");
@@ -182,5 +193,32 @@ describe("POST /api/v1/apps/register", () => {
 
         const poolRows = await mockDatabase.dbGetAll("SELECT id, name FROM digipog_pools WHERE name = ?", [`${payload.name} Developer Pool`]);
         expect(poolRows).toHaveLength(2);
+    });
+});
+
+describe("GET /api/v1/apps/:id", () => {
+    it("returns 400 when the app id is not an integer", async () => {
+        const res = await request(app).get("/api/v1/apps/not-a-number");
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns the app for a valid app id", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "app-owner@example.com",
+            displayName: "App Owner",
+        });
+
+        const created = await request(app)
+            .post("/api/v1/apps/register")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ name: "Lookup App", description: "A test app" });
+
+        const res = await request(app).get(`/api/v1/apps/${created.body.data.appId}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.name).toBe("Lookup App");
     });
 });

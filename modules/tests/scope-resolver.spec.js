@@ -5,7 +5,7 @@ const {
     getGlobalPermissionLevelForUser,
     getClassPermissionLevelForUser,
 } = require("@modules/scope-resolver");
-const { SCOPES, GUEST_PERMISSIONS, TEACHER_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES, GUEST_PERMISSIONS, STUDENT_PERMISSIONS, TEACHER_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissions");
 
 describe("getUserRoleName", () => {
     it("returns role field when present", () => {
@@ -98,6 +98,20 @@ describe("permission level helpers", () => {
                 }
             )
         ).toBe(MANAGER_PERMISSIONS);
+    });
+
+    it("treats timer read as a student-level class scope", () => {
+        expect(
+            getClassPermissionLevelForUser(
+                {
+                    roles: {
+                        global: [],
+                        class: [{ scopes: [SCOPES.CLASS.TIMER.READ] }],
+                    },
+                },
+                null
+            )
+        ).toBe(STUDENT_PERMISSIONS);
     });
 });
 

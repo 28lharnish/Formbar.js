@@ -6,6 +6,7 @@ const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
+const { enforceAppScopeForOAuth } = require("@middleware/permission-check");
 const AuthError = require("@errors/auth-error");
 
 const whitelistedIps = [];
@@ -109,7 +110,7 @@ async function isAuthenticated(req, res, next) {
         req.user = {
             email: apiUser.email,
             ...user,
-            id: user.id || apiUser.id,
+            id: Number(user.id) || Number(apiUser.id),
             userId: user.id || apiUser.id,
         };
 
@@ -130,6 +131,38 @@ async function isAuthenticated(req, res, next) {
         throw new AuthError("Invalid access token provided.");
     }
 
+    if (decodedToken.oauth) {
+        const userId = decodedToken.id || decodedToken.sub;
+        if (!userId) {
+            req.warnEvent("auth.missing_user_id", "Invalid OAuth access token provided: Missing user id");
+            throw new AuthError("Invalid access token provided.");
+        }
+
+        const dbUser = await dbGet("SELECT id, email, displayName, verified, digipogs FROM users WHERE id = ?", [userId]);
+        if (!dbUser) {
+            req.warnEvent("auth.user_not_found", `OAuth token user not found: ${userId}`, { userId });
+            throw new AuthError("User is not authenticated");
+        }
+
+        req.user = {
+            id: Number(dbUser.id),
+            userId: Number(dbUser.id),
+            email: dbUser.email,
+            displayName: dbUser.displayName,
+            verified: dbUser.verified,
+            digipogs: dbUser.digipogs,
+            permissions: decodedToken.permissions ?? 0,
+            classPermissions: decodedToken.classPermissions ?? null,
+            scopes: decodedToken.scopes || { global: [], class: [], app: decodedToken.oauth.scopes || [] },
+            oauth: decodedToken.oauth,
+        };
+
+        enforceAppScopeForOAuth(req);
+
+        next();
+        return;
+    }
+
     const email = decodedToken.email;
     if (!email) {
         req.warnEvent("auth.missing_email", "Invalid access token provided: Missing 'email'");
@@ -146,6 +179,7 @@ async function isAuthenticated(req, res, next) {
         req.user = {
             email,
             ...user,
+            id: Number(user.id),
             userId: user.id,
         };
 
@@ -167,11 +201,37 @@ async function isAuthenticated(req, res, next) {
     req.user = {
         email: email,
         ...user,
+        id: Number(user.id),
         userId: user.id,
     };
 
     next();
 }
+
+// make it do
+// async function authenticateApp(req, res, next) {
+//     const auth = req.headers.authorization;
+//     if (!auth) throw new AuthError("No authentication provided", { event: "auth.missing_token", reason: "no_token" });
+
+//     const [scheme, credentials] = auth.split(' ');
+//     if (scheme !== 'ApiKey' || !credentials) {
+//         throw new AuthError("Invalid authentication format", { event: "auth.invalid_auth_format", reason: "invalid_format" });
+//     }
+
+//     const [key, secret] = credentials.split(':');
+//     if (!key || !secret) {
+//         throw new AuthError("Invalid authentication credentials", { event: "auth.invalid_auth_credentials", reason: "invalid_credentials" });
+//     }
+
+//     const app = await // not done yet
+//     if (!app) throw new AuthError("Invalid application key", { event: "auth.invalid_app_key", reason: "invalid_key" });
+
+//     const valid = await bcrypt.compare(secret, app.secretHash);
+//     if (!valid) return res.status(401).end();
+
+//     req.app = app;
+//     next();
+// }
 
 // Create a function to check if the user's email is verified
 /**

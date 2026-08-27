@@ -32,13 +32,13 @@ jest.mock("@services/digipog-service", () => ({
 }));
 
 jest.mock("@services/inventory-service", () => ({
-    createItem: jest.fn(() => 7),
+    registerItem: jest.fn(() => 7),
     addItemToInventory: jest.fn(),
 }));
 
 const { createApp } = require("@services/app-service");
 const { createPool } = require("@services/digipog-service");
-const { createItem, addItemToInventory } = require("@services/inventory-service");
+const { registerItem, addItemToInventory } = require("@services/inventory-service");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -49,8 +49,7 @@ beforeAll(async () => {
         owner_user_id INTEGER NOT NULL,
         share_item_id INTEGER,
         pool_id INTEGER,
-        api_key_hash TEXT,
-        api_secret_hash TEXT
+        client_secret_hash TEXT
     )`);
 });
 
@@ -91,10 +90,10 @@ describe("createApp()", () => {
         });
     });
 
-    it("calls createItem with share item name", async () => {
+    it("calls registerItem with share item name", async () => {
         await createApp(APP_INPUT);
 
-        expect(createItem).toHaveBeenCalledWith(expect.objectContaining({ name: "TestApp Share" }));
+        expect(registerItem).toHaveBeenCalledWith(expect.objectContaining({ name: "TestApp Share" }));
     });
 
     it("calls addItemToInventory with ownerId and shareItemId", async () => {
@@ -113,8 +112,5 @@ describe("createApp()", () => {
         expect(row.owner_user_id).toBe(APP_INPUT.ownerId);
         expect(row.share_item_id).toBe(7);
         expect(row.pool_id).toBe(42);
-        expect(row.api_key_hash).toMatch(/^[0-9a-f]{64}$/);
-        expect(row.api_secret_hash).toMatch(/^[0-9a-f]{64}$/);
-        expect(row.api_key_hash).not.toBe(result.apiKey);
     });
 });
