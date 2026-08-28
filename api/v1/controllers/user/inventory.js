@@ -26,6 +26,42 @@ module.exports = (router) => {
         return hasScope(SCOPES.GLOBAL.USERS.MANAGE)(req, res, next);
     }
 
+	/**
+     * @swagger
+     * /api/v1/user/{id}/inventory:
+     *   get:
+     *     summary: Get a user's inventory
+     *     description: >
+     *       Returns the user's full inventory as an array of items with their amounts and item information.
+     *     tags: [Inventory, Users]
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: query
+     *         name: id
+	 *         required: true
+     *         schema:
+     *           type: integer
+     *         description: ID of the user
+     *     responses:
+     *       200:
+     *         description: Inventory returned successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                 data:
+     *                   type: array
+     *                   items:
+	*                       $ref: '#/components/schemas/InventoryItem'
+     *       401:
+     *         description: Not authenticated
+     *       403:
+     *         description: Forbidden
+     */
     router.get("/user/:id/inventory/", isAuthenticated, isOwnerOrHasScopes(ownsInventory, [SCOPES.GLOBAL.USERS.MANAGE]), async (req, res) => {
         req.infoEvent("user.inventory.get", "Fetching user inventory");
         requireParam(req.params.id, "id");
