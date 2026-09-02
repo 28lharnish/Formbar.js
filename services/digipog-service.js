@@ -166,7 +166,7 @@ async function getComputedGlobalUser(userId) {
  * @returns {Promise<number>}
  */
 async function createPool({ name, description = "", ownerId, shareItemId = null}) {
-    const poolId = await dbRun("INSERT INTO digipog_pools (name, description, amount, share_item) VALUES (?, ?, ?, ?)", [name, description, 0, shareItemId]);
+    const poolId = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [name, description, 0]);
     await addUserToPool(poolId, ownerId, 1);
     return poolId;
 }
