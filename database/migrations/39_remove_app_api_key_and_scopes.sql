@@ -8,7 +8,7 @@ CREATE TABLE apps_temp (
     description TEXT,
     owner_user_id INTEGER NOT NULL,
     share_item_id INTEGER NOT NULL,
-    pool_id INTEGER NOT NULL
+    pool_id INTEGER NOT NULL,
 	client_secret_hash TEXT
 );
 

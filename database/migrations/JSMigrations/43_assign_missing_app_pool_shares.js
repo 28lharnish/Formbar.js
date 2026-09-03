@@ -9,7 +9,7 @@ module.exports = {
         const columns = await dbGetAll("PRAGMA table_info(digipog_pools)", [], database);
         const shareItemColumn = columns.find((column) => column.name === "share_item");
 		if(!shareItemColumn) {
-			await dbRun("ALTER TABLE digipog_pools ADD COLUMN share_item TEXT DEFAULT NULL", [], database);
+			await dbRun("ALTER TABLE digipog_pools ADD COLUMN share_item INTEGER DEFAULT NULL", [], database);
 
 			const apps = await dbGetAll("SELECT id, share_item_id, pool_id FROM apps", [], database)
 			for(const app of apps) {
