@@ -7,19 +7,17 @@ module.exports = {
 		//? For each app, ensure its pool has the share_item id
 
         const columns = await dbGetAll("PRAGMA table_info(digipog_pools)", [], database);
-        const shareItemColumn = columns.find((column) => column.name === "share_item");
-		if(!shareItemColumn) {
-			await dbRun("ALTER TABLE digipog_pools ADD COLUMN share_item INTEGER DEFAULT NULL", [], database);
+        const hasShareItemColumn = columns.some((column) => column.name === "share_item");
+        if (!hasShareItemColumn) {
+            await dbRun("ALTER TABLE digipog_pools ADD COLUMN share_item INTEGER DEFAULT NULL", [], database);
+        }
 
-			const apps = await dbGetAll("SELECT id, share_item_id, pool_id FROM apps", [], database)
-			for(const app of apps) {
-				//? Align each apps pool with its share item
-
-				await dbRun("UPDATE digipog_pools SET share_item = ? WHERE id = ?", [app.share_item_id, app.pool_id], database);
-			};
-		} else {
-			throw new Error("ALREADY_DONE");
-		}
+        // Align each app's pool with its share item (idempotent: only fills missing values).
+        await dbRun(
+            "UPDATE digipog_pools SET share_item = (SELECT share_item_id FROM apps WHERE pool_id = digipog_pools.id LIMIT 1) WHERE share_item IS NULL AND id IN (SELECT pool_id FROM apps)",
+            [],
+            database
+        );
 
 		
     },
