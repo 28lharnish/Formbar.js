@@ -63,7 +63,7 @@ const rateLimiter = createRateLimiter({ rateLimitMultiplier: settings.rateLimitM
 app.use(sessionMiddleware);
 
 // Connect rate limiter middleware
-app.use(rateLimiter.httpMiddleware);
+// app.use(rateLimiter.httpMiddleware);
 
 // For further uses on this use this link: https://socket.io/how-to/use-with-express-session
 // Uses a middleware function to successfully transmit data between the user and server
@@ -72,7 +72,7 @@ io.use((socket, next) => {
     sessionMiddleware(socket.request, socket.request.res || {}, next);
 });
 
-io.use(rateLimiter.socketMiddleware);
+// io.use(rateLimiter.socketMiddleware);
 
 // Block socket connections from banned IPs
 io.use((socket, next) => {

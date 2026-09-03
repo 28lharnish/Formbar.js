@@ -9,11 +9,14 @@ module.exports = {
         const columns = await dbGetAll("PRAGMA table_info(digipog_pools)", [], database);
         const shareItemColumn = columns.find((column) => column.name === "share_item");
 		if(!shareItemColumn) {
-			// await dbRun("ALTER TABLE digipog_pools ADD COLUMN share_item TEXT DEFAULT NULL");
+			await dbRun("ALTER TABLE digipog_pools ADD COLUMN share_item TEXT DEFAULT NULL", [], database);
 
-			// const apps = await dbGetAll("SELECT id, share_item_id, pool_id FROM apps")
+			const apps = await dbGetAll("SELECT id, share_item_id, pool_id FROM apps", [], database)
+			for(const app of apps) {
+				//? Align each apps pool with it's share item
 
-			// console.log(apps)
+				await dbRun("UPDATE digipog_pools SET share_item = ? WHERE id = ?", [app.share_item_id, app.pool_id], database);
+			};
 		} else {
 			throw new Error("ALREADY_DONE");
 		}
