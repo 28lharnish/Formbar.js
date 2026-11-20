@@ -98,4 +98,35 @@ async function mark(database, name) {
     await run(database, "INSERT OR IGNORE INTO schema_migrations_v2 (name, applied_at) VALUES (?, datetime('now'))", [name]);
 }
 
-module.exports = { all, columns, exec, get, mark, rebuild, run, tableExists };
+/**
+ * Runs and records one atomic migration step.
+ *
+ * @param {sqlite3.Database} database
+ * @param {string} name
+ * @param {() => Promise<void>} work
+ * @param {string[]} [compatibleNames]
+ * @returns {Promise<void>}
+ */
+async function runStep(database, name, work, compatibleNames = []) {
+    if (await tableExists(database, "schema_migrations_v2")) {
+        const names = [name, ...compatibleNames];
+        const applied = await all(
+            database,
+            `SELECT name FROM schema_migrations_v2 WHERE name IN (${names.map(() => "?").join(", ")})`,
+            names
+        );
+        if (applied.length) return;
+    }
+
+    await run(database, "BEGIN IMMEDIATE");
+    try {
+        await work();
+        await mark(database, name);
+        await run(database, "COMMIT");
+    } catch (error) {
+        await run(database, "ROLLBACK").catch(() => undefined);
+        throw error;
+    }
+}
+
+module.exports = { all, columns, exec, get, mark, rebuild, run, runStep, tableExists };
